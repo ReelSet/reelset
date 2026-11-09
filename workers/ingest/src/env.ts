@@ -10,6 +10,7 @@ export interface Env {
   GEMINI_MODEL?: string
   GEMINI_EMBEDDING_MODEL?: string
   GITHUB_TOKEN?: string
+  FIRECRAWL_API_KEY?: string
   ALERT_WEBHOOK_URL?: string
   SELFCHECK_TOKEN?: string
   LOG_LEVEL?: string

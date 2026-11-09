@@ -55,3 +55,21 @@ export function parseEventBatch(
     issues: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`),
   }
 }
+
+export const MAX_EVENT_BODY_BYTES = 16 * 1024
+
+export type EventBodyResult =
+  { ok: true; json: unknown } | { ok: false; reason: 'empty' | 'too_large' | 'not_json' }
+
+// sendBeacon posts Blobs as text/plain or application/json depending on the browser, so the
+// content-type is ignored and the raw text is parsed instead.
+export function parseEventBody(raw: string): EventBodyResult {
+  if (raw.length > MAX_EVENT_BODY_BYTES) return { ok: false, reason: 'too_large' }
+  const text = raw.replace(/^﻿/, '').trim()
+  if (!text) return { ok: false, reason: 'empty' }
+  try {
+    return { ok: true, json: JSON.parse(text) }
+  } catch {
+    return { ok: false, reason: 'not_json' }
+  }
+}

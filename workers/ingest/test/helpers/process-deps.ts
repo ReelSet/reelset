@@ -59,9 +59,15 @@ export const validOutput = (chunkId = CHUNK_1, extra: Record<string, unknown> = 
     },
   })
 
-export function makeDeps(world: World, llmOutputs: (string | Error)[]) {
+export function makeDeps(
+  world: World,
+  llmOutputs: (string | Error)[],
+  extra: (q: RecordedQuery) => unknown[] | undefined = () => undefined,
+) {
   const handler = (q: RecordedQuery) => {
     const sql = q.sql
+    const custom = extra(q)
+    if (custom) return custom
     if (sql.includes('from "item" where "id"')) {
       return [
         {

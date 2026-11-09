@@ -1,5 +1,12 @@
 import type { Logger } from '@reelset/core'
-import { NEWS_BODY_CHARS, NEWS_MAX_ENTRIES_PER_FEED, USER_AGENT } from '../config'
+import { attachArticleText } from '../article'
+import {
+  NEWS_BODY_CHARS,
+  NEWS_MAX_ARTICLE_FETCHES,
+  NEWS_MAX_ENTRIES_PER_FEED,
+  NEWS_THIN_ENTRY_CHARS,
+  USER_AGENT,
+} from '../config'
 import { fetchText } from '../http'
 import { truncate } from '../html'
 import { parseFeed, type FeedEntry } from '../rss'
@@ -43,7 +50,13 @@ async function fetchFeed(scope: string, log: Logger, ctx: FetchContext): Promise
     .map((entry) => entryToMention(entry, ctx.range))
     .filter((m): m is NormalizedMention => m !== null)
 
-  l.info({ entries: entries.length, mentions: mentions.length }, 'news fetch complete')
+  const thin = mentions.filter((m) => (m.body?.length ?? 0) < NEWS_THIN_ENTRY_CHARS)
+  await attachArticleText(thin, NEWS_MAX_ARTICLE_FETCHES, l, ctx)
+
+  l.info(
+    { entries: entries.length, mentions: mentions.length, thin: thin.length },
+    'news fetch complete',
+  )
   return { mentions, exhausted: true }
 }
 

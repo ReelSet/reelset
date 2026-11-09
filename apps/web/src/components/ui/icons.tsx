@@ -96,3 +96,15 @@ export const HomeIcon = ({ className }: P) => (
     <path d="m10.5 9.5 3.5 2.5-3.5 2.5z" fill="currentColor" />
   </Svg>
 )
+export const WarnIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M12 4 2.8 19.5h18.4z" />
+    <path d="M12 10v4.5m0 2.5v.01" />
+  </Svg>
+)
+export const PaperIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M7 3.5h7.5L19 8v12.5H7z" />
+    <path d="M14.5 3.5V8H19M10 12.5h6M10 16h6" />
+  </Svg>
+)

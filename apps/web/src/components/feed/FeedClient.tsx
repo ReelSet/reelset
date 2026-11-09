@@ -5,7 +5,12 @@ import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import { ReelCard, type ReelControls } from './ReelCard'
 import { ChevronIcon, HomeIcon, SearchIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import { LogoMark, Wordmark } from '@/components/ui/Logo'
+import { Spinner } from '@/components/ui/Spinner'
+import { useToast } from '@/components/ui/Toast'
+import { ReelSkeleton } from './ReelSkeleton'
 import { SourceDot, SOURCES } from '@/components/ui/sources'
 import { SourcesSheet } from './SourcesSheet'
 import { TopicPicker } from './TopicPicker'
@@ -41,7 +46,9 @@ export function FeedClient() {
   const [soundOn, setSoundOn] = useState(false)
   const [sourcesFor, setSourcesFor] = useState<FeedItemDto | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [moreState, setMoreState] = useState<'idle' | 'loading' | 'failed'>('idle')
   const loadingMore = useRef(false)
+  const toast = useToast()
   const scrollerRef = useRef<HTMLDivElement>(null)
   const controls = useRef<ReelControls | null>(null)
   const itemsRef = useRef(items)
@@ -75,9 +82,15 @@ export function FeedClient() {
         patchItem(item.id, { liked: body.liked, likeCount: body.likeCount })
       } catch {
         patchItem(item.id, { liked: item.liked, likeCount: item.likeCount })
+        toast.show(
+          navigator.onLine
+            ? 'Could not save your like. Try again.'
+            : 'You are offline. Your like was not saved.',
+          'error',
+        )
       }
     },
-    [patchItem],
+    [patchItem, toast],
   )
 
   const toggleLike = useCallback(
@@ -132,6 +145,7 @@ export function FeedClient() {
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore.current) return
     loadingMore.current = true
+    setMoreState('loading')
     try {
       const res = await fetch(`/api/feed?cursor=${encodeURIComponent(cursor)}`)
       if (!res.ok) throw new Error(String(res.status))
@@ -141,16 +155,17 @@ export function FeedClient() {
         return [...cur, ...feed.items.filter((it) => !seen.has(it.id))]
       })
       setCursor(feed.nextCursor)
+      setMoreState('idle')
     } catch {
-      // keep the cursor so the next scroll retries
+      setMoreState('failed')
     } finally {
       loadingMore.current = false
     }
   }, [cursor])
 
   useEffect(() => {
-    if (phase === 'ready' && active >= items.length - 3) void loadMore()
-  }, [active, items.length, phase, loadMore])
+    if (phase === 'ready' && moreState !== 'failed' && active >= items.length - 3) void loadMore()
+  }, [active, items.length, phase, loadMore, moreState])
 
   const startedFor = useRef<string | null>(null)
   useEffect(() => {
@@ -202,6 +217,18 @@ export function FeedClient() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [phase, active, goTo, toggleLike, sourcesFor, pickerOpen])
+
+  const [offline, setOffline] = useState(false)
+  useEffect(() => {
+    setOffline(!navigator.onLine)
+    const sync = () => setOffline(!navigator.onLine)
+    window.addEventListener('online', sync)
+    window.addEventListener('offline', sync)
+    return () => {
+      window.removeEventListener('online', sync)
+      window.removeEventListener('offline', sync)
+    }
+  }, [])
 
   const accountHref = viewer.authenticated ? '/profile' : '/login'
   const shell = (children: React.ReactNode, canNavigate = false) => (
@@ -296,55 +323,43 @@ export function FeedClient() {
   )
 
   if (phase === 'loading') {
-    return shell(
-      <div className="absolute inset-0 bg-surface" aria-busy aria-label="Loading reels">
-        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 px-4 pb-8 pr-20">
-          <div className="animate-shimmer h-6 w-28 rounded-full bg-white/10" />
-          <div className="animate-shimmer h-5 w-5/6 rounded-md bg-white/10" />
-          <div className="animate-shimmer h-5 w-2/3 rounded-md bg-white/10" />
-          <div className="animate-shimmer h-3.5 w-full rounded-md bg-white/5" />
-        </div>
-        <div className="absolute bottom-8 right-3 flex flex-col gap-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="animate-shimmer h-11 w-11 rounded-full bg-white/10" />
-          ))}
-        </div>
-      </div>,
-    )
+    return shell(<ReelSkeleton />)
   }
 
   if (phase === 'error') {
     return shell(
-      <CenterMessage
-        title="Could not load the feed"
-        body="Check your connection and try again."
-        action={
-          <button
-            type="button"
-            onClick={() => void loadInitial()}
-            className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
-          >
-            Retry
-          </button>
-        }
-      />,
+      <div className="absolute inset-0 grid place-items-center bg-surface">
+        <ErrorState
+          title={offline ? 'You are offline' : 'Could not load the feed'}
+          body={
+            offline
+              ? 'Reconnect to the internet, then try again.'
+              : 'Check your connection and try again.'
+          }
+          onRetry={() => void loadInitial()}
+          retryLabel="Retry"
+        />
+      </div>,
     )
   }
 
   if (items.length === 0) {
     return shell(
-      <CenterMessage
-        title="No reels yet"
-        body="New stories are on the way. Check back soon, or ask a question in the meantime."
-        action={
-          <a
-            href="/ask"
-            className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
-          >
-            Try Ask
-          </a>
-        }
-      />,
+      <div className="absolute inset-0 grid place-items-center bg-surface">
+        <EmptyState
+          icon={<LogoMark className="h-10 w-10" />}
+          title="No reels yet"
+          body="New stories are on the way. Check back soon, or ask a question in the meantime."
+          action={
+            <a
+              href="/ask"
+              className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
+            >
+              Try Ask
+            </a>
+          }
+        />
+      </div>,
     )
   }
 
@@ -369,6 +384,21 @@ export function FeedClient() {
           onOpenSources={setSourcesFor}
         />
       ))}
+      {cursor && moreState === 'failed' && (
+        <section className="grid h-full snap-start place-items-center bg-surface px-8 text-center">
+          <ErrorState
+            title="Could not load more reels"
+            body="Check your connection and try again."
+            onRetry={() => void loadMore()}
+            retryLabel="Retry"
+          />
+        </section>
+      )}
+      {cursor && moreState === 'loading' && (
+        <section className="grid h-full snap-start place-items-center bg-surface text-muted">
+          <Spinner className="h-7 w-7" />
+        </section>
+      )}
       {!cursor && (
         <section className="grid h-full snap-start place-items-center bg-surface px-8 text-center">
           <div className="animate-fade-up">
@@ -386,27 +416,6 @@ export function FeedClient() {
       )}
     </div>,
     true,
-  )
-}
-
-function CenterMessage({
-  title,
-  body,
-  action,
-}: {
-  title: string
-  body: string
-  action: React.ReactNode
-}) {
-  return (
-    <div className="absolute inset-0 grid place-items-center bg-surface px-8 text-center">
-      <div className="animate-fade-up">
-        <LogoMark className="mx-auto h-10 w-10" />
-        <p className="mt-4 text-lg font-semibold tracking-tight">{title}</p>
-        <p className="mx-auto mt-1 max-w-xs text-sm text-muted">{body}</p>
-        <div className="mt-5">{action}</div>
-      </div>
-    </div>
   )
 }
 

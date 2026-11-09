@@ -64,6 +64,7 @@ const SOURCE_LABELS: Record<Source, string> = {
   news: 'News',
   reddit: 'Reddit',
   youtube: 'YouTube',
+  papers: 'Research',
 }
 
 export function sourceLabel(source: Source | null): string {

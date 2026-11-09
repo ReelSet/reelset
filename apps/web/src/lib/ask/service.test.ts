@@ -1,7 +1,14 @@
 import { createLogger } from '@reelset/core'
 import { describe, expect, it, vi } from 'vitest'
 import type { EvidenceChunk } from './evidence'
-import { NO_EVIDENCE_MESSAGE, runAsk, type AskDeps, type AskLogEntry } from './service'
+import { GeminiError } from './gemini'
+import {
+  AI_UNAVAILABLE_MESSAGE,
+  NO_EVIDENCE_MESSAGE,
+  runAsk,
+  type AskDeps,
+  type AskLogEntry,
+} from './service'
 
 const log = createLogger({ app: 'test', level: 'silent' })
 const check = { ok: true as const, question: 'Is Bun faster?', normalized: 'is bun faster' }
@@ -167,6 +174,33 @@ describe('runAsk', () => {
     })
     expect((await runAsk(deps, input)).outcome).toBe('error')
     expect(logged).toHaveLength(1)
+  })
+
+  it.each([402, 429, 503, undefined])(
+    'reports ai_unavailable when the provider fails with %s',
+    async (status) => {
+      const { deps, logged } = makeDeps({
+        embed: vi.fn(async () => {
+          throw new GeminiError('embed failed', status)
+        }),
+      })
+      expect(await runAsk(deps, input)).toEqual({
+        outcome: 'error',
+        message: AI_UNAVAILABLE_MESSAGE,
+        reason: 'ai_unavailable',
+      })
+      expect(logged[0]?.outcome).toBe('error')
+    },
+  )
+
+  it('keeps the generic error for non-provider failures', async () => {
+    const { deps } = makeDeps({
+      embed: vi.fn(async () => {
+        throw new GeminiError('prompt blocked: SAFETY', 400)
+      }),
+    })
+    expect(await runAsk(deps, input)).toMatchObject({ outcome: 'error' })
+    expect(await runAsk(deps, input)).not.toHaveProperty('reason')
   })
 
   it('survives a failing ask_query insert', async () => {

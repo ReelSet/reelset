@@ -25,6 +25,10 @@ export type IngestSettings = {
   youtubeMaxAgeDays: number
   youtubeResultsPerQuery: number
   newsFeeds: string[]
+  papersHfLimit: number
+  papersArxivCategories: string[]
+  papersArxivPerCategory: number
+  papersMaxAgeDays: number
 }
 
 export type Watermark = {
@@ -35,6 +39,11 @@ export type Watermark = {
   oldestAt: Date | null
   nextToken: string | null
   backfillComplete: boolean
+}
+
+export type ScrapeFallback = {
+  /** Paid Firecrawl scrape. Returns markdown, or null when capped, repeated, or failed. */
+  scrape: (url: string, reason: string) => Promise<string | null>
 }
 
 export type FetchRange = {
@@ -51,6 +60,7 @@ export type FetchContext = {
   now: Date
   githubToken?: string
   render?: Pick<Fetcher, 'fetch'>
+  scrape?: ScrapeFallback
   settings: IngestSettings
 }
 

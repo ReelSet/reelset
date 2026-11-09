@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ItemStatus } from '@reelset/core'
+import { ItemStatus, Source } from '@reelset/core'
 import { fmtDate, truncate } from '@/lib/admin/format'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import {
@@ -24,7 +24,7 @@ export const metadata = { title: 'Items' }
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
 
-const SOURCES = ['hn', 'github', 'news', 'reddit', 'youtube']
+const SOURCES: string[] = Object.values(Source)
 const STATUSES = Object.values(ItemStatus)
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 

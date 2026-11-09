@@ -88,8 +88,8 @@ async function persistChunk(
       oc.columns(['source', 'external_id']).doUpdateSet({
         title: sql`excluded.title`,
         body: sql`excluded.body`,
-        score: sql`excluded.score`,
-        num_comments: sql`excluded.num_comments`,
+        score: sql`coalesce(excluded.score, mention.score)`,
+        num_comments: sql`coalesce(excluded.num_comments, mention.num_comments)`,
         fetched_at: sql`now()`,
         raw: sql`case when excluded.raw->'extraTexts' = '[]'::jsonb then mention.raw else excluded.raw end`,
       }),

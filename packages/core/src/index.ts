@@ -30,8 +30,16 @@ export {
   getSetting,
   parseSetting,
   setSetting,
+  pipelinePauseSchema,
+  type PipelinePause,
   type SettingDef,
 } from './repos/settings.repo'
+export {
+  PIPELINE_PROBE_MINUTES,
+  clearPipelinePause,
+  getPipelinePause,
+  pausePipeline,
+} from './repos/pipeline-pause.repo'
 export { recordSpend, spendTodayUsd, type SpendInput } from './repos/spend.repo'
 export {
   ALERT_KEYS,

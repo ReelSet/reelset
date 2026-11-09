@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Spinner } from '@/components/ui/Spinner'
 import { TOPICS } from '@/lib/topics'
 
 export function TopicPicker({ onDone }: { onDone: () => void }) {
@@ -62,6 +63,7 @@ export function TopicPicker({ onDone }: { onDone: () => void }) {
           <button
             type="button"
             onClick={onDone}
+            disabled={saving}
             className="flex-1 rounded-md bg-raised py-3 text-sm text-muted transition hover:text-fg active:scale-[0.98]"
           >
             Skip
@@ -70,9 +72,10 @@ export function TopicPicker({ onDone }: { onDone: () => void }) {
             type="button"
             onClick={save}
             disabled={selected.length === 0 || saving}
-            className="flex-1 rounded-md bg-accent py-3 text-sm font-medium text-accent-fg transition active:scale-[0.98] disabled:opacity-40"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-accent py-3 text-sm font-medium text-accent-fg transition active:scale-[0.98] disabled:opacity-40"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving && <Spinner />}
+            {saving ? 'Saving' : 'Save'}
           </button>
         </div>
       </div>

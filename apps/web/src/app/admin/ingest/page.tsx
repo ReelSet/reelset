@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SubmitButton } from '@/components/admin/SubmitButton'
 import { z } from 'zod'
 import { fmtDate, fmtMs, truncate } from '@/lib/admin/format'
 import { parsePage } from '@/lib/admin/pagination'
@@ -119,9 +120,9 @@ export default async function IngestPage({ searchParams }: Props) {
                       <form action={retryTaskAction}>
                         <input type="hidden" name="id" value={t.id} />
                         <input type="hidden" name="returnTo" value={returnTo} />
-                        <button type="submit" className={button}>
+                        <SubmitButton className={button} pendingLabel="Retrying">
                           Retry
-                        </button>
+                        </SubmitButton>
                       </form>
                     ) : null}
                   </td>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEventBatch } from './events'
+import { MAX_EVENT_BODY_BYTES, parseEventBatch, parseEventBody } from './events'
 
 const itemId = '0b5d2f3e-6a1c-4e0b-9a55-1c2d3e4f5a6b'
 
@@ -45,5 +45,23 @@ describe('parseEventBatch', () => {
     const result = parseEventBatch({ events: [{ name: 'nope' }] })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.issues[0]).toContain('events.0.name')
+  })
+})
+
+describe('parseEventBody', () => {
+  const body = JSON.stringify({ events: [{ name: 'feed_view' }] })
+
+  it('parses the same body regardless of the declared content-type', () => {
+    expect(parseEventBody(body)).toEqual({ ok: true, json: JSON.parse(body) })
+    expect(parseEventBody(`\uFEFF ${body}\n`)).toEqual({ ok: true, json: JSON.parse(body) })
+  })
+
+  it('reports empty, oversized and non-JSON bodies', () => {
+    expect(parseEventBody('  ')).toEqual({ ok: false, reason: 'empty' })
+    expect(parseEventBody('x'.repeat(MAX_EVENT_BODY_BYTES + 1))).toEqual({
+      ok: false,
+      reason: 'too_large',
+    })
+    expect(parseEventBody('events=1')).toEqual({ ok: false, reason: 'not_json' })
   })
 })

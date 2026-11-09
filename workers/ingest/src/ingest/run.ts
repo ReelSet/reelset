@@ -13,7 +13,14 @@ import {
   RUN_STUCK_AFTER_MS,
 } from '../config'
 import { ADAPTERS } from '../registry'
-import type { FetchContext, IngestSettings, SourceAdapter, TaskOutcome, Watermark } from '../types'
+import type {
+  FetchContext,
+  IngestSettings,
+  ScrapeFallback,
+  SourceAdapter,
+  TaskOutcome,
+  Watermark,
+} from '../types'
 import { persistMentions } from './persist'
 import { planRange, nextWatermark, publishedBounds } from './range'
 import { refreshRedditScores } from './reddit-refresh'
@@ -59,6 +66,7 @@ export function planTasks(
 export type RunEnv = {
   githubToken?: string
   render?: Pick<Fetcher, 'fetch'>
+  scrape?: ScrapeFallback
 }
 
 export type RunDeps = {
@@ -174,6 +182,7 @@ export async function runIngest(
     now,
     githubToken: deps.env.githubToken,
     render: deps.env.render,
+    scrape: deps.env.scrape,
     settings,
   }
 

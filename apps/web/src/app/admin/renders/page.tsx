@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SubmitButton } from '@/components/admin/SubmitButton'
 import { RenderStatus } from '@reelset/core'
 import { fmtBytes, fmtDate, fmtMs, truncate } from '@/lib/admin/format'
 import { parsePage } from '@/lib/admin/pagination'
@@ -101,9 +102,9 @@ export default async function RendersPage({ searchParams }: Props) {
                           <form action={retryRenderAction}>
                             <input type="hidden" name="id" value={r.id} />
                             <input type="hidden" name="returnTo" value={returnTo} />
-                            <button type="submit" className={button}>
+                            <SubmitButton className={button} pendingLabel="Retrying">
                               Retry
-                            </button>
+                            </SubmitButton>
                           </form>
                           {r.item_status === 'failed' ? (
                             <DiscardItemForm itemId={r.item_id} returnTo={returnTo} />

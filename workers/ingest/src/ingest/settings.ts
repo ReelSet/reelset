@@ -8,5 +8,9 @@ export async function loadIngestSettings(db: Database, log: Logger): Promise<Ing
     youtubeMaxAgeDays: await getSetting(db, SETTINGS.youtubeMaxAgeDays, log),
     youtubeResultsPerQuery: await getSetting(db, SETTINGS.youtubeResultsPerQuery, log),
     newsFeeds: await getSetting(db, SETTINGS.newsFeeds, log),
+    papersHfLimit: await getSetting(db, SETTINGS.papersHfLimit, log),
+    papersArxivCategories: await getSetting(db, SETTINGS.papersArxivCategories, log),
+    papersArxivPerCategory: await getSetting(db, SETTINGS.papersArxivPerCategory, log),
+    papersMaxAgeDays: await getSetting(db, SETTINGS.papersMaxAgeDays, log),
   }
 }

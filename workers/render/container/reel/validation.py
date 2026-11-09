@@ -7,7 +7,7 @@ JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,80}$")
 VOICE_RE = re.compile(r"^[A-Za-z0-9-]{5,60}$")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 VISUAL_TYPES = ("title", "code", "stat", "quote", "image")
-SOURCES = ("hn", "github", "news", "reddit", "youtube")
+SOURCES = ("hn", "github", "news", "reddit", "youtube", "papers")
 MAX_IMAGE_URLS = 10
 
 

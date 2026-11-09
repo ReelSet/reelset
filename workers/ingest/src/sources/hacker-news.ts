@@ -1,6 +1,13 @@
 import { errorFields, type Logger } from '@reelset/core'
 import { z } from 'zod'
-import { HN_ALGOLIA_BASE, HN_HITS_PER_PAGE, HN_MAX_COMMENT_FETCHES, HN_MIN_POINTS } from '../config'
+import { attachArticleText } from '../article'
+import {
+  HN_ALGOLIA_BASE,
+  HN_HITS_PER_PAGE,
+  HN_MAX_ARTICLE_FETCHES,
+  HN_MAX_COMMENT_FETCHES,
+  HN_MIN_POINTS,
+} from '../config'
 import { fetchJson } from '../http'
 import { stripHtml, truncate } from '../html'
 import type { AdapterOutcome, FetchContext, NormalizedMention, SourceAdapter } from '../types'
@@ -128,6 +135,8 @@ async function fetchStories(
       l.warn({ story: mention.externalId, ...errorFields(err) }, 'hn comments fetch failed')
     }
   }
+
+  await attachArticleText(mentions, HN_MAX_ARTICLE_FETCHES, l, ctx)
 
   l.info({ mentions: mentions.length, exhausted }, 'hn fetch complete')
   return { mentions, exhausted }

@@ -10,6 +10,7 @@ export const ALERT_KEYS = [
   'spend_cap_reached',
   'transcript_success_low',
   'dead_letter_growing',
+  'llm_quota_exhausted',
 ] as const
 export type AlertKey = (typeof ALERT_KEYS)[number]
 

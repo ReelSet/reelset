@@ -2,7 +2,7 @@ import { elapsedMs, errorFields, type AskOutcome, type Logger } from '@reelset/c
 import type { CitationDto } from '@/lib/api-types'
 import { filterCitations, selectEvidence, type EvidenceChunk } from './evidence'
 import { decideSpendGate } from './gate'
-import type { GenerateResult, ModelAnswer } from './gemini'
+import { isProviderUnavailable, type GenerateResult, type ModelAnswer } from './gemini'
 import { embeddingCostUsd, estimateTokens, llmCostUsd, type AskSpendKind } from './pricing'
 import type { QuestionCheck } from './question'
 
@@ -11,6 +11,8 @@ export const NO_EVIDENCE_MESSAGE =
 export const RATE_LIMITED_MESSAGE = 'You have asked a lot this hour. Please try again a bit later.'
 export const SPEND_CAPPED_MESSAGE =
   'Ask is paused for today to keep costs in check. Try again tomorrow.'
+export const AI_UNAVAILABLE_MESSAGE =
+  'AI is temporarily unavailable. Your question was not lost; please try again in a little while.'
 export const ERROR_MESSAGE = 'Something went wrong while answering. Please try again.'
 
 export type CachedAnswer = { answer: string; citations: CitationDto[] }
@@ -56,7 +58,8 @@ export type AskDeps = {
 
 export type AskResult =
   | { outcome: 'answered'; answer: string; citations: CitationDto[]; cached: boolean }
-  | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped' | 'error'; message: string }
+  | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped'; message: string }
+  | { outcome: 'error'; message: string; reason?: 'ai_unavailable' }
 
 export async function runAsk(
   deps: AskDeps,
@@ -162,6 +165,9 @@ export async function runAsk(
     )
   } catch (err) {
     log.error(errorFields(err), 'ask failed')
+    if (isProviderUnavailable(err)) {
+      return finish({ outcome: 'error', message: AI_UNAVAILABLE_MESSAGE, reason: 'ai_unavailable' })
+    }
     return finish({ outcome: 'error', message: ERROR_MESSAGE })
   }
 }

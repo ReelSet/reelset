@@ -15,6 +15,8 @@ const NEWS_BASE = 0.65
 const EXTRA_MENTION_BONUS = 0.05
 const EXTRA_MENTION_BONUS_CAP = 4
 const COMMENT_WEIGHT = 0.5
+// arXiv-only papers carry no engagement signal yet: below the default admission floor.
+const UNRANKED_PAPER_BASE = 0.25
 
 // Log-engagement (see engagement()) mapped linearly to 0..1: `floor` is a typical weak item of that
 // source, `top` a standout one, both calibrated on each source's own recent distribution.
@@ -23,6 +25,8 @@ const RANGE: Record<Exclude<Source, 'news'>, { floor: number; top: number }> = {
   reddit: { floor: 3, top: 8.5 },
   github: { floor: 3.5, top: 7 },
   youtube: { floor: 5.5, top: 9.5 },
+  // Hugging Face Daily Papers: a handful of upvotes is typical, 150+ is a standout.
+  papers: { floor: 1.5, top: 6.2 },
 }
 
 // Votes plus discussion for hn/reddit; per-day velocity for github (stars) and youtube (views),
@@ -49,6 +53,8 @@ export function mentionScore(signal: ScoreSignal, now: Date): number {
   const velocity = signal.source === 'github' || signal.source === 'youtube'
   const decay = velocity ? 1 : recencyDecay(signal.publishedAt, now)
   if (signal.source === 'news') return NEWS_BASE * decay
+
+  if (signal.source === 'papers' && signal.score === null) return UNRANKED_PAPER_BASE * decay
 
   const { floor, top } = RANGE[signal.source]
   const normalized = (engagement(signal, now) - floor) / (top - floor)

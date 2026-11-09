@@ -5,6 +5,7 @@ import {
   type Env,
   type IngestItemMessage,
 } from './env'
+import { createFirecrawlFallback } from './firecrawl'
 import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { handleMessage } from './pipeline/consumer'
@@ -40,7 +41,17 @@ async function onIngestCron(env: Env, log: Logger): Promise<void> {
   await withDb(env, log, async (db) => {
     const mode = (await hasAnyWatermark(db)) ? 'incremental' : 'backfill'
     await runIngest(
-      { db, log, env: { githubToken: env.GITHUB_TOKEN, render: env.RENDER } },
+      {
+        db,
+        log,
+        env: {
+          githubToken: env.GITHUB_TOKEN,
+          render: env.RENDER,
+          scrape: env.FIRECRAWL_API_KEY
+            ? createFirecrawlFallback({ apiKey: env.FIRECRAWL_API_KEY, db, log })
+            : undefined,
+        },
+      },
       { mode },
     )
   })
@@ -48,7 +59,15 @@ async function onIngestCron(env: Env, log: Logger): Promise<void> {
 
 async function onReconcileCron(env: Env, log: Logger): Promise<void> {
   await withDb(env, log, async (db) => {
-    await reconcile(db, { ingest: env.INGEST_ITEMS, render: env.RENDER_JOBS }, log)
+    const embedder = createEmbedder(
+      env.GEMINI_API_KEY,
+      env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
+      log,
+    )
+    await reconcile(db, { ingest: env.INGEST_ITEMS, render: env.RENDER_JOBS }, log, new Date(), {
+      probe: () => embedder.embed(['ping']),
+      alertWebhookUrl: env.ALERT_WEBHOOK_URL,
+    })
     await runAlerts(db, env.ALERT_WEBHOOK_URL, log)
   })
 }
@@ -108,6 +127,7 @@ export default {
         renderQueue: env.RENDER_JOBS,
         geminiModel: env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
+        alertWebhookUrl: env.ALERT_WEBHOOK_URL,
       }
       log.info({ size: batch.messages.length }, 'ingest-items batch start')
       for (const message of batch.messages) await handleMessage(deps, message)

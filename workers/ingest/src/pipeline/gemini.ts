@@ -2,6 +2,7 @@ import { EMBEDDING_DIMENSIONS, reelScriptSchema, type Logger } from '@reelset/co
 import { z } from 'zod'
 import { MAX_TLDR_CHARS } from '../config'
 import { fetchJson } from '../http'
+import { asQuotaError } from './quota'
 import type { GeneratedContent } from './safety'
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta'
@@ -83,7 +84,7 @@ export type LlmClient = {
 export function createLlmClient(apiKey: string, model: string, log: Logger): LlmClient {
   return {
     generate: async ({ system, user }) => {
-      const json = await fetchJson(`${BASE}/models/${model}:generateContent`, log, {
+      const json = await geminiJson(`${BASE}/models/${model}:generateContent`, log, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
@@ -96,6 +97,18 @@ export function createLlmClient(apiKey: string, model: string, log: Logger): Llm
       })
       return parseGenerateResponse(json)
     },
+  }
+}
+
+async function geminiJson(
+  url: string,
+  log: Logger,
+  options: Parameters<typeof fetchJson>[2],
+): Promise<unknown> {
+  try {
+    return await fetchJson(url, log, options)
+  } catch (err) {
+    throw asQuotaError(err)
   }
 }
 
@@ -241,7 +254,7 @@ export function createEmbedder(apiKey: string, model: string, log: Logger): Embe
   return {
     embed: async (texts) => {
       if (texts.length === 0) return []
-      const json = await fetchJson(`${BASE}/models/${model}:batchEmbedContents`, log, {
+      const json = await geminiJson(`${BASE}/models/${model}:batchEmbedContents`, log, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({

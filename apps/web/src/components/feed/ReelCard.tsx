@@ -11,6 +11,8 @@ import {
   ShareIcon,
   VolumeIcon,
 } from '@/components/ui/icons'
+import { Spinner } from '@/components/ui/Spinner'
+import { useToast } from '@/components/ui/Toast'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 
 export type ReelControls = { toggle: () => void }
@@ -57,6 +59,7 @@ export function ReelCard(props: Props) {
   const [ready, setReady] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const toast = useToast()
   const [heart, setHeart] = useState(0)
 
   soundRef.current = soundOn
@@ -200,8 +203,10 @@ export function ReelCard(props: Props) {
       await navigator.clipboard.writeText(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)
-    } catch {
-      // share sheet dismissed or clipboard unavailable
+      toast.show('Link copied', 'ok')
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      toast.show('Could not share this reel. Copy the link from the address bar.', 'error')
     }
   }
 
@@ -239,7 +244,12 @@ export function ReelCard(props: Props) {
             setPaused(false)
             setReady(true)
           }}
-          onError={() => setFailed(true)}
+          onError={() => {
+            setFailed(true)
+            setBuffering(false)
+          }}
+          onCanPlay={() => setBuffering(false)}
+          onStalled={() => setBuffering(true)}
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${ready ? 'opacity-100' : 'opacity-0'}`}
         />
       )}
@@ -263,9 +273,9 @@ export function ReelCard(props: Props) {
         </div>
       )}
 
-      {active && buffering && !blocked && (
-        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-          <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+      {active && (buffering || !ready) && !blocked && !failed && (
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center text-white">
+          <Spinner className="h-9 w-9" />
         </div>
       )}
 
@@ -279,12 +289,17 @@ export function ReelCard(props: Props) {
 
       {failed && (
         <div className="glass absolute inset-x-6 top-1/2 z-20 -translate-y-1/2 rounded-lg p-5 text-center text-sm">
-          <p className="text-muted">This reel could not be played.</p>
+          <p className="text-muted">
+            {typeof navigator !== 'undefined' && !navigator.onLine
+              ? 'You are offline. Reconnect to play this reel.'
+              : 'This reel could not be played.'}
+          </p>
           <button
             type="button"
             className="mt-3 rounded-full bg-fg px-5 py-2 font-medium text-bg transition active:scale-95"
             onClick={() => {
               setFailed(false)
+              setReady(false)
               videoRef.current?.load()
               playFromGesture()
             }}
@@ -294,21 +309,20 @@ export function ReelCard(props: Props) {
         </div>
       )}
 
-      {active && !soundOn && !blocked && !paused && (
-        <button
-          type="button"
-          onClick={() => onSound(true)}
-          className="glass animate-fade-in absolute left-1/2 top-[max(4.25rem,calc(env(safe-area-inset-top)+3.5rem))] z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-white/90 transition active:scale-95 lg:top-5"
-        >
-          <VolumeIcon muted className="h-3.5 w-3.5" />
-          Tap for sound
-        </button>
-      )}
-
       <div
         className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/55 to-transparent pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-4 pr-[4.5rem] pt-28 transition-[max-height] duration-300 ${expanded ? 'max-h-[75%]' : 'max-h-[60%]'}`}
       >
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {active && !soundOn && !blocked && !paused && !failed && (
+            <button
+              type="button"
+              onClick={() => onSound(true)}
+              className="glass animate-fade-in pointer-events-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
+            >
+              <VolumeIcon muted className="h-3.5 w-3.5" />
+              Tap for sound
+            </button>
+          )}
           {sources.map((source) => (
             <span
               key={source}

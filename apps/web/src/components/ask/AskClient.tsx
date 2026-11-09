@@ -6,6 +6,11 @@ import { createSseParser } from '@/lib/ask/sse'
 import { track } from '@/lib/client/track'
 import { ArrowRightIcon, ArrowUpRightIcon, HomeIcon, SparkleIcon } from '@/components/ui/icons'
 import { Wordmark } from '@/components/ui/Logo'
+import { Spinner } from '@/components/ui/Spinner'
+import { WarnIcon } from '@/components/ui/icons'
+import { useToast } from '@/components/ui/Toast'
+
+const RATE_LIMITED = 'You have asked a lot this hour. Please try again a bit later.'
 
 const SUGGESTIONS = [
   'What is new in AI coding agents this week?',
@@ -13,6 +18,45 @@ const SUGGESTIONS = [
   'Any big security incidents lately?',
   'What are people building with Rust?',
 ]
+
+function Notice({
+  tone,
+  title,
+  message,
+  onRetry,
+}: {
+  tone: 'danger' | 'warn' | 'info'
+  title: string
+  message: string
+  onRetry?: () => void
+}) {
+  const palette = {
+    danger: 'border-danger/30 bg-danger/10 text-danger',
+    warn: 'border-warn/30 bg-warn/10 text-warn',
+    info: 'border-line bg-surface text-muted',
+  }[tone]
+  return (
+    <div
+      role={tone === 'info' ? 'status' : 'alert'}
+      className={`animate-fade-up flex items-start gap-3 rounded-md border p-4 text-sm ${palette}`}
+    >
+      <WarnIcon className="mt-0.5 h-5 w-5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{title}</p>
+        <p className="mt-0.5 text-fg/75">{message}</p>
+      </div>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="shrink-0 rounded-full border border-current/40 px-3 py-1 text-xs transition hover:bg-white/5 active:scale-95"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  )
+}
 
 function host(url: string): string {
   try {
@@ -26,19 +70,26 @@ type State =
   | { phase: 'idle' }
   | { phase: 'loading'; partial: string }
   | { phase: 'done'; result: AskResponse }
-  | { phase: 'failed'; message: string }
+  | { phase: 'failed'; message: string; title?: string; partial?: string }
 
 export function AskClient() {
   const [question, setQuestion] = useState('')
   const [state, setState] = useState<State>({ phase: 'idle' })
   const inFlight = useRef(false)
   const [asked, setAsked] = useState('')
+  const partialRef = useRef('')
+  const toast = useToast()
 
   async function submit(event?: React.FormEvent, override?: string) {
     event?.preventDefault()
     const trimmed = (override ?? question).trim()
     if (inFlight.current || trimmed.length < 3) return
+    if (!navigator.onLine) {
+      toast.show('You are offline. Reconnect to ask a question.', 'error')
+      return
+    }
     inFlight.current = true
+    partialRef.current = ''
     setAsked(trimmed)
     setQuestion('')
     setState({ phase: 'loading', partial: '' })
@@ -55,7 +106,23 @@ export function AskClient() {
         return
       }
       if (res.status === 400) {
-        setState({ phase: 'failed', message: 'Questions need 3 to 300 characters.' })
+        setState({
+          phase: 'failed',
+          title: 'That question did not work',
+          message: 'Questions need 3 to 300 characters.',
+        })
+        return
+      }
+      if (res.status === 429) {
+        setState({ phase: 'done', result: { outcome: 'rate_limited', message: RATE_LIMITED } })
+        return
+      }
+      if (res.status >= 500) {
+        setState({
+          phase: 'failed',
+          title: 'The server had a problem',
+          message: 'Something broke on our side. Please try again in a moment.',
+        })
         return
       }
       if (!res.ok || !res.body) throw new Error('unexpected response')
@@ -63,6 +130,7 @@ export function AskClient() {
       const sse = createSseParser((data) => {
         const event = JSON.parse(data) as AskStreamEvent
         if (event.type === 'delta') {
+          partialRef.current += event.text
           setState((prev) =>
             prev.phase === 'loading'
               ? { phase: 'loading', partial: prev.partial + event.text }
@@ -85,7 +153,15 @@ export function AskClient() {
       setState({ phase: 'done', result: final })
       if (final.outcome === 'answered') track({ name: 'ask_answer_view' })
     } catch {
-      setState({ phase: 'failed', message: 'Could not reach the server. Check your connection.' })
+      const offline = !navigator.onLine
+      setState({
+        phase: 'failed',
+        title: offline ? 'You are offline' : 'Connection interrupted',
+        message: offline
+          ? 'Reconnect to the internet, then try again.'
+          : 'Could not reach the server. Check your connection and try again.',
+        partial: partialRef.current || undefined,
+      })
     } finally {
       inFlight.current = false
     }
@@ -154,16 +230,21 @@ export function AskClient() {
         )}
 
         {state.phase === 'failed' && (
-          <div className="animate-fade-up flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
-            <span>{state.message}</span>
-            <button
-              type="button"
-              onClick={() => void submit(undefined, asked)}
-              className="shrink-0 rounded-full border border-danger/40 px-3 py-1 text-xs transition hover:bg-danger/10 active:scale-95"
-            >
-              Retry
-            </button>
-          </div>
+          <>
+            {state.partial && (
+              <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/60">
+                {state.partial}
+              </p>
+            )}
+            <Notice
+              tone="danger"
+              title={
+                state.partial ? 'The answer was cut off' : (state.title ?? 'Something went wrong')
+              }
+              message={state.message}
+              onRetry={() => void submit(undefined, asked)}
+            />
+          </>
         )}
 
         {state.phase === 'done' && state.result.outcome === 'answered' && (
@@ -215,10 +296,29 @@ export function AskClient() {
           </section>
         )}
 
-        {state.phase === 'done' && state.result.outcome !== 'answered' && (
-          <p className="animate-fade-up rounded-md border border-line bg-surface p-4 text-sm text-muted">
-            {state.result.message}
-          </p>
+        {state.phase === 'done' && state.result.outcome === 'error' && (
+          <Notice
+            tone="danger"
+            title={
+              state.result.reason === 'ai_unavailable'
+                ? 'AI is temporarily unavailable'
+                : 'Something went wrong'
+            }
+            message={state.result.message}
+            onRetry={() => void submit(undefined, asked)}
+          />
+        )}
+
+        {state.phase === 'done' && state.result.outcome === 'rate_limited' && (
+          <Notice tone="warn" title="Slow down a little" message={state.result.message} />
+        )}
+
+        {state.phase === 'done' && state.result.outcome === 'spend_capped' && (
+          <Notice tone="info" title="Ask is paused for today" message={state.result.message} />
+        )}
+
+        {state.phase === 'done' && state.result.outcome === 'no_evidence' && (
+          <Notice tone="info" title="No answer yet" message={state.result.message} />
         )}
 
         <form
@@ -247,11 +347,7 @@ export function AskClient() {
               disabled={loading || question.trim().length < 3}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition active:scale-90 disabled:bg-raised disabled:text-faint"
             >
-              {loading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-fg/30 border-t-accent-fg" />
-              ) : (
-                <ArrowRightIcon className="h-[18px] w-[18px]" />
-              )}
+              {loading ? <Spinner /> : <ArrowRightIcon className="h-[18px] w-[18px]" />}
             </button>
           </div>
           {question.length > 240 && (

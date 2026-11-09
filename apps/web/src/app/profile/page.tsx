@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { HeartIcon, HomeIcon } from '@/components/ui/icons'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Wordmark } from '@/components/ui/Logo'
 import { buildLoginUrl } from '@/lib/auth/return-url'
 import { getOptionalUser } from '@/server/auth'
@@ -69,8 +70,20 @@ export default async function ProfilePage() {
           <span className="tabular-nums">{likes.length}</span>
         </h2>
         {likes.length === 0 ? (
-          <div className="rounded-md border border-dashed border-line p-8 text-center text-sm text-muted">
-            Double tap a reel to save it here.
+          <div className="rounded-md border border-dashed border-line py-10">
+            <EmptyState
+              icon={<HeartIcon className="h-8 w-8" />}
+              title="No likes yet"
+              body="Double tap a reel to save it here."
+              action={
+                <a
+                  href="/"
+                  className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
+                >
+                  Browse reels
+                </a>
+              }
+            />
           </div>
         ) : (
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">

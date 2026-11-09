@@ -4,6 +4,7 @@ export const Source = {
   news: 'news',
   reddit: 'reddit',
   youtube: 'youtube',
+  papers: 'papers',
 } as const
 export type Source = (typeof Source)[keyof typeof Source]
 export const ItemKind = {
@@ -102,5 +103,6 @@ export const SpendCategory = {
   render: 'render',
   storage: 'storage',
   ask: 'ask',
+  scrape: 'scrape',
 } as const
 export type SpendCategory = (typeof SpendCategory)[keyof typeof SpendCategory]
