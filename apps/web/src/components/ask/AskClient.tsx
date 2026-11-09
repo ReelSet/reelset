@@ -1,0 +1,284 @@
+'use client'
+
+import { useRef, useState } from 'react'
+import type { AskResponse, AskStreamEvent } from '@/lib/api-types'
+import { createSseParser } from '@/lib/ask/sse'
+import { track } from '@/lib/client/track'
+import { ArrowRightIcon, ArrowUpRightIcon, HomeIcon, SparkleIcon } from '@/components/ui/icons'
+import { Wordmark } from '@/components/ui/Logo'
+
+const SUGGESTIONS = [
+  'What is new in AI coding agents this week?',
+  'Which databases are developers talking about?',
+  'Any big security incidents lately?',
+  'What are people building with Rust?',
+]
+
+function host(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+type State =
+  | { phase: 'idle' }
+  | { phase: 'loading'; partial: string }
+  | { phase: 'done'; result: AskResponse }
+  | { phase: 'failed'; message: string }
+
+export function AskClient() {
+  const [question, setQuestion] = useState('')
+  const [state, setState] = useState<State>({ phase: 'idle' })
+  const inFlight = useRef(false)
+  const [asked, setAsked] = useState('')
+
+  async function submit(event?: React.FormEvent, override?: string) {
+    event?.preventDefault()
+    const trimmed = (override ?? question).trim()
+    if (inFlight.current || trimmed.length < 3) return
+    inFlight.current = true
+    setAsked(trimmed)
+    setQuestion('')
+    setState({ phase: 'loading', partial: '' })
+    track({ name: 'ask_submit' })
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: trimmed }),
+      })
+      if (res.status === 401) {
+        const body = (await res.json()) as { loginUrl: string }
+        window.location.assign(body.loginUrl)
+        return
+      }
+      if (res.status === 400) {
+        setState({ phase: 'failed', message: 'Questions need 3 to 300 characters.' })
+        return
+      }
+      if (!res.ok || !res.body) throw new Error('unexpected response')
+      const received: { result: AskResponse | null } = { result: null }
+      const sse = createSseParser((data) => {
+        const event = JSON.parse(data) as AskStreamEvent
+        if (event.type === 'delta') {
+          setState((prev) =>
+            prev.phase === 'loading'
+              ? { phase: 'loading', partial: prev.partial + event.text }
+              : prev,
+          )
+        } else {
+          received.result = event.result
+        }
+      })
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        sse.push(decoder.decode(value, { stream: true }))
+      }
+      sse.end()
+      const final = received.result
+      if (!final) throw new Error('stream ended without a result')
+      setState({ phase: 'done', result: final })
+      if (final.outcome === 'answered') track({ name: 'ask_answer_view' })
+    } catch {
+      setState({ phase: 'failed', message: 'Could not reach the server. Check your connection.' })
+    } finally {
+      inFlight.current = false
+    }
+  }
+
+  const loading = state.phase === 'loading'
+  const idle = state.phase === 'idle'
+
+  return (
+    <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5">
+      <header className="flex items-center justify-between pt-safe">
+        <a href="/" aria-label="Reelset home">
+          <Wordmark className="text-[15px]" />
+        </a>
+        <a
+          href="/"
+          className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
+        >
+          <HomeIcon className="h-4 w-4" />
+          Feed
+        </a>
+      </header>
+
+      <main className={`flex flex-1 flex-col ${idle ? 'justify-center pb-24' : 'gap-6 pt-8'}`}>
+        {idle && (
+          <div className="animate-fade-up">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted">
+              <SparkleIcon className="h-3.5 w-3.5 text-accent" />
+              Answers cited from the feed
+            </span>
+            <h1 className="mt-4 text-[34px] font-semibold leading-[1.1] tracking-tight [text-wrap:balance] sm:text-[44px]">
+              Ask what developers are building.
+            </h1>
+            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
+              Search across GitHub, Hacker News, Reddit, YouTube and news. Every answer links back
+              to its sources.
+            </p>
+          </div>
+        )}
+
+        {!idle && (
+          <h1 className="animate-fade-up text-2xl font-semibold leading-snug tracking-tight [text-wrap:balance]">
+            {asked}
+          </h1>
+        )}
+
+        {state.phase === 'loading' && (
+          <section aria-live="polite" className="animate-fade-in">
+            <div className="mb-3 flex items-center gap-2 text-xs text-faint">
+              <span className="h-2 w-2 animate-pulse-ring rounded-full bg-accent" />
+              Searching the feed
+            </div>
+            {state.partial ? (
+              <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/90">
+                {state.partial}
+                <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[3px] animate-[cursor-blink_1s_steps(1)_infinite] bg-accent" />
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                <div className="animate-shimmer h-4 w-full rounded bg-raised" />
+                <div className="animate-shimmer h-4 w-11/12 rounded bg-raised" />
+                <div className="animate-shimmer h-4 w-2/3 rounded bg-raised" />
+              </div>
+            )}
+          </section>
+        )}
+
+        {state.phase === 'failed' && (
+          <div className="animate-fade-up flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+            <span>{state.message}</span>
+            <button
+              type="button"
+              onClick={() => void submit(undefined, asked)}
+              className="shrink-0 rounded-full border border-danger/40 px-3 py-1 text-xs transition hover:bg-danger/10 active:scale-95"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {state.phase === 'done' && state.result.outcome === 'answered' && (
+          <section className="animate-fade-up flex flex-col gap-6">
+            <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/90">
+              {state.result.answer}
+            </p>
+            <div>
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-faint">
+                Sources
+              </h2>
+              <ol className="grid gap-2 sm:grid-cols-2">
+                {state.result.citations.map((c, i) => (
+                  <li
+                    key={c.chunkId}
+                    className="animate-fade-up"
+                    style={{ animationDelay: `${60 * i}ms` }}
+                  >
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-3.5 transition hover:border-line-strong hover:bg-raised active:scale-[0.99]"
+                    >
+                      <span className="flex items-center justify-between text-xs text-faint">
+                        <span className="flex items-center gap-2">
+                          <span className="grid h-5 w-5 place-items-center rounded bg-raised font-mono text-[10px] text-muted group-hover:bg-hover">
+                            {i + 1}
+                          </span>
+                          <span className="truncate">{host(c.url)}</span>
+                        </span>
+                        <ArrowUpRightIcon className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
+                      </span>
+                      <span className="line-clamp-2 text-sm font-medium leading-snug">
+                        {c.title}
+                      </span>
+                      <span className="mt-auto text-xs text-faint">
+                        {new Date(c.publishedAt).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+        )}
+
+        {state.phase === 'done' && state.result.outcome !== 'answered' && (
+          <p className="animate-fade-up rounded-md border border-line bg-surface p-4 text-sm text-muted">
+            {state.result.message}
+          </p>
+        )}
+
+        <form
+          onSubmit={submit}
+          className={`${idle ? 'mt-8' : 'sticky bottom-0 mt-auto bg-gradient-to-t from-bg from-70% to-transparent pt-6 pb-safe'}`}
+        >
+          <div className="flex items-end gap-2 rounded-[22px] border border-line bg-surface p-2 pl-4 transition focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(200_247_81/0.08)]">
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void submit()
+                }
+              }}
+              maxLength={300}
+              rows={1}
+              aria-label="Your question"
+              placeholder={idle ? 'Ask about a tool, a trend, a repo...' : 'Ask a follow-up...'}
+              className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent py-2 text-[15px] outline-none [field-sizing:content] placeholder:text-faint"
+            />
+            <button
+              type="submit"
+              aria-label="Ask"
+              disabled={loading || question.trim().length < 3}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition active:scale-90 disabled:bg-raised disabled:text-faint"
+            >
+              {loading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-fg/30 border-t-accent-fg" />
+              ) : (
+                <ArrowRightIcon className="h-[18px] w-[18px]" />
+              )}
+            </button>
+          </div>
+          {question.length > 240 && (
+            <p className="mt-1.5 text-right text-xs text-faint">{question.length}/300</p>
+          )}
+        </form>
+
+        {idle && (
+          <ul className="flex flex-wrap gap-2 pb-6">
+            {SUGGESTIONS.map((s, i) => (
+              <li
+                key={s}
+                className="animate-fade-up"
+                style={{ animationDelay: `${80 + 60 * i}ms` }}
+              >
+                <button
+                  type="button"
+                  onClick={() => void submit(undefined, s)}
+                  className="rounded-full border border-line bg-surface px-3.5 py-2 text-left text-[13px] text-muted transition hover:border-line-strong hover:bg-raised hover:text-fg active:scale-95"
+                >
+                  {s}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+    </div>
+  )
+}

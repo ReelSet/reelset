@@ -1,0 +1,408 @@
+generator kysely {
+  provider     = "prisma-kysely"
+  output       = "../src/db"
+  enumFileName = "enums.ts"
+  fileName     = "types.ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Embedding columns are vector(768) via pgvector. Prisma cannot express HNSW indexes or RLS,
+// so those live only in migration SQL. When generating a new migration with `migrate diff`,
+// delete any statement that drops the *_hnsw_idx indexes before committing it.
+
+enum Source {
+  hn
+  github
+  news
+  reddit
+  youtube
+
+  @@map("source")
+}
+
+enum ItemKind {
+  repo
+  video
+  article
+  discussion
+
+  @@map("item_kind")
+}
+
+enum ItemStatus {
+  found
+  summarized
+  embedded
+  voiced
+  rendered
+  insufficient_source
+  failed
+
+  @@map("item_status")
+}
+
+enum MentionKind {
+  post
+  comment
+  video
+  repo
+  article
+
+  @@map("mention_kind")
+}
+
+enum StageOutcome {
+  started
+  ok
+  failed
+  skipped
+
+  @@map("stage_outcome")
+}
+
+enum RenderStatus {
+  queued
+  rendering
+  done
+  failed
+
+  @@map("render_status")
+}
+
+enum IngestRunStatus {
+  running
+  done
+  failed
+
+  @@map("ingest_run_status")
+}
+
+enum IngestTaskStatus {
+  queued
+  running
+  ok
+  empty
+  failed
+  deferred
+
+  @@map("ingest_task_status")
+}
+
+enum IngestMode {
+  incremental
+  backfill
+
+  @@map("ingest_mode")
+}
+
+enum WatermarkLane {
+  default
+  discover
+  sweep
+
+  @@map("watermark_lane")
+}
+
+enum UserRole {
+  user
+  admin
+
+  @@map("user_role")
+}
+
+enum EventName {
+  feed_view
+  item_open
+  reel_start
+  reel_complete
+  like
+  unlike
+  ask_submit
+  ask_answer_view
+
+  @@map("event_name")
+}
+
+enum AskOutcome {
+  answered
+  no_evidence
+  rate_limited
+  spend_capped
+  error
+
+  @@map("ask_outcome")
+}
+
+enum SpendCategory {
+  llm
+  embedding
+  tts
+  render
+  storage
+  ask
+
+  @@map("spend_category")
+}
+
+model Item {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  canonicalKey    String                     @unique(map: "item_canonical_key_key") @map("canonical_key") @db.VarChar(512)
+  canonicalUrl    String                     @map("canonical_url")
+  kind            ItemKind
+  title           String
+  topics          String[]                   @default([])
+  status          ItemStatus                 @default(found)
+  score           Float                      @default(0)
+  tldr            String?
+  script          Json?
+  contentHash     String?                    @map("content_hash") @db.VarChar(64)
+  promptVersion   String?                    @map("prompt_version") @db.VarChar(32)
+  embedding       Unsupported("vector(768)")?
+  attempts        Int                        @default(0)
+  lastError       String?                    @map("last_error")
+  publishedAt     DateTime                   @map("published_at") @db.Timestamptz(6)
+  firstSeenAt     DateTime                   @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  statusChangedAt DateTime                   @default(now()) @map("status_changed_at") @db.Timestamptz(6)
+  renderedAt      DateTime?                  @map("rendered_at") @db.Timestamptz(6)
+  queuedAt        DateTime?                  @map("queued_at") @db.Timestamptz(6)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  mentions Mention[]
+  chunks   EvidenceChunk[]
+  events   ItemEvent[]
+  renders  Render[]
+  likes    Like[]
+  usage    Event[]
+
+  @@index([status, publishedAt(sort: Desc)], map: "item_feed_idx")
+  @@index([status, statusChangedAt], map: "item_status_changed_idx")
+  @@index([status, queuedAt], map: "item_requeue_idx")
+  @@map("item")
+}
+
+model Mention {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId      String      @map("item_id") @db.Uuid
+  source      Source
+  kind        MentionKind
+  externalId  String      @map("external_id") @db.VarChar(128)
+  url         String
+  title       String?
+  author      String?     @db.VarChar(255)
+  body        String?
+  score       Int?
+  numComments Int?        @map("num_comments")
+  publishedAt DateTime    @map("published_at") @db.Timestamptz(6)
+  fetchedAt   DateTime    @default(now()) @map("fetched_at") @db.Timestamptz(6)
+  scoredAt    DateTime?   @map("scored_at") @db.Timestamptz(6)
+  raw         Json?
+
+  item   Item            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  chunks EvidenceChunk[]
+
+  @@unique([source, externalId], map: "mention_source_external_key")
+  @@index([itemId], map: "mention_item_idx")
+  @@index([source, scoredAt], map: "mention_scored_idx")
+  @@map("mention")
+}
+
+model EvidenceChunk {
+  id         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId     String                     @map("item_id") @db.Uuid
+  mentionId  String                     @map("mention_id") @db.Uuid
+  chunkIndex Int                        @map("chunk_index")
+  text       String
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  item    Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  mention Mention @relation(fields: [mentionId], references: [id], onDelete: Cascade)
+
+  @@unique([mentionId, chunkIndex], map: "evidence_chunk_mention_index_key")
+  @@index([itemId], map: "evidence_chunk_item_idx")
+  @@map("evidence_chunk")
+}
+
+model ItemEvent {
+  id         BigInt       @id @default(autoincrement())
+  itemId     String       @map("item_id") @db.Uuid
+  stage      ItemStatus
+  outcome    StageOutcome
+  attempt    Int          @default(1)
+  durationMs Int?         @map("duration_ms")
+  error      String?
+  meta       Json?
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt], map: "item_event_item_created_idx")
+  @@index([createdAt(sort: Desc)], map: "item_event_created_idx")
+  @@map("item_event")
+}
+
+model Render {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId          String       @map("item_id") @db.Uuid
+  renderKey       String       @unique(map: "render_render_key_key") @map("render_key") @db.VarChar(64)
+  status          RenderStatus @default(queued)
+  videoKey        String?      @map("video_key")
+  posterKey       String?      @map("poster_key")
+  bytes           Int?
+  videoDurationMs Int?         @map("video_duration_ms")
+  renderMs        Int?         @map("render_ms")
+  attempts        Int          @default(0)
+  error           String?
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt       DateTime?    @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime?    @map("finished_at") @db.Timestamptz(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt(sort: Desc)], map: "render_item_created_idx")
+  @@index([status, createdAt], map: "render_status_created_idx")
+  @@map("render")
+}
+
+model IngestRun {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mode        IngestMode      @default(incremental)
+  startedAt   DateTime        @default(now()) @map("started_at") @db.Timestamptz(6)
+  heartbeatAt DateTime        @default(now()) @map("heartbeat_at") @db.Timestamptz(6)
+  finishedAt  DateTime?       @map("finished_at") @db.Timestamptz(6)
+  status      IngestRunStatus @default(running)
+  result      Json?
+
+  tasks IngestTask[]
+
+  @@index([startedAt(sort: Desc)], map: "ingest_run_started_idx")
+  @@map("ingest_run")
+}
+
+model IngestTask {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId      String           @map("run_id") @db.Uuid
+  position   Int
+  source     Source
+  scope      String           @default("default") @db.VarChar(128)
+  status     IngestTaskStatus @default(queued)
+  fetched    Int              @default(0)
+  inserted   Int              @default(0)
+  updated    Int              @default(0)
+  durationMs Int              @default(0) @map("duration_ms")
+  error      String?
+  startedAt  DateTime?        @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime?        @map("finished_at") @db.Timestamptz(6)
+
+  run IngestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, position], map: "ingest_task_run_position_key")
+  @@index([source, startedAt(sort: Desc)], map: "ingest_task_source_started_idx")
+  @@map("ingest_task")
+}
+
+model SourceWatermark {
+  source           Source
+  scope            String        @default("default") @db.VarChar(128)
+  lane             WatermarkLane @default(default)
+  newestAt         DateTime?     @map("newest_at") @db.Timestamptz(6)
+  oldestAt         DateTime?     @map("oldest_at") @db.Timestamptz(6)
+  nextToken        String?       @map("next_token")
+  backfillComplete Boolean       @default(false) @map("backfill_complete")
+  updatedAt        DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([source, scope, lane])
+  @@map("source_watermark")
+}
+
+// id equals auth.users.id. No FK: Prisma cannot reference the auth schema without drift.
+model Profile {
+  id             String                     @id @db.Uuid
+  role           UserRole                   @default(user)
+  topics         String[]                   @default([])
+  tasteEmbedding Unsupported("vector(768)")? @map("taste_embedding")
+  signalCount    Int                        @default(0) @map("signal_count")
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  likes  Like[]
+  events Event[]
+  asks   AskQuery[]
+
+  @@map("profile")
+}
+
+model Like {
+  profileId String   @map("profile_id") @db.Uuid
+  itemId    String   @map("item_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, itemId])
+  @@index([itemId], map: "like_item_idx")
+  @@map("like")
+}
+
+model Event {
+  id        BigInt    @id @default(autoincrement())
+  profileId String?   @map("profile_id") @db.Uuid
+  sessionId String    @map("session_id") @db.VarChar(64)
+  name      EventName
+  itemId    String?   @map("item_id") @db.Uuid
+  meta      Json?
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  item    Item?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([name, createdAt(sort: Desc)], map: "event_name_created_idx")
+  @@index([profileId, createdAt(sort: Desc)], map: "event_profile_created_idx")
+  @@map("event")
+}
+
+model AskQuery {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId          String?    @map("profile_id") @db.Uuid
+  question           String
+  normalizedQuestion String     @map("normalized_question")
+  answer             String?
+  citations          Json?
+  outcome            AskOutcome
+  latencyMs          Int?       @map("latency_ms")
+  inputTokens        Int?       @map("input_tokens")
+  outputTokens       Int?       @map("output_tokens")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([normalizedQuestion, createdAt(sort: Desc)], map: "ask_query_cache_idx")
+  @@index([createdAt(sort: Desc)], map: "ask_query_created_idx")
+  @@map("ask_query")
+}
+
+model SpendLedger {
+  id        BigInt        @id @default(autoincrement())
+  day       DateTime      @db.Date
+  category  SpendCategory
+  units     Decimal       @db.Decimal(18, 4)
+  costUsd   Decimal       @map("cost_usd") @db.Decimal(12, 6)
+  meta      Json?
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([day, category], map: "spend_ledger_day_category_idx")
+  @@map("spend_ledger")
+}
+
+model AppSetting {
+  key       String   @id @db.VarChar(128)
+  value     Json
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("app_setting")
+}

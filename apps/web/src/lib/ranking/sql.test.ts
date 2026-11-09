@@ -1,0 +1,117 @@
+import { describe, expect, it } from 'vitest'
+import { ItemStatus, RenderStatus, type Database } from '@reelset/core'
+import {
+  DummyDriver,
+  Kysely,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
+} from 'kysely'
+import { orderRows, toRankedItem } from './index'
+import { candidatesQuery, hydrateQuery, tasteSignalsQuery, type FeedRow } from './sql'
+
+const db = new Kysely({
+  dialect: {
+    createAdapter: () => new PostgresAdapter(),
+    createDriver: () => new DummyDriver(),
+    createIntrospector: (k) => new PostgresIntrospector(k),
+    createQueryCompiler: () => new PostgresQueryCompiler(),
+  },
+}) as unknown as Database
+
+describe('candidatesQuery', () => {
+  const q = candidatesQuery({
+    profileId: 'p-1',
+    asOf: '2026-11-09T12:00:00.000Z',
+    poolSize: 400,
+  }).compile(db)
+
+  it('only offers visible items: rendered with a done render that has a video key', () => {
+    expect(q.parameters).toContain(ItemStatus.rendered)
+    expect(q.parameters).toContain(RenderStatus.done)
+    expect(q.sql).toMatch(/r\.video_key is not null/)
+  })
+
+  it('computes cosine similarity against the profile taste vector', () => {
+    expect(q.sql).toMatch(/i\.embedding <=> p\.taste_embedding/)
+    expect(q.parameters).toContain('p-1')
+  })
+
+  it('pins the pool to asOf and bounds its size', () => {
+    expect(q.sql).toMatch(/<= \$\d+::timestamptz/)
+    expect(q.parameters).toContain('2026-11-09T12:00:00.000Z')
+    expect(q.parameters).toContain(400)
+  })
+
+  it('binds a null profile for anonymous viewers', () => {
+    const anon = candidatesQuery({
+      profileId: null,
+      asOf: '2026-11-09T12:00:00.000Z',
+      poolSize: 5,
+    }).compile(db)
+    expect(anon.parameters).toContain(null)
+  })
+})
+
+describe('hydrateQuery', () => {
+  it('looks up the latest done render laterally and aggregates mentions', () => {
+    const q = hydrateQuery(db, { profileId: null, itemIds: ['a', 'b'] }).compile()
+    expect(q.sql).toMatch(/lateral/i)
+    expect(q.sql).toMatch(/"render"\."video_key" is not null/)
+    expect(q.sql).toMatch(/from "mention"/)
+    expect(q.parameters).toEqual(expect.arrayContaining(['a', 'b', ItemStatus.rendered]))
+  })
+
+  it('checks likes for the viewer only when logged in', () => {
+    const anon = hydrateQuery(db, { profileId: null, itemIds: ['a'] }).compile()
+    const user = hydrateQuery(db, { profileId: 'p-1', itemIds: ['a'] }).compile()
+    expect(anon.parameters).not.toContain('p-1')
+    expect(user.parameters).toContain('p-1')
+  })
+})
+
+describe('tasteSignalsQuery', () => {
+  it('reads likes at weight 1 and reel_complete >= 0.8 at weight 0.5', () => {
+    const q = tasteSignalsQuery('p-1').compile(db)
+    expect(q.sql).toMatch(/from "like"/)
+    expect(q.sql).toMatch(/distinct on \(e\.item_id\)/)
+    expect(q.parameters).toEqual(expect.arrayContaining([1, 0.5, 0.8, 'reel_complete', 'p-1']))
+  })
+})
+
+describe('toRankedItem / orderRows', () => {
+  const row = {
+    id: 'i1',
+    title: 't',
+    tldr: null,
+    topics: ['ai'],
+    kind: 'repo',
+    canonical_url: 'https://x.dev',
+    score: 0.5,
+    published_at: new Date('2026-11-07T00:00:00Z'),
+    video_key: 'reels/i1/k.mp4',
+    poster_key: null,
+    video_duration_ms: 1000,
+    mentions: [],
+    like_count: '3',
+    liked: true,
+  } as unknown as FeedRow
+
+  it('maps a visible row', () => {
+    expect(toRankedItem(row)).toMatchObject({
+      id: 'i1',
+      likeCount: 3,
+      liked: true,
+      videoKey: 'reels/i1/k.mp4',
+    })
+  })
+
+  it('drops a row without a video key', () => {
+    expect(toRankedItem({ ...row, video_key: null } as FeedRow)).toBeNull()
+  })
+
+  it('restores rank order and skips ids that vanished', () => {
+    const b = { ...row, id: 'b' } as FeedRow
+    expect(orderRows([row, b], ['b', 'gone', 'i1']).map((r) => r.id)).toEqual(['b', 'i1'])
+  })
+})

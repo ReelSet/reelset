@@ -1,0 +1,470 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
+import { track } from '@/lib/client/track'
+import { ReelCard, type ReelControls } from './ReelCard'
+import { ChevronIcon, HomeIcon, SearchIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
+import { LogoMark, Wordmark } from '@/components/ui/Logo'
+import { SourceDot, SOURCES } from '@/components/ui/sources'
+import { SourcesSheet } from './SourcesSheet'
+import { TopicPicker } from './TopicPicker'
+
+const PENDING_LIKE_KEY = 'reelset.pendingLike'
+const TOPICS_DISMISSED_KEY = 'reelset.topicsDismissed'
+
+type Phase = 'loading' | 'ready' | 'error'
+
+function readStorage(storage: Storage | undefined, key: string): string | null {
+  try {
+    return storage?.getItem(key) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(storage: Storage | undefined, key: string, value: string | null) {
+  try {
+    if (value === null) storage?.removeItem(key)
+    else storage?.setItem(key, value)
+  } catch {
+    // storage unavailable (private mode); the feature degrades silently
+  }
+}
+
+export function FeedClient() {
+  const [items, setItems] = useState<FeedItemDto[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [phase, setPhase] = useState<Phase>('loading')
+  const [viewer, setViewer] = useState({ authenticated: false, needsTopics: false })
+  const [active, setActive] = useState(0)
+  const [soundOn, setSoundOn] = useState(false)
+  const [sourcesFor, setSourcesFor] = useState<FeedItemDto | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const loadingMore = useRef(false)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const controls = useRef<ReelControls | null>(null)
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+
+  const patchItem = useCallback((id: string, patch: Partial<FeedItemDto>) => {
+    setItems((cur) => cur.map((it) => (it.id === id ? { ...it, ...patch } : it)))
+  }, [])
+
+  const sendLike = useCallback(
+    async (item: FeedItemDto, liked: boolean) => {
+      patchItem(item.id, {
+        liked,
+        likeCount: Math.max(0, item.likeCount + (liked ? 1 : -1)),
+      })
+      track({ name: liked ? 'like' : 'unlike', itemId: item.id })
+      try {
+        const res = await fetch('/api/likes', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ itemId: item.id, liked }),
+        })
+        if (res.status === 401) {
+          const body = (await res.json()) as { loginUrl: string }
+          if (liked) writeStorage(sessionStorage, PENDING_LIKE_KEY, item.id)
+          window.location.assign(body.loginUrl)
+          return
+        }
+        if (!res.ok) throw new Error(String(res.status))
+        const body = (await res.json()) as { liked: boolean; likeCount: number }
+        patchItem(item.id, { liked: body.liked, likeCount: body.likeCount })
+      } catch {
+        patchItem(item.id, { liked: item.liked, likeCount: item.likeCount })
+      }
+    },
+    [patchItem],
+  )
+
+  const toggleLike = useCallback(
+    (item: FeedItemDto) => {
+      const current = itemsRef.current.find((it) => it.id === item.id) ?? item
+      void sendLike(current, !current.liked)
+    },
+    [sendLike],
+  )
+
+  const loadInitial = useCallback(async () => {
+    setPhase('loading')
+    const focusId = new URLSearchParams(window.location.search).get('reel')
+    try {
+      const [feedRes, focusRes] = await Promise.all([
+        fetch('/api/feed'),
+        focusId ? fetch(`/api/feed?item=${encodeURIComponent(focusId)}`) : Promise.resolve(null),
+      ])
+      if (!feedRes.ok) throw new Error(String(feedRes.status))
+      const feed = (await feedRes.json()) as FeedResponse
+      let list = feed.items
+      if (focusRes?.ok) {
+        const { item } = (await focusRes.json()) as { item: FeedItemDto }
+        list = [item, ...list.filter((it) => it.id !== item.id)]
+      }
+      if (focusId) window.history.replaceState(null, '', '/')
+
+      setItems(list)
+      setCursor(feed.nextCursor)
+      setViewer(feed.viewer)
+      setPickerOpen(
+        feed.viewer.needsTopics && readStorage(localStorage, TOPICS_DISMISSED_KEY) === null,
+      )
+      setPhase('ready')
+      track({ name: 'feed_view' })
+
+      const pending = readStorage(sessionStorage, PENDING_LIKE_KEY)
+      if (pending && feed.viewer.authenticated) {
+        writeStorage(sessionStorage, PENDING_LIKE_KEY, null)
+        const target = list.find((it) => it.id === pending)
+        if (target && !target.liked) void sendLike(target, true)
+      }
+    } catch {
+      setPhase('error')
+    }
+  }, [sendLike])
+
+  useEffect(() => {
+    void loadInitial()
+  }, [loadInitial])
+
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore.current) return
+    loadingMore.current = true
+    try {
+      const res = await fetch(`/api/feed?cursor=${encodeURIComponent(cursor)}`)
+      if (!res.ok) throw new Error(String(res.status))
+      const feed = (await res.json()) as FeedResponse
+      setItems((cur) => {
+        const seen = new Set(cur.map((it) => it.id))
+        return [...cur, ...feed.items.filter((it) => !seen.has(it.id))]
+      })
+      setCursor(feed.nextCursor)
+    } catch {
+      // keep the cursor so the next scroll retries
+    } finally {
+      loadingMore.current = false
+    }
+  }, [cursor])
+
+  useEffect(() => {
+    if (phase === 'ready' && active >= items.length - 3) void loadMore()
+  }, [active, items.length, phase, loadMore])
+
+  const startedFor = useRef<string | null>(null)
+  useEffect(() => {
+    const current = items[active]
+    if (!current || startedFor.current === current.id) return
+    startedFor.current = current.id
+    track({ name: 'reel_start', itemId: current.id })
+  }, [active, items])
+
+  const goTo = useCallback((index: number) => {
+    const target = scrollerRef.current?.children[index]
+    if (!target) return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  }, [])
+
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return
+      if (sourcesFor || pickerOpen) return
+      const current = itemsRef.current[active]
+      switch (e.key) {
+        case 'ArrowDown':
+        case 'j':
+          e.preventDefault()
+          goTo(Math.min(active + 1, itemsRef.current.length))
+          break
+        case 'ArrowUp':
+        case 'k':
+          e.preventDefault()
+          goTo(Math.max(active - 1, 0))
+          break
+        case ' ':
+          if (el?.tagName === 'BUTTON' || el?.tagName === 'A') return
+          e.preventDefault()
+          controls.current?.toggle()
+          break
+        case 'm':
+          setSoundOn((on) => !on)
+          break
+        case 'l':
+          if (current) toggleLike(current)
+          break
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase, active, goTo, toggleLike, sourcesFor, pickerOpen])
+
+  const accountHref = viewer.authenticated ? '/profile' : '/login'
+  const shell = (children: React.ReactNode, canNavigate = false) => (
+    <div className="h-dvh w-full lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-10 lg:px-8">
+      <aside className="hidden flex-col justify-between py-10 lg:flex">
+        <div>
+          <Wordmark className="text-lg" />
+          <p className="mt-4 max-w-[14rem] text-sm leading-relaxed text-muted">
+            What developers are building, in 60-second reels.
+          </p>
+          <nav className="mt-8 flex flex-col gap-1 text-sm">
+            <SideLink href="/" active icon={<HomeIcon className="h-[18px] w-[18px]" />}>
+              Feed
+            </SideLink>
+            <SideLink href="/ask" icon={<SparkleIcon className="h-[18px] w-[18px]" />}>
+              Ask
+            </SideLink>
+            <SideLink href={accountHref} icon={<UserIcon className="h-[18px] w-[18px]" />}>
+              {viewer.authenticated ? 'Profile' : 'Sign in'}
+            </SideLink>
+          </nav>
+        </div>
+        <ul className="flex flex-col gap-2 text-xs text-faint">
+          {Object.entries(SOURCES).map(([key, s]) => (
+            <li key={key} className="flex items-center gap-2">
+              <SourceDot source={key} />
+              {s.label}
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      <div className="relative h-dvh w-full overflow-hidden bg-black lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)]">
+        {children}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-4 pb-6 pt-safe lg:hidden">
+          <Wordmark className="text-[15px] text-white" />
+          <div className="pointer-events-auto flex items-center gap-2">
+            <a
+              href="/ask"
+              aria-label="Ask"
+              className="glass grid h-9 w-9 place-items-center rounded-full transition active:scale-90"
+            >
+              <SearchIcon className="h-[18px] w-[18px]" />
+            </a>
+            <a
+              href={accountHref}
+              aria-label={viewer.authenticated ? 'Profile' : 'Sign in'}
+              className="glass grid h-9 w-9 place-items-center rounded-full transition active:scale-90"
+            >
+              <UserIcon className="h-[18px] w-[18px]" />
+            </a>
+          </div>
+        </div>
+        {sourcesFor && <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />}
+        {pickerOpen && (
+          <TopicPicker
+            onDone={() => {
+              writeStorage(localStorage, TOPICS_DISMISSED_KEY, '1')
+              setPickerOpen(false)
+            }}
+          />
+        )}
+      </div>
+
+      <aside className="hidden flex-col items-start justify-end gap-6 py-10 lg:flex">
+        {canNavigate && (
+          <div className="flex flex-col gap-2">
+            <NavButton
+              label="Previous reel"
+              disabled={active === 0}
+              onClick={() => goTo(active - 1)}
+            >
+              <ChevronIcon dir="up" className="h-5 w-5" />
+            </NavButton>
+            <NavButton label="Next reel" onClick={() => goTo(active + 1)}>
+              <ChevronIcon className="h-5 w-5" />
+            </NavButton>
+          </div>
+        )}
+        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs text-faint">
+          <Kbd>↑ ↓</Kbd>
+          <dd>Browse</dd>
+          <Kbd>Space</Kbd>
+          <dd>Play / pause</dd>
+          <Kbd>M</Kbd>
+          <dd>Sound</dd>
+          <Kbd>L</Kbd>
+          <dd>Like</dd>
+        </dl>
+      </aside>
+    </div>
+  )
+
+  if (phase === 'loading') {
+    return shell(
+      <div className="absolute inset-0 bg-surface" aria-busy aria-label="Loading reels">
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 px-4 pb-8 pr-20">
+          <div className="animate-shimmer h-6 w-28 rounded-full bg-white/10" />
+          <div className="animate-shimmer h-5 w-5/6 rounded-md bg-white/10" />
+          <div className="animate-shimmer h-5 w-2/3 rounded-md bg-white/10" />
+          <div className="animate-shimmer h-3.5 w-full rounded-md bg-white/5" />
+        </div>
+        <div className="absolute bottom-8 right-3 flex flex-col gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="animate-shimmer h-11 w-11 rounded-full bg-white/10" />
+          ))}
+        </div>
+      </div>,
+    )
+  }
+
+  if (phase === 'error') {
+    return shell(
+      <CenterMessage
+        title="Could not load the feed"
+        body="Check your connection and try again."
+        action={
+          <button
+            type="button"
+            onClick={() => void loadInitial()}
+            className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
+          >
+            Retry
+          </button>
+        }
+      />,
+    )
+  }
+
+  if (items.length === 0) {
+    return shell(
+      <CenterMessage
+        title="No reels yet"
+        body="New stories are on the way. Check back soon, or ask a question in the meantime."
+        action={
+          <a
+            href="/ask"
+            className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
+          >
+            Try Ask
+          </a>
+        }
+      />,
+    )
+  }
+
+  return shell(
+    <div
+      ref={scrollerRef}
+      className="no-scrollbar h-full snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth"
+    >
+      {items.map((item, index) => (
+        <ReelCard
+          key={item.id}
+          item={item}
+          index={index}
+          active={index === active}
+          inWindow={Math.abs(index - active) <= 2}
+          preload={index === active || index === active + 1 ? 'auto' : 'metadata'}
+          soundOn={soundOn}
+          controls={controls}
+          onVisible={setActive}
+          onSound={setSoundOn}
+          onToggleLike={toggleLike}
+          onOpenSources={setSourcesFor}
+        />
+      ))}
+      {!cursor && (
+        <section className="grid h-full snap-start place-items-center bg-surface px-8 text-center">
+          <div className="animate-fade-up">
+            <LogoMark className="mx-auto h-10 w-10" />
+            <p className="mt-4 text-lg font-semibold tracking-tight">You are all caught up</p>
+            <p className="mt-1 text-sm text-muted">Fresh reels land every hour.</p>
+            <a
+              href="/ask"
+              className="mt-5 inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
+            >
+              Ask the feed
+            </a>
+          </div>
+        </section>
+      )}
+    </div>,
+    true,
+  )
+}
+
+function CenterMessage({
+  title,
+  body,
+  action,
+}: {
+  title: string
+  body: string
+  action: React.ReactNode
+}) {
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-surface px-8 text-center">
+      <div className="animate-fade-up">
+        <LogoMark className="mx-auto h-10 w-10" />
+        <p className="mt-4 text-lg font-semibold tracking-tight">{title}</p>
+        <p className="mx-auto mt-1 max-w-xs text-sm text-muted">{body}</p>
+        <div className="mt-5">{action}</div>
+      </div>
+    </div>
+  )
+}
+
+function SideLink({
+  href,
+  icon,
+  active,
+  children,
+}: {
+  href: string
+  icon: React.ReactNode
+  active?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <a
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={`flex w-40 items-center gap-3 rounded-md px-3 py-2 transition ${
+        active ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
+      }`}
+    >
+      {icon}
+      {children}
+    </a>
+  )
+}
+
+function NavButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  disabled?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-muted transition hover:bg-raised hover:text-fg active:scale-90 disabled:opacity-30"
+    >
+      {children}
+    </button>
+  )
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <dt>
+      <kbd className="rounded-sm border border-line bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted">
+        {children}
+      </kbd>
+    </dt>
+  )
+}

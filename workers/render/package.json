@@ -1,0 +1,26 @@
+{
+  "name": "@reelset/render",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run && npm run test --prefix container/remotion",
+    "typecheck": "tsc --noEmit && npm run typecheck --prefix container/remotion",
+    "dev": "wrangler dev",
+    "test:py": "cd container && .venv/bin/python -m unittest discover -s tests -t .",
+    "bundle:reel": "npm run bundle --prefix container/remotion"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@reelset/core": "*",
+    "kysely": "^0.29.8",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261108.1",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.158.0"
+  }
+}
