@@ -16,6 +16,10 @@ const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : 
 const num = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback
 
+/** Label for the highlighted number: its row name and column header, both read from the table. */
+const cellLabel = (row: string | undefined, header: string | undefined): string =>
+  [row, header].filter((p): p is string => Boolean(p && p.trim())).join(' · ')
+
 /** Shot props -> a table view, or null when there is nothing renderable (never throws). */
 export function readTable(props: Record<string, unknown>): TableView | null {
   const headers = Array.isArray(props.headers) ? props.headers.map((h) => str(h)) : []
@@ -24,7 +28,9 @@ export function readTable(props: Record<string, unknown>): TableView | null {
   if (width < 2 || rawRows.length === 0) return null
   const rows = rawRows
     .map((r) => str(r).split('|'))
-    .map((cells) => Array.from({ length: width }, (_, i) => (cells[i] ?? '').replace(/\s*±.*$/, '').trim()))
+    .map((cells) =>
+      Array.from({ length: width }, (_, i) => (cells[i] ?? '').replace(/\s*±.*$/, '').trim()),
+    )
   const hi = Math.min(Math.max(0, Math.round(num(props.hi, rows.length - 1))), rows.length - 1)
   const col = Math.min(Math.max(1, Math.round(num(props.col, 1))), width - 1)
   const best = new Set(Array.isArray(props.best) ? props.best.map((b) => str(b)) : [])
@@ -37,7 +43,7 @@ export function readTable(props: Record<string, unknown>): TableView | null {
     col,
     best,
     value: str(props.value) || rows[hi]![col] || '',
-    label: str(props.label) || headers[col] || '',
+    label: str(props.label) || cellLabel(rows[hi]?.[0], headers[col]),
   }
 }
 
@@ -76,7 +82,10 @@ export function fitLabel(
 
 /** Drops markdown emphasis and code ticks the parser leaves in captions. */
 export const plainText = (s: string): string =>
-  s.replace(/\*\*?|__|`/g, '').replace(/\s+/g, ' ').trim()
+  s
+    .replace(/\*\*?|__|`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 
 /** Cuts at a word boundary so a clipped caption never ends mid-word. */
 export function clipWords(s: string, n: number): string {

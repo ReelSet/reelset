@@ -1,4 +1,5 @@
 import { SCREEN_NAMES, SFX_NAMES } from '@reelset/core'
+import { groundLabel, type Ledger } from './stat-labels'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -87,7 +88,37 @@ const FILLER_CUES = new Set([
   'that',
 ])
 
-export function repairShots(beat: Obj, facts: ReadonlySet<number>): void {
+/** Re-labels StatSlam / BarRace numbers from the beat text; drops what cannot be labelled honestly. */
+function groundShotLabels(props: Obj, show: string, text: string, ledger: Ledger): boolean {
+  if (show === 'StatSlam' && typeof props.value === 'string') {
+    const g = groundLabel(
+      props.value,
+      typeof props.label === 'string' ? props.label : '',
+      text,
+      ledger,
+    )
+    if (!g.label) return false
+    props.label = g.label
+  }
+  if (show === 'BarRace' && Array.isArray(props.bars)) {
+    const bars = props.bars
+      .filter(isObj)
+      .map((b) => ({
+        value: String(b.value ?? ''),
+        label: groundLabel(String(b.value ?? ''), String(b.label ?? ''), text, ledger).label,
+      }))
+      .filter((b) => b.label && b.value)
+    if (bars.length < 2) return false
+    props.bars = bars
+  }
+  return true
+}
+
+export function repairShots(
+  beat: Obj,
+  facts: ReadonlySet<number>,
+  ledger: Ledger = new Map(),
+): void {
   if (!Array.isArray(beat.shots)) {
     delete beat.shots
     return
@@ -116,6 +147,7 @@ export function repairShots(beat: Obj, facts: ReadonlySet<number>): void {
       }
       if (dropped > 0 && Object.keys(props).length === 0) continue
       if (raw.show === 'StatSlam' && !('value' in props)) continue
+      if (!groundShotLabels(props, raw.show, text, ledger)) continue
       if (Object.keys(props).length > 0) shot.props = props
     }
     kept.push(shot)
@@ -123,6 +155,21 @@ export function repairShots(beat: Obj, facts: ReadonlySet<number>): void {
   }
   if (kept.length > 0) beat.shots = kept
   else delete beat.shots
+}
+
+/** Stock-footage search terms: at most 2 short lowercase phrases per beat; anything else is dropped. */
+export function repairBroll(beat: Obj): void {
+  if (!Array.isArray(beat.broll)) {
+    delete beat.broll
+    return
+  }
+  const terms = beat.broll
+    .filter((t): t is string => typeof t === 'string')
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2 && t.length <= 40 && t === t.toLowerCase() && /^[a-z ]+$/.test(t))
+    .slice(0, 2)
+  if (terms.length > 0) beat.broll = terms
+  else delete beat.broll
 }
 
 export function narrationWordCount(script: {

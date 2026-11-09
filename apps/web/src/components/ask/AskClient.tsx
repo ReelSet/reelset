@@ -4,7 +4,8 @@ import { useRef, useState } from 'react'
 import type { AskResponse, AskStreamEvent } from '@/lib/api-types'
 import { createSseParser } from '@/lib/ask/sse'
 import { track } from '@/lib/client/track'
-import { ArrowRightIcon, ArrowUpRightIcon, HomeIcon, SparkleIcon } from '@/components/ui/icons'
+import { ArrowRightIcon, ClockIcon, HomeIcon, SparkleIcon } from '@/components/ui/icons'
+import { RelatedReels, SourceCards } from './AnswerSources'
 import { Wordmark } from '@/components/ui/Logo'
 import { Spinner } from '@/components/ui/Spinner'
 import { WarnIcon } from '@/components/ui/icons'
@@ -58,21 +59,14 @@ function Notice({
   )
 }
 
-function host(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
-
 type State =
   | { phase: 'idle' }
   | { phase: 'loading'; partial: string }
   | { phase: 'done'; result: AskResponse }
   | { phase: 'failed'; message: string; title?: string; partial?: string }
 
-export function AskClient() {
+export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
+  const conversationId = useRef<string | null>(null)
   const [question, setQuestion] = useState('')
   const [state, setState] = useState<State>({ phase: 'idle' })
   const inFlight = useRef(false)
@@ -89,6 +83,7 @@ export function AskClient() {
       return
     }
     inFlight.current = true
+    conversationId.current ??= crypto.randomUUID()
     partialRef.current = ''
     setAsked(trimmed)
     setQuestion('')
@@ -98,7 +93,7 @@ export function AskClient() {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question: trimmed }),
+        body: JSON.stringify({ question: trimmed, conversationId: conversationId.current }),
       })
       if (res.status === 401) {
         const body = (await res.json()) as { loginUrl: string }
@@ -176,13 +171,24 @@ export function AskClient() {
         <a href="/" aria-label="Reelset home">
           <Wordmark className="text-[15px]" />
         </a>
-        <a
-          href="/"
-          className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
-        >
-          <HomeIcon className="h-4 w-4" />
-          Feed
-        </a>
+        <div className="flex items-center gap-2">
+          {signedIn && (
+            <a
+              href="/ask/history"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
+            >
+              <ClockIcon className="h-4 w-4" />
+              Your questions
+            </a>
+          )}
+          <a
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
+          >
+            <HomeIcon className="h-4 w-4" />
+            Feed
+          </a>
+        </div>
       </header>
 
       <main className={`flex flex-1 flex-col ${idle ? 'justify-center pb-24' : 'gap-6 pt-8'}`}>
@@ -252,47 +258,8 @@ export function AskClient() {
             <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/90">
               {state.result.answer}
             </p>
-            <div>
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-faint">
-                Sources
-              </h2>
-              <ol className="grid gap-2 sm:grid-cols-2">
-                {state.result.citations.map((c, i) => (
-                  <li
-                    key={c.chunkId}
-                    className="animate-fade-up"
-                    style={{ animationDelay: `${60 * i}ms` }}
-                  >
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-3.5 transition hover:border-line-strong hover:bg-raised active:scale-[0.99]"
-                    >
-                      <span className="flex items-center justify-between text-xs text-faint">
-                        <span className="flex items-center gap-2">
-                          <span className="grid h-5 w-5 place-items-center rounded bg-raised font-mono text-[10px] text-muted group-hover:bg-hover">
-                            {i + 1}
-                          </span>
-                          <span className="truncate">{host(c.url)}</span>
-                        </span>
-                        <ArrowUpRightIcon className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
-                      </span>
-                      <span className="line-clamp-2 text-sm font-medium leading-snug">
-                        {c.title}
-                      </span>
-                      <span className="mt-auto text-xs text-faint">
-                        {new Date(c.publishedAt).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </span>
-                    </a>
-                  </li>
-                ))}
-              </ol>
-            </div>
+            <RelatedReels reels={state.result.reels ?? []} />
+            <SourceCards citations={state.result.citations} />
           </section>
         )}
 

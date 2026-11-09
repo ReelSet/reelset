@@ -9,6 +9,9 @@ export const itemImageSchema = z.object({
   width: z.number().int().positive().max(20000).optional(),
   height: z.number().int().positive().max(20000).optional(),
   alt: z.string().max(300).optional(),
+  caption: z.string().max(60).optional(),
+  focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
+  role: z.enum(['hero', 'figure', 'screenshot', 'logo', 'junk']).optional(),
 })
 
 export type ItemImage = z.infer<typeof itemImageSchema>

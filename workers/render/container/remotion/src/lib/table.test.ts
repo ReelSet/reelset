@@ -33,7 +33,7 @@ describe('readTable', () => {
   it('falls back to the cell value when value/label are missing', () => {
     const { value: _v, label: _l, ...rest } = props
     const t = readTable(rest)!
-    expect([t.value, t.label]).toEqual(['68.4', 'MMLU'])
+    expect([t.value, t.label]).toEqual(['68.4', 'Ours · MMLU'])
   })
 
   it('returns null for unusable props', () => {

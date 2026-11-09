@@ -18,6 +18,7 @@ import {
 } from './constants'
 import { RETRYABLE_FAILURE_CODES } from './errors'
 import { buildFacts, type ItemFacts } from './facts'
+import { parseDemo, type ItemDemo } from './demo'
 import { sourceLabel } from './plan'
 
 export type ItemForRender = {
@@ -32,6 +33,7 @@ export type ItemForRender = {
   canonicalUrl: string
   mentionUrl: string | null
   images: ItemImage[]
+  demo?: ItemDemo
   facts: ItemFacts
 }
 
@@ -48,6 +50,7 @@ export type RenderDone = {
   bytes: number
   videoDurationMs: number
   renderMs: number
+  credits?: unknown[]
 }
 
 export interface RenderStore {
@@ -103,6 +106,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           'prompt_version',
           'canonical_url',
           'images',
+          'demo',
         ])
         .where('id', '=', itemId)
         .executeTakeFirst()
@@ -127,6 +131,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         canonicalUrl: item.canonical_url,
         mentionUrl: mention?.url ?? null,
         images: parseItemImages(item.images),
+        demo: parseDemo(item.demo, item.canonical_url),
         facts: buildFacts(
           mentions.map((m) => ({
             source: m.source as Source,
@@ -186,6 +191,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           bytes: done.bytes,
           video_duration_ms: done.videoDurationMs,
           render_ms: done.renderMs,
+          credits: done.credits?.length ? JSON.stringify(done.credits) : null,
           error: null,
           finished_at: sql`now()`,
         })

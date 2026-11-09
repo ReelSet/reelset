@@ -40,5 +40,5 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 ## Still to do
 
 - Vercel project for `apps/web` + env vars + domains `reelset.app`, `admin.reelset.app`
-- Secrets: `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`
+- Secrets: `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
 - Fill `HYPERDRIVE` id in both `wrangler.jsonc` files, then `wrangler deploy` ingest + render

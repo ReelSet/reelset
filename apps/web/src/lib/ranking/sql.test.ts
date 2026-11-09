@@ -19,6 +19,28 @@ const db = new Kysely({
   },
 }) as unknown as Database
 
+describe('candidatesQuery source preference', () => {
+  const base = {
+    profileId: 'p-1',
+    asOf: '2026-11-09T12:00:00.000Z',
+    poolSize: 10,
+    minTemplate: 5,
+  }
+
+  it('adds no mention filter when every source is enabled', () => {
+    const q = candidatesQuery(base).compile(db)
+    expect(q.sql).not.toMatch(/from mention/)
+    expect(candidatesQuery({ ...base, sources: [] }).compile(db).sql).not.toMatch(/from mention/)
+  })
+
+  it('restricts to items mentioned by an enabled source', () => {
+    const q = candidatesQuery({ ...base, sources: ['hn', 'papers'] }).compile(db)
+    expect(q.sql).toMatch(/from mention m/)
+    expect(q.sql).toMatch(/m\.source::text = any\(\$\d+::text\[\]\)/)
+    expect(q.parameters).toContainEqual(['hn', 'papers'])
+  })
+})
+
 describe('candidatesQuery', () => {
   const q = candidatesQuery({
     profileId: 'p-1',

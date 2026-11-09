@@ -161,6 +161,7 @@ model Item {
   tldr            String?
   script          Json?
   images          Json?
+  demo            Json?
   contentHash     String?                    @map("content_hash") @db.VarChar(64)
   promptVersion   String?                    @map("prompt_version") @db.VarChar(32)
   embedding       Unsupported("vector(768)")?
@@ -179,6 +180,7 @@ model Item {
   events   ItemEvent[]
   renders  Render[]
   likes    Like[]
+  saves    Save[]
   usage    Event[]
 
   @@index([status, publishedAt(sort: Desc)], map: "item_feed_idx")
@@ -261,6 +263,7 @@ model Render {
   attempts        Int          @default(0)
   error           String?
   templateVersion Int?         @map("template_version")
+  credits         Json?
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   startedAt       DateTime?    @map("started_at") @db.Timestamptz(6)
   finishedAt      DateTime?    @map("finished_at") @db.Timestamptz(6)
@@ -328,12 +331,14 @@ model Profile {
   id             String                     @id @db.Uuid
   role           UserRole                   @default(user)
   topics         String[]                   @default([])
+  sources        String[]                   @default([])
   tasteEmbedding Unsupported("vector(768)")? @map("taste_embedding")
   signalCount    Int                        @default(0) @map("signal_count")
   createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   likes  Like[]
+  saves  Save[]
   events Event[]
   asks   AskQuery[]
 
@@ -351,6 +356,19 @@ model Like {
   @@id([profileId, itemId])
   @@index([itemId], map: "like_item_idx")
   @@map("like")
+}
+
+model Save {
+  profileId String   @map("profile_id") @db.Uuid
+  itemId    String   @map("item_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, itemId])
+  @@index([itemId], map: "save_item_idx")
+  @@map("save")
 }
 
 model Event {
@@ -381,12 +399,17 @@ model AskQuery {
   latencyMs          Int?       @map("latency_ms")
   inputTokens        Int?       @map("input_tokens")
   outputTokens       Int?       @map("output_tokens")
+  conversationId     String?    @map("conversation_id") @db.Uuid
+  cached             Boolean    @default(false)
+  deletedAt          DateTime?  @map("deleted_at") @db.Timestamptz(6)
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
 
   profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
 
   @@index([normalizedQuestion, createdAt(sort: Desc)], map: "ask_query_cache_idx")
   @@index([createdAt(sort: Desc)], map: "ask_query_created_idx")
+  @@index([profileId, createdAt(sort: Desc)], map: "ask_query_profile_idx")
+  @@index([conversationId], map: "ask_query_conversation_idx")
   @@map("ask_query")
 }
 

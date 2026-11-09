@@ -1,6 +1,17 @@
 import { cueTime } from './cues'
 import { headlineFrom } from './extract'
-import { MAX_HOLD_S, limitThumbnailReuse, newState, planRange, type PlanState } from './planner'
+import { assignBroll } from './broll'
+import { groundShots } from './ground'
+import {
+  MAX_HOLD_S,
+  imageIndex,
+  limitThumbnailReuse,
+  newState,
+  planRange,
+  register,
+  type PlanState,
+} from './planner'
+import { enforceVariety } from './variety'
 import { holdFor } from './table'
 import type { ReelProps, Scene, ScreenName, Shot, TimedScene, TimedShot } from './types'
 import { SCREEN_NAMES, SFX_NAMES } from './types'
@@ -22,7 +33,8 @@ export function toFrames(scenes: readonly Scene[], fps: number, total: number): 
 
 export type Resolved = { shots: TimedShot[]; warnings: string[] }
 
-function validShot(s: Shot): boolean {
+function validShot(s: Shot, props: ReelProps): boolean {
+  if (s.show === 'RepoDemo' && !props.demo) return false
   return (
     typeof s.at === 'string' &&
     (SCREEN_NAMES as readonly string[]).includes(s.show) &&
@@ -47,7 +59,11 @@ export function headlineEnd(props: Pick<ReelProps, 'scenes' | 'words'>): number 
 }
 
 /** Moves the headline's end to the nearest shot boundary so no shot straddles its exit. */
-export function snapHeadlineEnd(end: number, shots: readonly Pick<TimedShot, 'from'>[], fps: number): number {
+export function snapHeadlineEnd(
+  end: number,
+  shots: readonly Pick<TimedShot, 'from'>[],
+  fps: number,
+): number {
   let best = end
   let gap = Infinity
   for (const s of shots) {
@@ -76,7 +92,7 @@ function fitSceneShots(
   const t0 = scene.start
   const t1 = scene.end
   for (const [k, raw] of (scene.shots ?? []).entries()) {
-    if (!validShot(raw)) {
+    if (!validShot(raw, props)) {
       warnings.push(`scene ${sceneIndex} shot ${k}: unknown screen or sfx, skipped`)
       continue
     }
@@ -87,7 +103,9 @@ function fitSceneShots(
           ? raw.t
           : cueTime(raw.at, props.words, { from: t0, to: t1 })
     if (t === null) {
-      warnings.push(`scene ${sceneIndex} shot ${k}: cue "${raw.at}" not found in the voice, skipped`)
+      warnings.push(
+        `scene ${sceneIndex} shot ${k}: cue "${raw.at}" not found in the voice, skipped`,
+      )
       continue
     }
     const from = k === 0 ? scene.from : Math.round(t * fps)
@@ -97,7 +115,9 @@ function fitSceneShots(
       from >= sceneEnd - MIN_CUE_GAP_FRAMES / 2 ||
       (prev && from - prev.from < Math.max(MIN_CUE_GAP_FRAMES, minGap))
     ) {
-      warnings.push(`scene ${sceneIndex} shot ${k}: cue "${raw.at}" too close to a neighbour, skipped`)
+      warnings.push(
+        `scene ${sceneIndex} shot ${k}: cue "${raw.at}" too close to a neighbour, skipped`,
+      )
       continue
     }
     cueShots.push({
@@ -118,7 +138,16 @@ function fitSceneShots(
     return finish(planned, scene.from, sceneEnd)
   }
   cueShots[0]!.from = scene.from
-  for (const s of cueShots) state.history.push(s.show)
+  for (const s of cueShots) {
+    register(
+      state,
+      s.show,
+      s.from / fps,
+      props.images?.[imageIndex(s.props)]?.kind,
+      imageIndex(s.props),
+      s.props,
+    )
+  }
   const out: TimedShot[] = []
   cueShots.forEach((s, i) => {
     const hold = holdFor(s.show)
@@ -135,7 +164,9 @@ function fitSceneShots(
           lastInScene: false,
         }),
       )
-      warnings.push(`scene ${sceneIndex}: cue shot held over ${MAX_HOLD_S}s, filled with planned shots`)
+      warnings.push(
+        `scene ${sceneIndex}: cue shot held over ${MAX_HOLD_S}s, filled with planned shots`,
+      )
     }
   })
   return finish(out, scene.from, sceneEnd)
@@ -147,6 +178,22 @@ function finish(shots: TimedShot[], from: number, end: number): TimedShot[] {
     const start = i === 0 ? from : s.from
     const to = sorted[i + 1]?.from ?? end
     return { ...s, from: start, frames: Math.max(1, to - start) }
+  })
+}
+
+/** Consecutive RepoDemo cuts continue the clip where the previous one stopped (looping if short). */
+export function withDemoOffsets(
+  shots: TimedShot[],
+  seconds: number | undefined,
+  fps: number,
+): TimedShot[] {
+  if (!seconds || seconds <= 0) return shots
+  let played = 0
+  return shots.map((s) => {
+    if (s.show !== 'RepoDemo') return s
+    const offset = played % seconds
+    played += s.frames / fps
+    return { ...s, props: { ...s.props, offset: Math.round(offset * 100) / 100 } }
   })
 }
 
@@ -171,5 +218,11 @@ export function resolveShots(props: ReelProps, fps: number, total: number): Reso
       })
     }
   })
-  return { shots: limitThumbnailReuse(shots, props, fps), warnings }
+  const limited = limitThumbnailReuse(shots, props, fps)
+  const varied = enforceVariety(limited, props, fps)
+  const grounded = groundShots(varied, props)
+  return {
+    shots: withDemoOffsets(assignBroll(grounded, props.broll), props.demo?.seconds, fps),
+    warnings,
+  }
 }

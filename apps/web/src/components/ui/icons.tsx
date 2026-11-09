@@ -26,6 +26,22 @@ export const HeartIcon = ({ className, filled }: P & { filled?: boolean }) => (
     <path d="M12 20.5s-7.5-4.6-9-9.6C2 7.5 4.2 4.8 7.1 4.8c1.9 0 3.5 1 4.9 3 1.4-2 3-3 4.9-3 2.9 0 5.1 2.7 4.1 6.1-1.5 5-9 9.6-9 9.6z" />
   </Svg>
 )
+export const BookmarkIcon = ({ className, filled }: P & { filled?: boolean }) => (
+  <Svg className={className} fill={filled ? 'currentColor' : 'none'}>
+    <path d="M6.5 3.5h11a1 1 0 0 1 1 1V21l-6.5-4.5L5.5 21V4.5a1 1 0 0 1 1-1z" />
+  </Svg>
+)
+export const ClockIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Svg>
+)
+export const TrashIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+  </Svg>
+)
 export const LayersIcon = ({ className }: P) => (
   <Svg className={className}>
     <path d="m12 3 9 5-9 5-9-5z" />

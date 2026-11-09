@@ -6,14 +6,16 @@ import {
   sendAlert,
   transitionItem,
   type Logger,
+  type ReelScript,
 } from '@reelset/core'
 import { loadRetentionDays, runMaintenance } from './cron'
 import { CONTAINER_SLOTS, DEFAULT_MEDIA_BASE_URL } from './constants'
 import { processRenderJob } from './consumer'
+import { pickBroll } from './pexels'
 import type { Env } from './env'
 import { handleParsePaper } from './paper-route'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
-import { createMaintenanceStore, createRenderStore } from './store'
+import { createMaintenanceStore, createRenderStore, type ItemForRender } from './store'
 import { loadTtsConfig } from './tts-config'
 
 export { ReelContainer } from './container'
@@ -65,6 +67,19 @@ export default {
         transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
         ...tts,
+        broll: env.PEXELS_API_KEY
+          ? (script: ReelScript, item: ItemForRender) =>
+              pickBroll(
+                {
+                  apiKey: env.PEXELS_API_KEY!,
+                  fetch: (url, init) => fetch(url, init),
+                  cache: env.MEDIA,
+                  log,
+                },
+                script.beats,
+                { source: item.source, title: item.title },
+              )
+          : undefined,
         log,
       }
       await Promise.all(

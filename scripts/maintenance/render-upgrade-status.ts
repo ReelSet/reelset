@@ -1,12 +1,15 @@
 import { createDb, createLogger, renderKey } from '@reelset/core'
 import { sql } from 'kysely'
-import { DEFAULT_VOICE, TEMPLATE_VERSION } from '../../workers/render/src/constants'
+import { TEMPLATE_VERSION } from '../../workers/render/src/constants'
+import { currentVoice } from './_effective-voice'
 
 // Read-only: which rendered items already have a render for the current template version.
 // The render worker's cron queues the missing ones (docs/contracts.md, "Render engine").
 const log = createLogger({ app: 'maintenance', level: 'warn' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 1 })
 try {
+  const voice = await currentVoice(db)
+  console.log('render key voice:', voice)
   const items = await sql<{
     id: string
     title: string
@@ -21,7 +24,7 @@ try {
       contentHash: item.content_hash,
       promptVersion: item.prompt_version,
       templateVersion: TEMPLATE_VERSION,
-      voice: DEFAULT_VOICE,
+      voice,
     })
     const render = await sql<{
       status: string

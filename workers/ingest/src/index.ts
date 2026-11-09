@@ -10,6 +10,7 @@ import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { handleMessage } from './pipeline/consumer'
 import { createEmbedder, createLlmClient } from './pipeline/gemini'
+import { createDbVetCache, createGeminiVetter, downloadForVet } from './pipeline/image-vet'
 import type { ProcessDeps } from './pipeline/process'
 import { createTranscriptClient } from './pipeline/transcript'
 import { createPaperClient } from './paper-client'
@@ -134,6 +135,15 @@ export default {
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
         alertWebhookUrl: env.ALERT_WEBHOOK_URL,
         githubToken: env.GITHUB_TOKEN,
+        vet: {
+          ask: createGeminiVetter(
+            env.GEMINI_API_KEY,
+            env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
+            log,
+          ),
+          download: downloadForVet,
+          cache: createDbVetCache(db),
+        },
       }
       log.info({ size: batch.messages.length }, 'ingest-items batch start')
       for (const message of batch.messages) await handleMessage(deps, message)

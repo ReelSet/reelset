@@ -20,6 +20,7 @@ export const SCREEN_NAMES = [
   'KeyPoint',
   'Compare',
   'EndCard',
+  'RepoDemo',
 ] as const
 export const SFX_NAMES = ['whoosh', 'pop', 'tick', 'ding', 'hit', 'riser', 'swoosh'] as const
 export type ScreenName = (typeof SCREEN_NAMES)[number]
@@ -67,6 +68,7 @@ export const reelScriptSchema = z.object({
         text: z.string().min(1).max(220),
         visual: visualSchema,
         shots: z.array(shotSchema).max(6).optional(),
+        broll: z.array(z.string().min(2).max(40)).max(2).optional(),
       }),
     )
     .min(2)

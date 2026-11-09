@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 import type { ScreenName } from '../lib/types'
-import { CodeBlock, RepoPage, Terminal } from './dev'
+import { CodeBlock, RepoDemo, RepoPage, Terminal } from './dev'
 import { ArticleHeadline, FigureZoom, ImageFull, PaperPage } from './editorial'
 import { EquationScreen, TableScreen } from './paper'
 import { HNThread, RedditPost, YouTubePlayer } from './social'
@@ -26,4 +26,5 @@ export const SCREENS: Record<ScreenName, ComponentType<ScreenProps>> = {
   KeyPoint,
   Compare,
   EndCard,
+  RepoDemo,
 }

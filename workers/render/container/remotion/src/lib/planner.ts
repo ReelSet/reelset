@@ -1,4 +1,12 @@
-import { findNumbers, keyPhraseIn, salientPhrase, sentences, shellLines, versusPair } from './extract'
+import { styleOf } from './typeset'
+import {
+  findNumbers,
+  keyPhraseIn,
+  salientPhrase,
+  sentences,
+  shellLines,
+  versusPair,
+} from './extract'
 import type { ReelImage, ReelProps, Scene, ScreenName, SfxName, TimedShot, Word } from './types'
 
 export const MIN_SHOT_S = 1.5
@@ -9,18 +17,51 @@ export const IMAGE_EVERY_S = 5.5
 
 export type PlanState = {
   history: ScreenName[]
+  looks: string[]
   lastImageAt: number
   imageCursor: number
   beatShots: number
   thumbUsed: boolean
+  uses: Record<string, number>
+  imageUses: Record<number, number>
+  bgTaken: number[]
 }
+
+export const CAP_PER_SCREEN = 2
+export const NO_REPEAT_WITHIN = 3
+export const capFor = (show: ScreenName): number => (show === 'EndCard' ? 1 : CAP_PER_SCREEN)
+/** The demo clip may run over two consecutive cuts; every other screen needs space between uses. */
+/** KeyPoint layouts look different (left, uppercase, right), so each counts as its own look. */
+export function varietyKey(show: ScreenName, props: Record<string, unknown>): string {
+  const bg = typeof props.bg === 'number' ? `+bg${props.bg}` : ''
+  if (show !== 'KeyPoint') return `${show}${bg}`
+  const text = typeof props.text === 'string' ? props.text : ''
+  return `KeyPoint/${props.quote ? 'q' : styleOf(text)}${bg}`
+}
+/** Same screen within 3 shots; KeyPoint layouts are different looks, so only an identical look or the previous cut counts. */
+export function recentLook(
+  state: PlanState,
+  show: ScreenName,
+  props: Record<string, unknown>,
+  prev: ScreenName | undefined,
+): boolean {
+  if (show === 'KeyPoint' && prev !== 'KeyPoint') {
+    return state.looks.slice(-NO_REPEAT_WITHIN).includes(varietyKey(show, props))
+  }
+  return state.history.slice(-NO_REPEAT_WITHIN).includes(show)
+}
+export const MAY_REPEAT = new Set<ScreenName>(['RepoDemo'])
 
 export const newState = (): PlanState => ({
   history: [],
+  looks: [],
   lastImageAt: -Infinity,
   imageCursor: 0,
   beatShots: 0,
   thumbUsed: false,
+  uses: {},
+  imageUses: {},
+  bgTaken: [],
 })
 
 export type Chunk = { start: number; end: number }
@@ -41,7 +82,8 @@ export function chunkSpan(words: readonly Word[], t0: number, t1: number): Chunk
     if (pool.length === 0) pool = viable(1.1, 3.2)
     const best = [...pool].sort(
       (a, b) =>
-        Math.abs(a.t - cur - TARGET_SHOT_S) - (a.punct ? 0.6 : 0) -
+        Math.abs(a.t - cur - TARGET_SHOT_S) -
+        (a.punct ? 0.6 : 0) -
         (Math.abs(b.t - cur - TARGET_SHOT_S) - (b.punct ? 0.6 : 0)),
     )[0]
     const next = best ? best.t : cur + TARGET_SHOT_S
@@ -49,7 +91,8 @@ export function chunkSpan(words: readonly Word[], t0: number, t1: number): Chunk
     cur = next
   }
   if (t1 - cur > 0.001) {
-    if (out.length > 0 && t1 - cur < 1.0) out[out.length - 1] = { start: out[out.length - 1]!.start, end: t1 }
+    if (out.length > 0 && t1 - cur < 1.0)
+      out[out.length - 1] = { start: out[out.length - 1]!.start, end: t1 }
     else out.push({ start: cur, end: t1 })
   }
   return out
@@ -60,14 +103,23 @@ export type PlanCtx = {
   fps: number
 }
 
-const unitOf = (raw: string) => raw.replace(/[\d.,~+$\s]|up to|over|about|nearly/gi, '').toLowerCase()
+const unitOf = (raw: string) =>
+  raw.replace(/[\d.,~+$\s]|up to|over|about|nearly/gi, '').toLowerCase()
 
 const textOf = (words: readonly Word[], c: Chunk) =>
-  words.filter((w) => w.start >= c.start - 0.01 && w.start < c.end).map((w) => w.text).join(' ')
+  words
+    .filter((w) => w.start >= c.start - 0.01 && w.start < c.end)
+    .map((w) => w.text)
+    .join(' ')
 
 type Candidate = { show: ScreenName; props: Record<string, unknown>; score: number }
 
-const IMAGE_SCREENS = new Set<ScreenName>(['ImageFull', 'FigureZoom', 'YouTubePlayer', 'ArticleHeadline'])
+const IMAGE_SCREENS = new Set<ScreenName>([
+  'ImageFull',
+  'FigureZoom',
+  'YouTubePlayer',
+  'ArticleHeadline',
+])
 const SOURCE_SCREEN: Record<ReelProps['source'], ScreenName> = {
   github: 'RepoPage',
   hn: 'HNThread',
@@ -77,23 +129,30 @@ const SOURCE_SCREEN: Record<ReelProps['source'], ScreenName> = {
   news: 'ArticleHeadline',
 }
 
-function imageScreen(
+/** Screens that can show this image, best first; each has its own cap so one image can appear twice. */
+function imageScreens(
   source: ReelProps['source'],
   img: ReelImage,
   repeat: boolean,
-): ScreenName {
-  if (repeat) return 'ImageFull'
-  if (img.kind === 'figure') return 'FigureZoom'
-  if (img.kind === 'thumbnail' && source === 'youtube') return 'YouTubePlayer'
-  if ((img.kind === 'og' || img.kind === 'screenshot') && (source === 'news' || source === 'hn')) {
-    return 'ArticleHeadline'
-  }
-  return 'ImageFull'
+  thumbUsed: boolean,
+): ScreenName[] {
+  const base: ScreenName[] =
+    img.kind === 'figure'
+      ? ['FigureZoom', 'ImageFull', 'ArticleHeadline']
+      : img.kind === 'thumbnail' && source === 'youtube' && !thumbUsed
+        ? ['YouTubePlayer', 'ImageFull']
+        : (img.kind === 'og' || img.kind === 'screenshot') && (source === 'news' || source === 'hn')
+          ? ['ArticleHeadline', 'ImageFull']
+          : ['ImageFull', 'ArticleHeadline']
+  return repeat ? [...base].reverse() : base
 }
 
 const HERO_ORDER: ReelImage['kind'][] = ['thumbnail', 'og', 'screenshot', 'figure', 'avatar']
 
-export function usableImages(images: readonly ReelImage[] | undefined, skipThumbnails = false): number[] {
+export function usableImages(
+  images: readonly ReelImage[] | undefined,
+  skipThumbnails = false,
+): number[] {
   const list = images ?? []
   return list
     .map((img, i) => ({ img, i }))
@@ -103,13 +162,28 @@ export function usableImages(images: readonly ReelImage[] | undefined, skipThumb
 }
 
 // One sfx per cut. The container mix adds a riser lead-in before every 'ding'.
-function sfxFor(show: ScreenName, index: number, prev: ScreenName | undefined): SfxName {
+export function sfxFor(show: ScreenName, index: number, prev: ScreenName | undefined): SfxName {
   if (index === 0) return 'hit'
   if (show === 'StatSlam' || show === 'EndCard') return 'ding'
   if (show === 'BarRace' || show === 'Terminal' || show === 'CodeBlock') return 'tick'
   if (show === 'KeyPoint') return 'hit'
   if (IMAGE_SCREENS.has(show)) return prev && IMAGE_SCREENS.has(prev) ? 'whoosh' : 'pop'
   return index % 2 === 0 ? 'whoosh' : 'pop'
+}
+
+/** Least-used stock clip (each at most twice), or null when none is left. */
+export function nextClip(props: ReelProps, state: PlanState): number | null {
+  const n = props.broll?.length ?? 0
+  let best: number | null = null
+  let fewest = 2
+  for (let i = 0; i < n; i += 1) {
+    const used = state.bgTaken.filter((b) => b === i).length
+    if (used < fewest) {
+      best = i
+      fewest = used
+    }
+  }
+  return best
 }
 
 export function pickShot(
@@ -121,15 +195,19 @@ export function pickShot(
   isLastInScene: boolean,
   atSeconds: number,
   state: PlanState,
+  avoid: readonly ScreenName[] = [],
 ): { show: ScreenName; props: Record<string, unknown> } {
   const { props } = ctx
   const text = textOf(props.words, chunk) || ('text' in scene ? scene.text : '')
   const sceneText = 'text' in scene ? scene.text : ''
   const visual = scene.kind === 'beat' ? scene.visual : undefined
-  const images = usableImages(props.images, state.thumbUsed)
+  const images = usableImages(props.images, state.thumbUsed).filter(
+    (i) => (state.imageUses[i] ?? 0) < CAP_PER_SCREEN,
+  )
   const prev = state.history[state.history.length - 1]
   const cands: Candidate[] = []
-  const add = (show: ScreenName, p: Record<string, unknown>, score: number) => cands.push({ show, props: p, score })
+  const add = (show: ScreenName, p: Record<string, unknown>, score: number) =>
+    cands.push({ show, props: p, score })
 
   if (scene.kind === 'outro' && isLastInScene) {
     return { show: 'EndCard', props: {} }
@@ -137,14 +215,41 @@ export function pickShot(
 
   const imageDue = images.length > 0 && atSeconds - state.lastImageAt >= IMAGE_EVERY_S
   if (images.length > 0) {
-    const idx = images[state.imageCursor % images.length]!
-    const repeat = state.imageCursor >= images.length
+    const idx = [...images].sort(
+      (a, b) => (state.imageUses[a] ?? 0) - (state.imageUses[b] ?? 0),
+    )[0]!
     const img = props.images![idx]!
-    const show = imageScreen(props.source, img, repeat)
-    add(show, { image: idx, variant: state.imageCursor }, imageDue ? 12 : 0.6 + (isFirstInScene && scene.kind === 'hook' ? 8 : 0))
+    const score = imageDue ? 12 : 0.6 + (isFirstInScene && scene.kind === 'hook' ? 8 : 0)
+    for (const show of imageScreens(
+      props.source,
+      img,
+      (state.imageUses[idx] ?? 0) > 0,
+      state.thumbUsed,
+    )) {
+      add(show, { image: idx, variant: state.imageCursor }, score)
+    }
   }
 
-  add(SOURCE_SCREEN[props.source], { focus: sceneIndex }, scene.kind === 'hook' && isFirstInScene ? 5 : 1.8)
+  if (props.demo && scene.kind !== 'hook' && scene.kind !== 'outro') {
+    const hasDemo = (state.uses.RepoDemo ?? 0) > 0
+    if (!hasDemo) add('RepoDemo', {}, isFirstInScene && sceneIndex === 1 ? 13 : 4)
+    else if (prev === 'RepoDemo' && state.uses.RepoDemo! < 2) add('RepoDemo', {}, 20)
+  }
+
+  const sourceScreen = SOURCE_SCREEN[props.source]
+  const sourceImage = images[0]
+  if (!(sourceScreen === 'YouTubePlayer' && state.thumbUsed)) {
+    if (!IMAGE_SCREENS.has(sourceScreen)) {
+      add(sourceScreen, { focus: sceneIndex }, scene.kind === 'hook' && isFirstInScene ? 5 : 1.8)
+    } else if (sourceImage !== undefined || (props.images?.length ?? 0) === 0) {
+      const withImage = sourceImage === undefined ? {} : { image: sourceImage }
+      add(
+        sourceScreen,
+        { focus: sceneIndex, ...withImage },
+        scene.kind === 'hook' && isFirstInScene ? 5 : 1.8,
+      )
+    }
+  }
 
   const nums = findNumbers(text)
   const beatNums = findNumbers(sceneText)
@@ -175,7 +280,10 @@ export function pickShot(
     const sh = shellLines(visual.code)
     if (sh) add('Terminal', { lines: sh }, isFirstInScene ? 9 : 3)
     else add('CodeBlock', { code: visual.code, language: visual.language }, isFirstInScene ? 9 : 3)
-  } else if (props.source === 'github' && /\b(install|clone|run|command|cli|npx|npm|pip|terminal|setup)\b/i.test(text)) {
+  } else if (
+    props.source === 'github' &&
+    /\b(install|clone|run|command|cli|npx|npm|pip|terminal|setup)\b/i.test(text)
+  ) {
     add('Terminal', { lines: [] }, 3.4)
   }
   if (visual?.type === 'title') {
@@ -183,30 +291,69 @@ export function pickShot(
   }
   if (visual?.type === 'quote') {
     const show: ScreenName = props.source === 'hn' ? 'HNThread' : 'KeyPoint'
-    add(show, { quote: visual.text, by: visual.attribution, text: visual.text, sub: visual.attribution }, isFirstInScene ? 8 : 3)
+    add(
+      show,
+      { quote: visual.text, by: visual.attribution, text: visual.text, sub: visual.attribution },
+      isFirstInScene ? 8 : 3,
+    )
   }
   add('KeyPoint', { text: salientPhrase(text), sub: '' }, 1.6)
+  const alt = keyPhraseIn(text, 2, 4)
+  const bg = nextClip(props, state)
+  if (alt && alt !== salientPhrase(text)) {
+    add('KeyPoint', { text: alt, sub: '' }, 1.5)
+    if (bg !== null) add('KeyPoint', { text: alt, sub: '', bg }, 1.45)
+  }
+  if (bg !== null) {
+    add('KeyPoint', { text: salientPhrase(text), sub: '', bg }, 1.55)
+    if (nums[0]) add('StatSlam', { value: nums[0].raw, label: nums[0].label, bg }, 4.8)
+  }
 
   let best: Candidate | undefined
   for (const c of cands) {
     let s = c.score
-    if (c.show === prev) s -= 100
+    if (!MAY_REPEAT.has(c.show)) {
+      if (c.show === prev) s -= 1000
+      if (recentLook(state, c.show, c.props, prev)) s -= 150
+    }
+    if (avoid.includes(c.show)) s -= 500
+    const over = (state.uses[varietyKey(c.show, c.props)] ?? 0) - capFor(c.show) + 1
+    if (over > 0) s -= 200 * over
     s -= 2.2 * state.history.slice(-5).filter((h) => h === c.show).length
     if (c.show === 'KeyPoint' && state.history.slice(-2).includes('KeyPoint')) s -= 1.5
     if (!best || s > best.score) best = { ...c, score: s }
   }
-  const chosen = best ?? { show: 'KeyPoint' as ScreenName, props: { text: salientPhrase(text), sub: '' }, score: 0 }
+  const chosen = best ?? {
+    show: 'KeyPoint' as ScreenName,
+    props: { text: salientPhrase(text), sub: '' },
+    score: 0,
+  }
   return { show: chosen.show, props: chosen.props }
 }
 
-function register(state: PlanState, show: ScreenName, atSeconds: number, kind?: ReelImage['kind']) {
+export function register(
+  state: PlanState,
+  show: ScreenName,
+  atSeconds: number,
+  kind?: ReelImage['kind'],
+  image?: number,
+  shotProps: Record<string, unknown> = {},
+) {
   state.history.push(show)
+  state.looks.push(varietyKey(show, shotProps))
+  if (typeof shotProps.bg === 'number') state.bgTaken.push(shotProps.bg)
+  const key = varietyKey(show, shotProps)
+  state.uses[key] = (state.uses[key] ?? 0) + 1
   if (IMAGE_SCREENS.has(show)) {
     state.lastImageAt = atSeconds
     state.imageCursor += 1
+    if (image !== undefined) state.imageUses[image] = (state.imageUses[image] ?? 0) + 1
     if (kind === 'thumbnail' || show === 'YouTubePlayer') state.thumbUsed = true
   }
 }
+
+export const imageIndex = (shotProps: Record<string, unknown>): number =>
+  typeof shotProps.image === 'number' ? shotProps.image : 0
 
 const imageOf = (props: ReelProps, shotProps: Record<string, unknown>): ReelImage | undefined =>
   props.images?.[typeof shotProps.image === 'number' ? shotProps.image : 0]
@@ -225,7 +372,11 @@ export function limitThumbnailReuse(shots: TimedShot[], props: ReelProps, fps = 
     }
     const t0 = shot.from / fps
     const text = textOf(props.words, { start: t0, end: t0 + shot.frames / fps })
-    return { ...shot, show: 'KeyPoint' as ScreenName, props: { text: salientPhrase(text), sub: '' } }
+    return {
+      ...shot,
+      show: 'KeyPoint' as ScreenName,
+      props: { text: salientPhrase(text), sub: '' },
+    }
   })
 }
 
@@ -246,7 +397,14 @@ export function planRange(
     const at = chunk.start
     const picked = pickShot(ctx, scene, sceneIndex, chunk, first, last, at, state)
     const sfx = sfxFor(picked.show, state.history.length, state.history[state.history.length - 1])
-    register(state, picked.show, at, imageOf(ctx.props, picked.props)?.kind)
+    register(
+      state,
+      picked.show,
+      at,
+      imageOf(ctx.props, picked.props)?.kind,
+      imageIndex(picked.props),
+      picked.props,
+    )
     state.beatShots += 1
     const from = Math.round(chunk.start * ctx.fps)
     return {

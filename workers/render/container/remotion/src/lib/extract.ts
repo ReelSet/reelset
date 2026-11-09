@@ -5,13 +5,24 @@ const NUMBER = new RegExp(
   `(?<pre>up to |over |about |nearly |~|\\+|\\$)?(?<num>\\d[\\d,]*(?:\\.\\d+)?)(?<unit>\\s?(?:${UNIT})\\b|%)?`,
   'gi',
 )
-const STOP_AFTER = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'is', 'are'])
+const STOP_AFTER = new Set([
+  'the',
+  'a',
+  'an',
+  'and',
+  'or',
+  'to',
+  'of',
+  'in',
+  'on',
+  'for',
+  'with',
+  'is',
+  'are',
+])
 
 function labelAfter(text: string, end: number): string {
-  const words = text
-    .slice(end)
-    .split(/\s+/)
-    .filter(Boolean)
+  const words = text.slice(end).split(/\s+/).filter(Boolean)
   const out: string[] = []
   for (const w of words) {
     const clean = w.replace(/[^\w'-]/g, '')
@@ -48,10 +59,27 @@ export function findNumbers(text: string): Found[] {
 }
 
 export function sentences(text: string): string[] {
-  return (text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [text]).map((s) => s.trim()).filter(Boolean)
+  return (text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [text])
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
-const TRAILING = new Set(['the', 'a', 'an', 'of', 'to', 'and', 'or', 'with', 'for', 'in', 'on', 'is', 'that', 'your'])
+const TRAILING = new Set([
+  'the',
+  'a',
+  'an',
+  'of',
+  'to',
+  'and',
+  'or',
+  'with',
+  'for',
+  'in',
+  'on',
+  'is',
+  'that',
+  'your',
+])
 
 /** Headline from the hook: first clause, at most `max` words, no dangling stopword. */
 export function headlineFrom(hook: string, max = 7): string {
@@ -60,29 +88,44 @@ export function headlineFrom(hook: string, max = 7): string {
   let words = clean.split(' ')
   if (words.length > max) {
     const clause = clean.split(/[,:;—–-]\s/)[0] ?? clean
-    words = clause.split(' ').length >= 3 && clause.split(' ').length <= max ? clause.split(' ') : words.slice(0, max)
+    words =
+      clause.split(' ').length >= 3 && clause.split(' ').length <= max
+        ? clause.split(' ')
+        : words.slice(0, max)
   }
-  while (words.length > 2 && TRAILING.has((words[words.length - 1] ?? '').toLowerCase().replace(/\W/g, ''))) {
+  while (
+    words.length > 2 &&
+    TRAILING.has((words[words.length - 1] ?? '').toLowerCase().replace(/\W/g, ''))
+  ) {
     words = words.slice(0, -1)
   }
   return words.join(' ').replace(/[,;:\-–—]+$/g, '')
 }
 
-const SHELL = /^(\$\s*)?(git|npm|npx|pnpm|yarn|pip3?|pipx|uv|cargo|brew|curl|wget|docker|mkdir|cd|cp|mv|claude|python3?|node|go|make|apt|sudo|bun|deno)\b/
+const SHELL =
+  /^(\$\s*)?(git|npm|npx|pnpm|yarn|pip3?|pipx|uv|cargo|brew|curl|wget|docker|mkdir|cd|cp|mv|claude|python3?|node|go|make|apt|sudo|bun|deno)\b/
 
 export function shellLines(code: string): string[] | null {
-  const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
+  const lines = code
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
   if (lines.length === 0 || !lines.every((l) => SHELL.test(l) || /^#/.test(l))) return null
   return lines.map((l) => l.replace(/^\$\s*/, ''))
 }
 
 export function versusPair(text: string): [string, string] | null {
-  const m = /\b([A-Z][\w.+-]*(?: [A-Z][\w.+-]*)?)\s+(?:vs\.?|versus|over|beats|instead of)\s+([A-Z][\w.+-]*(?: [A-Z][\w.+-]*)?)/.exec(text)
+  const m =
+    /\b([A-Z][\w.+-]*(?: [A-Z][\w.+-]*)?)\s+(?:vs\.?|versus|over|beats|instead of)\s+([A-Z][\w.+-]*(?: [A-Z][\w.+-]*)?)/.exec(
+      text,
+    )
   return m && m[1] && m[2] ? [m[1], m[2]] : null
 }
 
 const FILLER = new Set(
-  'the a an and or but so to of in on for with is are was were it its this that these those you your we our they their be been as at by from how what why when who which can will just also more most very'.split(' '),
+  'the a an and or but so to of in on for with is are was were it its this that these those you your we our they their be been as at by from how what why when who which can will just also more most very'.split(
+    ' ',
+  ),
 )
 
 /** One to three words worth showing huge: a number, a Name, or the longest content words. */
@@ -90,7 +133,10 @@ export function salientPhrase(text: string, max = 3): string {
   const nums = findNumbers(text)
   const first = nums[0]
   if (first) return [first.raw, first.label.split(' ')[0]].filter(Boolean).join(' ')
-  const tokens = text.replace(/[^\w\s'.-]/g, ' ').split(/\s+/).filter(Boolean)
+  const tokens = text
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}$~+]+|[^\p{L}\p{N}%²³⁰-⁹]+$/gu, ''))
+    .filter(Boolean)
   const scored = tokens.map((w, i) => {
     const lower = w.toLowerCase()
     let s = FILLER.has(lower) ? -5 : Math.min(w.length, 10) / 10
@@ -124,5 +170,8 @@ export function keyPhraseIn(text: string, min = 2, max = 4): string | null {
     }
   }
   if (!best) return null
-  return tokens.slice(best.start, best.start + best.len).join(' ').replace(/[.,;:!?]+$/, '')
+  return tokens
+    .slice(best.start, best.start + best.len)
+    .join(' ')
+    .replace(/[.,;:!?]+$/, '')
 }

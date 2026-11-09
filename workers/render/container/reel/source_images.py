@@ -115,8 +115,9 @@ def collect_item_images(
             continue
         hashes.append(phash)
         entry = {"file": out, "kind": cand["kind"], "width": width, "height": height}
-        if cand.get("alt"):
-            entry["alt"] = cand["alt"]
+        for key in ("alt", "caption", "focus"):
+            if cand.get(key):
+                entry[key] = cand[key]
         kept.append(entry)
     log.info("source images kept=%d of %d", len(kept), len(candidates))
     return kept

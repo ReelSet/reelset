@@ -24,6 +24,7 @@ import {
   type AiLike,
   type Narration,
 } from './tts'
+import type { BrollPick } from './pexels'
 import { containerJobId, posterKeyFor, videoKeyFor } from './keys'
 import {
   classifyFailure,
@@ -52,6 +53,8 @@ export type ConsumerDeps = {
   voice: string
   edgeVoice?: string
   aura?: { ai: AiLike; speaker: string }
+  /** Stock clips for the reel; optional, failures never fail a render. */
+  broll?: (script: ReelScript, item: ItemForRender) => Promise<BrollPick[]>
   log: Logger
   now?: () => number
 }
@@ -213,6 +216,7 @@ async function renderAndUpload(
   log: Logger,
 ): Promise<RenderMetadata> {
   const jobId = containerJobId(key)
+  const broll = await fetchBroll(deps, item, script, log)
   const { client, metadata } = await renderWithFailover(
     deps.containers,
     {
@@ -230,6 +234,8 @@ async function renderAndUpload(
       sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
       images: item.images,
       facts: item.facts,
+      broll: broll.length > 0 ? broll : undefined,
+      demo: item.demo,
     },
     log,
   )
@@ -266,10 +272,26 @@ async function renderAndUpload(
       bytes: video.byteLength,
       videoDurationMs: metadata.durationMs,
       renderMs: metadata.renderMs,
+      credits: metadata.credits,
     })
     return metadata
   } finally {
     await client.remove(jobId)
+  }
+}
+
+async function fetchBroll(
+  deps: ConsumerDeps,
+  item: ItemForRender,
+  script: ReelScript,
+  log: Logger,
+): Promise<BrollPick[]> {
+  if (!deps.broll) return []
+  try {
+    return await deps.broll(script, item)
+  } catch (err) {
+    log.warn(errorFields(err), 'b-roll skipped')
+    return []
   }
 }
 

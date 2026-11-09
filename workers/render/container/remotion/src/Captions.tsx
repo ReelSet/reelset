@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 import { pageAt, toPages } from './lib/captions'
+import { typeset } from './lib/typeset'
 import type { Word } from './lib/types'
 import {
   CAPTION_FONT,
@@ -67,7 +68,7 @@ export function Captions({ words }: { words: Word[] }) {
                 textShadow: active ? undefined : '0 6px 24px rgba(0,0,0,0.5)',
               }}
             >
-              {word.text}
+              {typeset(word.text)}
             </span>
           )
         })}

@@ -68,8 +68,18 @@ export function planImages(props: Pick<ReelProps, 'images' | 'scenes'>): ImagePl
 
 /** Short source caption: "Figure 2" from a paper caption, else the domain. */
 export function captionFor(image: ReelImage, domain: string): string {
+  const vetted = image.caption?.trim()
+  if (vetted) return vetted.length > 60 ? `${vetted.slice(0, 59).trimEnd()}…` : vetted
   const m = /^\s*fig(?:ure|\.)?\s*(\d+[a-z]?)/i.exec(image.alt ?? '')
   if (m) return `Figure ${m[1]}`
   if (image.kind === 'figure') return `Figure · ${domain}`
   return domain
+}
+
+/** CSS transform origin for the Ken Burns zoom: the vetted point of interest, else the fallback. */
+export function focusOrigin(image: ReelImage | undefined, fallback: string): string {
+  const f = image?.focus
+  if (!f || !Number.isFinite(f.x) || !Number.isFinite(f.y)) return fallback
+  const pct = (n: number) => Math.round(Math.min(0.9, Math.max(0.1, n)) * 100)
+  return `${pct(f.x)}% ${pct(f.y)}%`
 }

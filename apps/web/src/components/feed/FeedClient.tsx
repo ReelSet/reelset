@@ -101,6 +101,35 @@ export function FeedClient() {
     [sendLike],
   )
 
+  const toggleSave = useCallback(
+    async (item: FeedItemDto) => {
+      const current = itemsRef.current.find((it) => it.id === item.id) ?? item
+      const saved = !current.saved
+      patchItem(item.id, { saved })
+      try {
+        const res = await fetch('/api/saves', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ itemId: item.id, saved }),
+        })
+        if (res.status === 401) {
+          const body = (await res.json()) as { loginUrl: string }
+          window.location.assign(body.loginUrl)
+          return
+        }
+        if (!res.ok) throw new Error(String(res.status))
+        toast.show(saved ? 'Saved to your profile' : 'Removed from saved', 'ok')
+      } catch {
+        patchItem(item.id, { saved: current.saved })
+        toast.show(
+          navigator.onLine ? 'Could not save this reel. Try again.' : 'You are offline.',
+          'error',
+        )
+      }
+    },
+    [patchItem, toast],
+  )
+
   const loadInitial = useCallback(async () => {
     setPhase('loading')
     const focusId = new URLSearchParams(window.location.search).get('reel')
@@ -381,6 +410,7 @@ export function FeedClient() {
           onVisible={setActive}
           onSound={setSoundOn}
           onToggleLike={toggleLike}
+          onToggleSave={toggleSave}
           onOpenSources={setSourcesFor}
         />
       ))}

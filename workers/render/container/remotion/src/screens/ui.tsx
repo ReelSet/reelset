@@ -1,8 +1,16 @@
 import { createContext, useContext, type CSSProperties, type ReactNode } from 'react'
-import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
+import {
+  AbsoluteFill,
+  Img,
+  OffthreadVideo,
+  interpolate,
+  staticFile,
+  useCurrentFrame,
+} from 'remotion'
 import { Drift, easeOut } from '../fx'
 import { fitImage } from '../lib/images'
-import type { ItemFacts, ReelImage, Source } from '../lib/types'
+import { BG_OPACITY } from '../lib/broll'
+import type { BrollClip, ItemFacts, ReelDemo, ReelImage, Source } from '../lib/types'
 import { COLOR, CONTENT_TOP, FONT, H, SAFE, W } from '../theme'
 
 export type ReelCtx = {
@@ -13,6 +21,7 @@ export type ReelCtx = {
   facts: ItemFacts
   images: ReelImage[]
   hook: string
+  demo?: ReelDemo
 }
 
 export type ScreenProps = {
@@ -28,6 +37,35 @@ export const prop = <T,>(props: Record<string, unknown>, key: string, fallback: 
 }
 
 export const TopPadContext = createContext(0)
+export const BackdropContext = createContext<BrollClip | null>(null)
+export const useBackdrop = () => useContext(BackdropContext)
+
+/** Stock clip under a screen: muted, dimmed, graded and scrimmed so text always wins. */
+export function Backdrop({ clip }: { clip: BrollClip }) {
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none' }}>
+      <AbsoluteFill style={{ opacity: BG_OPACITY }}>
+        <OffthreadVideo
+          src={staticFile(clip.src)}
+          muted
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            filter: 'saturate(0.8) contrast(1.06) brightness(0.9)',
+          }}
+        />
+      </AbsoluteFill>
+      <AbsoluteFill
+        style={{
+          background:
+            'linear-gradient(to bottom, rgba(9,9,11,0.72) 0%, rgba(9,9,11,0.5) 40%, rgba(9,9,11,0.5) 60%, rgba(9,9,11,0.78) 100%)',
+        }}
+      />
+      <AbsoluteFill style={{ background: 'rgba(200,247,81,0.05)', mixBlendMode: 'soft-light' }} />
+    </AbsoluteFill>
+  )
+}
 
 export function Page({
   frames,
@@ -48,6 +86,7 @@ export function Page({
 }) {
   const frame = useCurrentFrame()
   const gx = Math.sin(frame / 40) * 60
+  const clip = useBackdrop()
   return (
     <AbsoluteFill style={{ background: bg, fontFamily: FONT, color: COLOR.text }}>
       <Drift frames={frames} to={1.045}>
@@ -79,9 +118,11 @@ export function Page({
               height: 1300,
               left: -640 - gx,
               top: H - 800,
-              background: 'radial-gradient(closest-side, rgba(120,140,255,0.14), rgba(120,140,255,0))',
+              background:
+                'radial-gradient(closest-side, rgba(120,140,255,0.14), rgba(120,140,255,0))',
             }}
           />
+          {clip ? <Backdrop clip={clip} /> : null}
           <div
             style={{
               position: 'absolute',
@@ -278,7 +319,12 @@ export function Sweep({
   const frame = useCurrentFrame()
   const at = phrase ? text.toLowerCase().indexOf(phrase.toLowerCase()) : -1
   if (!phrase || at < 0) return <>{text}</>
-  const p = easeOut(interpolate(frame, [delay, Math.max(delay + 1, frames * 0.55)], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }))
+  const p = easeOut(
+    interpolate(frame, [delay, Math.max(delay + 1, frames * 0.55)], [0, 1], {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+    }),
+  )
   return (
     <>
       {text.slice(0, at)}

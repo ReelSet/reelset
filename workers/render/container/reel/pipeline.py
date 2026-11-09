@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
-from . import images, mix, props, source_images, sources, timing, tts, video, words as words_lib
+from . import images, media, mix, props, source_images, sources, timing, tts, video, words as words_lib
 from .cues import resolve_shots
 from .errors import RenderError
 from .validation import RenderRequest
@@ -89,6 +89,14 @@ def collect_visuals(
     return found
 
 
+def _safe(fn: Callable, *args):
+    try:
+        return fn(*args)
+    except Exception as err:
+        log.warning("optional media failed: %s", err)
+        return None
+
+
 def run_render(
     req: RenderRequest,
     job_dir: str,
@@ -97,16 +105,20 @@ def run_render(
     public_downloader: Downloader = images.download_public_image,
     page_fetcher: Callable = images.fetch_page,
     render: Callable = video.run_remotion,
+    fetch_broll: Callable = media.collect_broll,
+    fetch_demo: Callable = media.collect_demo,
 ) -> dict:
     started = time.monotonic()
     log_ctx = f"job={req.job_id}"
     assets_dir = os.path.join(job_dir, "assets")
     os.makedirs(assets_dir, exist_ok=True)
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         covers = pool.submit(
             collect_visuals, req, assets_dir, downloader, public_downloader, page_fetcher
         )
+        broll_job = pool.submit(_safe, fetch_broll, req.broll, assets_dir) if req.broll else None
+        demo_job = pool.submit(_safe, fetch_demo, req.demo, assets_dir) if req.demo else None
 
         text = req.narration_text()
         rate = timing.choose_rate(len(text))
@@ -138,6 +150,10 @@ def run_render(
                         "too_large", f"narration is {audio_seconds:.1f}s at {faster}, over the 60s cap"
                     )
         assets = covers.result()
+        if broll_job is not None:
+            assets["broll"] = broll_job.result() or []
+        if demo_job is not None:
+            assets["demo"] = demo_job.result()
 
     if not words:
         log.warning("%s no word timings from tts, estimating", log_ctx)
@@ -182,6 +198,7 @@ def run_render(
     )
     size = video.check_output_size(out_path)
 
+    credits = _credits(job_dir, assets)
     render_ms = int((time.monotonic() - started) * 1000)
     meta = {
         "jobId": req.job_id,
@@ -194,6 +211,20 @@ def run_render(
         "cover": bool(assets.get("cover")),
         "templateVersion": TEMPLATE_VERSION,
         "mix": mixed,
+        "credits": credits,
     }
     log.info("%s render ok %s", log_ctx, meta)
     return meta
+
+
+def _credits(job_dir: str, assets: dict) -> list:
+    """Attribution for the stock clips and README demo that the composition actually used."""
+    path = os.path.join(job_dir, "timeline.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            timeline = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return media.credits_for(
+        assets.get("broll") or [], timeline.get("usedBroll") or [], assets.get("demo"), bool(timeline.get("usedDemo"))
+    )
