@@ -11,15 +11,15 @@ One accent color, used sparingly for primary actions and progress.
 
 ## Tokens (defined in `src/app/globals.css` `@theme`)
 
-| Group   | Tokens                                                                              |
-| ------- | ----------------------------------------------------------------------------------- |
-| Surface | `bg #09090b`, `surface #111114`, `raised #19191e`, `hover #202026`                   |
-| Line    | `line` 8% white, `line-strong` 16% white                                             |
-| Text    | `fg #f4f4f5`, `muted #a1a1aa`, `faint #71717a`                                       |
-| Accent  | `accent #c8f751` with `accent-fg #0b0d04`                                            |
-| Status  | `ok #5fdc9a`, `warn #f5b84b`, `danger #ff6b6b`, `info #6cb6ff`                       |
-| Source  | `src-hn`, `src-reddit`, `src-youtube`, `src-github`, `src-news` (dots next to names) |
-| Radius  | `sm 8`, `md 12`, `lg 20`, pills `full`; sheets 28                                    |
+| Group   | Tokens                                                                                 |
+| ------- | -------------------------------------------------------------------------------------- |
+| Surface | `bg #09090b`, `surface #111114`, `raised #19191e`, `hover #202026`                     |
+| Line    | `line` 8% white, `line-strong` 16% white                                               |
+| Text    | `fg #f4f4f5`, `muted #a1a1aa`, `faint #71717a`                                         |
+| Accent  | `accent #c8f751` with `accent-fg #0b0d04`                                              |
+| Status  | `ok #5fdc9a`, `warn #f5b84b`, `danger #ff6b6b`, `info #6cb6ff`                         |
+| Source  | `src-hn`, `src-reddit`, `src-youtube`, `src-github`, `src-news` (dots next to names)   |
+| Radius  | `sm 8`, `md 12`, `lg 20`, pills `full`; sheets 28                                      |
 | Motion  | `fast 120ms`, `base 220ms`, `slow 420ms`; `ease-out` expo-out, `ease-spring` overshoot |
 
 ## Type
@@ -31,13 +31,33 @@ Geist Sans and Geist Mono via `next/font` (swap, no layout shift). Scale: 11 (la
 - Feed: full-height snap scroller. Phones: edge to edge, `object-fit: cover`, safe-area insets. Desktop (lg): centered 9:16 column sized from viewport height, rounded and hairline bordered, brand and nav on the left, prev/next and keyboard legend on the right.
 - Ask and Profile: single 42rem column. Admin: 14rem sidebar plus content up to 72rem.
 
+## Reel safe zones
+
+The render lane burns karaoke captions into the frame, so the app overlay must stay out of that band. Fractions are of the visible video area (the full 9:16 frame on desktop; phones use `object-fit: cover`, which crops only the sides because phones are taller than 9:16).
+
+| Zone                 | Where                                                                                      | Owner  |
+| -------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| Burned captions      | 58% to 72% of frame height from the top, centered, 80% wide, 2 lines max                   | render |
+| Scene content        | above 58% minus a 16px gap, and clear of the bottom 18% and right 14%                      | render |
+| App caption          | bottom 18% (collapsed), full width minus the rail (`pr-[16%]`)                             | web    |
+| App rail             | right 14% (`w-[14%]`, min 3.25rem), anchored to the bottom                                 | web    |
+| "Tap for sound" pill | just above the caption zone, at `bottom: 18% + 0.5rem`, left aligned; hidden when expanded | web    |
+
+Bottom 18% starts at 82% of frame height; the burned band ends at 72%, leaving a 10% gap, and the pill sits between at roughly 19 to 23% from the bottom (28% is the band's lower edge from the bottom).
+
+Short viewports (`short:` variant, `max-height: 760px`, covers 685px tall phones and small laptops): the caption title clamps to 1 line, the rail shrinks to 36px buttons with 4px gaps and drops its count labels, and padding tightens. Expanding the caption may grow beyond 18% on purpose (it is user initiated and hides the pill).
+
 ## Reel caption
 
-Instagram-like and minimal, bottom-left, clear of the right action rail (`pr-[4.25rem]`) and the bottom safe area (`env(safe-area-inset-bottom)`). No boxes or chips.
+Instagram-like and minimal, bottom-left, clear of the right action rail (`pr-[16%]`) and the bottom safe area (`env(safe-area-inset-bottom)`). No boxes or chips.
 
-- Collapsed: a 13px source line (dot, source name, domain), then the title at 15px semibold clamped to 2 lines with a muted "more". A faint bottom gradient (60% to 0) keeps it legible.
+- Collapsed: a 13px source line (dot, source name, domain), then the title at 15px semibold clamped to 2 lines (1 on short viewports) with a muted "more" inline at the end of the last line ("title text... more"). `ClampedTitle` measures a hidden twin and binary-searches the longest prefix that fits with the ellipsis and "more", re-running on resize. A faint bottom gradient (60% to 0) keeps it legible.
 - Expanded: tapping the title button reveals the full TLDR (14px) and the source link in place; the gradient deepens (85%) and the block grows with a 300ms grid-rows plus opacity transition (the one allowed exception to transform/opacity-only transitions). Tapping the TLDR or "less" collapses it. The title button carries `aria-expanded`/`aria-controls`; collapsed details are `inert`.
 - The caption stops click propagation so expanding never triggers the tap-to-pause or double-tap-like on the video. Expanded details scroll inside (`max-h-[38vh]`, `overscroll-contain`).
+
+## Auth cookies
+
+Supabase session cookies use domain `AUTH_COOKIE_DOMAIN` (`.reelset.app` in production) so one login covers `reelset.app` and `admin.reelset.app`. The domain applies only when the request host is under it, so localhost and `*.vercel.app` stay host-only. See `src/lib/auth/cookie-options.ts`. Legacy host-only cookies are moved to the shared domain by `proxy.ts` once per browser (marker cookie `rs_auth_domain`); sign-out and the auth callback expire the host-only copies too.
 
 ## Admin tables
 

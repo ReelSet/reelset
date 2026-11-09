@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type MutableRefObject } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { FeedItemDto } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import {
@@ -61,6 +61,7 @@ export function ReelCard(props: Props) {
   const [copied, setCopied] = useState(false)
   const toast = useToast()
   const detailsId = useId()
+  const shortViewport = useShortViewport()
   const [heart, setHeart] = useState(0)
 
   soundRef.current = soundOn
@@ -311,7 +312,7 @@ export function ReelCard(props: Props) {
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-3.5 pr-[4.25rem] pt-16">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3.5 pr-[16%] pt-10 short:pb-[max(0.5rem,env(safe-area-inset-bottom))] short:pt-6">
         <div
           aria-hidden
           className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"
@@ -321,16 +322,6 @@ export function ReelCard(props: Props) {
           className={`absolute inset-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}
         />
         <div className="relative flex min-h-0 flex-col" onClick={(e) => e.stopPropagation()}>
-          {active && !soundOn && !blocked && !paused && !failed && (
-            <button
-              type="button"
-              onClick={() => onSound(true)}
-              className="glass animate-fade-in pointer-events-auto mb-2 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
-            >
-              <VolumeIcon muted className="h-3.5 w-3.5" />
-              Tap for sound
-            </button>
-          )}
           <p className="pointer-events-auto mb-1 flex w-fit max-w-full items-center gap-1.5 text-[13px] text-white/70">
             <SourceDot source={sources[0] ?? 'news'} />
             <span className="shrink-0 font-medium text-white/85">
@@ -345,11 +336,12 @@ export function ReelCard(props: Props) {
               aria-expanded={expanded}
               aria-controls={detailsId}
               onClick={() => hasMore && setExpanded((v) => !v)}
-              className={`block w-full text-left ${hasMore ? 'cursor-pointer' : 'cursor-default'}`}
+              className={`relative block w-full text-left ${hasMore ? 'cursor-pointer' : 'cursor-default'}`}
             >
-              <span className={expanded ? '' : 'line-clamp-2'}>{item.title}</span>
-              {hasMore && !expanded && (
-                <span className="text-[13px] font-normal text-white/60">more</span>
+              {expanded ? (
+                item.title
+              ) : (
+                <ClampedTitle title={item.title} more={hasMore} lines={shortViewport ? 1 : 2} />
               )}
             </button>
           </h2>
@@ -395,7 +387,18 @@ export function ReelCard(props: Props) {
         </div>
       </div>
 
-      <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-2.5 z-30 flex flex-col items-center gap-4">
+      {active && !soundOn && !blocked && !paused && !failed && !expanded && (
+        <button
+          type="button"
+          onClick={() => onSound(true)}
+          className="glass animate-fade-in absolute bottom-[calc(18%+0.5rem)] left-3.5 z-30 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95 short:bottom-[calc(18%+0.25rem)]"
+        >
+          <VolumeIcon muted className="h-3.5 w-3.5" />
+          Tap for sound
+        </button>
+      )}
+
+      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] min-w-[3.25rem] flex-col items-center gap-2.5 short:bottom-[max(0.5rem,env(safe-area-inset-bottom))] short:gap-1">
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}
@@ -404,7 +407,7 @@ export function ReelCard(props: Props) {
         >
           <HeartIcon
             filled={item.liked}
-            className={`h-6 w-6 transition-all duration-300 ease-spring ${item.liked ? 'scale-110 text-danger' : ''}`}
+            className={`h-5 w-5 short:h-[18px] short:w-[18px] transition-all duration-300 ease-spring ${item.liked ? 'scale-110 text-danger' : ''}`}
           />
         </RailButton>
         <RailButton
@@ -412,10 +415,10 @@ export function ReelCard(props: Props) {
           text={String(item.mentions.length)}
           onClick={() => onOpenSources(item)}
         >
-          <LayersIcon className="h-6 w-6" />
+          <LayersIcon className="h-5 w-5 short:h-[18px] short:w-[18px]" />
         </RailButton>
         <RailButton label="Share" text={copied ? 'Copied' : 'Share'} onClick={() => void share()}>
-          <ShareIcon className="h-6 w-6" />
+          <ShareIcon className="h-5 w-5 short:h-[18px] short:w-[18px]" />
         </RailButton>
         <RailButton
           label={soundOn ? 'Mute' : 'Unmute'}
@@ -424,7 +427,7 @@ export function ReelCard(props: Props) {
             onSound(!soundOn)
           }}
         >
-          <VolumeIcon muted={!soundOn} className="h-6 w-6" />
+          <VolumeIcon muted={!soundOn} className="h-5 w-5 short:h-[18px] short:w-[18px]" />
         </RailButton>
       </div>
 
@@ -435,6 +438,75 @@ export function ReelCard(props: Props) {
         />
       </div>
     </section>
+  )
+}
+
+function useShortViewport(): boolean {
+  const [short, setShort] = useState(false)
+  useEffect(() => {
+    const query = window.matchMedia('(max-height: 760px)')
+    const update = () => setShort(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return short
+}
+
+function ClampedTitle({ title, more, lines }: { title: string; more: boolean; lines: number }) {
+  const measureRef = useRef<HTMLSpanElement>(null)
+  const [shown, setShown] = useState<{ text: string; cut: boolean } | null>(null)
+
+  useLayoutEffect(() => {
+    const box = measureRef.current
+    if (!box) return
+    const textNode = document.createTextNode('')
+    const moreNode = document.createElement('span')
+    moreNode.textContent = 'more'
+    box.replaceChildren(textNode, moreNode)
+    const compute = () => {
+      const lineHeight = parseFloat(getComputedStyle(box).lineHeight) || 20
+      const fits = (text: string, ellipsis: boolean) => {
+        textNode.data = ellipsis ? `${text}\u2026 ` : `${text} `
+        moreNode.hidden = !more
+        return box.scrollHeight <= lineHeight * lines + 1
+      }
+      if (fits(title, false)) return setShown({ text: title, cut: false })
+      let lo = 0
+      let hi = title.length
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2)
+        if (fits(title.slice(0, mid).trimEnd(), true)) lo = mid
+        else hi = mid - 1
+      }
+      setShown({ text: title.slice(0, lo).trimEnd(), cut: true })
+    }
+    compute()
+    const observer = new ResizeObserver(compute)
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [title, more, lines])
+
+  return (
+    <>
+      <span
+        ref={measureRef}
+        aria-hidden
+        className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 block text-[15px] font-semibold leading-snug [&>span]:text-[13px] [&>span]:font-normal"
+      />
+      {shown ? (
+        <>
+          <span className="sr-only">{title}</span>
+          <span aria-hidden>
+            {shown.text}
+            {shown.cut ? '\u2026 ' : ' '}
+            {more && <span className="text-[13px] font-normal text-white/60">more</span>}
+          </span>
+        </>
+      ) : (
+        <span className="line-clamp-2">{title}</span>
+      )}
+    </>
   )
 }
 
@@ -457,12 +529,16 @@ function RailButton({
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className="group flex w-12 flex-col items-center gap-1 text-white"
+      className="group flex w-full flex-col items-center gap-0.5 text-white"
     >
-      <span className="glass grid h-11 w-11 place-items-center rounded-full transition duration-150 ease-out group-hover:bg-white/15 group-active:scale-90">
+      <span className="glass grid h-10 w-10 place-items-center short:h-9 short:w-9 rounded-full transition duration-150 ease-out group-hover:bg-white/15 group-active:scale-90">
         {children}
       </span>
-      {text && <span className="text-[11px] font-medium text-white/80 tabular-nums">{text}</span>}
+      {text && (
+        <span className="text-[11px] font-medium leading-none text-white/80 tabular-nums short:hidden">
+          {text}
+        </span>
+      )}
     </button>
   )
 }

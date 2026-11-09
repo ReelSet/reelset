@@ -56,12 +56,14 @@ export default {
         voice: env.TTS_VOICE ?? DEFAULT_VOICE,
         log,
       }
-      for (const message of batch.messages) {
-        const result = await processRenderJob(deps, message.body, message.attempts)
-        if (result.action === 'ack') message.ack()
-        else if (result.action === 'retry') message.retry({ delaySeconds: result.delaySeconds })
-        else message.retry()
-      }
+      await Promise.all(
+        batch.messages.map(async (message) => {
+          const result = await processRenderJob(deps, message.body, message.attempts)
+          if (result.action === 'ack') message.ack()
+          else if (result.action === 'retry') message.retry({ delaySeconds: result.delaySeconds })
+          else message.retry()
+        }),
+      )
     } finally {
       await close()
     }

@@ -4,10 +4,10 @@ import { Card } from '../Media'
 import { Rise, useSpring } from '../fx'
 import { fitText } from '../lib/text'
 import type { Word } from '../lib/types'
-import { COLOR, CONTENT_W, FONT, SAFE, SCENE_H, SCENE_TOP } from '../theme'
+import { COLOR, CONTENT_W, FONT, SAFE, SCENE_BOTTOM, SCENE_TOP } from '../theme'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 
-const CARD_H = 392
+const CARD_H = 330
 const TEXT_GAP = 36
 
 function KineticWord({ word, size }: { word: Word; size: number }) {
@@ -48,7 +48,7 @@ export function HookScene({
 }) {
   const size = fitText(
     text,
-    { width: CONTENT_W, height: 960 - (SCENE_TOP + CARD_H + TEXT_GAP) },
+    { width: CONTENT_W, height: SCENE_BOTTOM - (SCENE_TOP + CARD_H + TEXT_GAP) },
     {
       min: 38,
       max: 76,

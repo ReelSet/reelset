@@ -16,6 +16,8 @@ import {
   TEMPLATE_VERSION,
   UPGRADE_BATCH_SIZE,
   UPGRADE_CANDIDATE_LIMIT,
+  UPGRADE_IN_FLIGHT_TARGET,
+  UPGRADE_PENDING_TTL_MS,
 } from './constants'
 import { REELS_PREFIX } from './keys'
 import {
@@ -24,6 +26,7 @@ import {
   findOrphanKeys,
   retentionCutoff,
   stuckCutoff,
+  upgradeBatchSize,
 } from './plan'
 import type { MaintenanceStore } from './store'
 
@@ -52,7 +55,7 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<void> {
   await step('stuck', log, () => failStuck(deps, now, log))
   await step('orphans', log, () => cleanOrphans(deps, now, log))
   await step('retention', log, () => applyRetention(deps, now, log))
-  await step('upgrade', log, () => upgradeTemplates(deps, log))
+  await step('upgrade', log, () => upgradeTemplates(deps, log, now))
   await step('alerts', log, () => checkAlerts(deps, now, log))
   log.info('maintenance finished')
 }
@@ -123,11 +126,20 @@ export async function checkAlerts(deps: MaintenanceDeps, now: Date, log: Logger)
   }
 }
 
-/** Re-renders rendered items whose current-template render does not exist yet, a few per run. */
-export async function upgradeTemplates(deps: MaintenanceDeps, log: Logger): Promise<number> {
+/** Tops re-renders up to a bounded in-flight count so new items are never starved. */
+export async function upgradeTemplates(
+  deps: MaintenanceDeps,
+  log: Logger,
+  now: Date = new Date(),
+): Promise<number> {
   const upgrade = deps.upgrade
   if (!upgrade) return 0
-  if ((await deps.store.activeRenderCount()) > 0) return 0
+  const [rendering, pendingNew, sentBefore] = await Promise.all([
+    deps.store.activeRenderCount(),
+    deps.store.pendingNewItemCount(),
+    deps.store.getUpgradeSent(),
+  ])
+  const recent = sentBefore.filter((s) => now.getTime() - s.at < UPGRADE_PENDING_TTL_MS)
   const candidates = await deps.store.renderedForUpgrade(UPGRADE_CANDIDATE_LIMIT)
   const keyed = await Promise.all(
     candidates.map(async (c) => ({
@@ -143,18 +155,35 @@ export async function upgradeTemplates(deps: MaintenanceDeps, log: Logger): Prom
   )
   const existing = await deps.store.existingRenderKeys(keyed.map((k) => k.key))
   const stale = keyed.filter((k) => !existing.has(k.key))
-  const batch = stale.slice(0, UPGRADE_BATCH_SIZE).map((k) => k.id)
+  const staleIds = new Set(stale.map((k) => k.id))
+  const pending = recent.filter((s) => staleIds.has(s.id))
+  const size = upgradeBatchSize({
+    target: UPGRADE_IN_FLIGHT_TARGET,
+    rendering,
+    pendingUpgrades: pending.length,
+    pendingNew,
+    cap: UPGRADE_BATCH_SIZE,
+  })
+  const pendingIds = new Set(pending.map((s) => s.id))
+  const batch = stale
+    .filter((k) => !pendingIds.has(k.id))
+    .slice(0, size)
+    .map((k) => k.id)
   if (batch.length > 0) {
     await upgrade.send(batch)
-    log.info(
-      {
-        queued: batch.length,
-        remaining: stale.length - batch.length,
-        templateVersion: TEMPLATE_VERSION,
-      },
-      'queued template upgrade renders',
-    )
+    await deps.store.setUpgradeSent([...pending, ...batch.map((id) => ({ id, at: now.getTime() }))])
   }
+  log.info(
+    {
+      queued: batch.length,
+      rendering,
+      pendingUpgrades: pending.length,
+      pendingNew,
+      remaining: stale.length - pending.length - batch.length,
+      templateVersion: TEMPLATE_VERSION,
+    },
+    'template upgrade sweep',
+  )
   return batch.length
 }
 

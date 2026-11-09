@@ -26,12 +26,13 @@
       {
         "queue": "render-jobs",
         "max_batch_size": 3,
-        "max_concurrency": 2,
+        "max_batch_timeout": 2,
+        "max_concurrency": 1,
         "max_retries": 3,
         "dead_letter_queue": "render-jobs-dlq",
       },
     ],
   },
-  "triggers": { "crons": ["*/10 * * * *"] },
+  "triggers": { "crons": ["*/5 * * * *"] },
   "vars": { "TTS_VOICE": "en-US-AriaNeural" },
 }

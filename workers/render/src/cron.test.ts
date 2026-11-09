@@ -11,7 +11,7 @@ import {
 } from './cron'
 import type { ExpiredRender, MaintenanceStore } from './store'
 import { silentLog } from './testing'
-import { TEMPLATE_VERSION, UPGRADE_BATCH_SIZE } from './constants'
+import { TEMPLATE_VERSION, UPGRADE_BATCH_SIZE, UPGRADE_IN_FLIGHT_TARGET } from './constants'
 
 const now = new Date('2026-11-09T12:00:00Z')
 const old = new Date('2026-11-07T00:00:00Z')
@@ -38,6 +38,9 @@ function setup(overrides: Partial<MaintenanceStore> = {}, listPage?: unknown) {
     renderedForUpgrade: async () => [],
     existingRenderKeys: async () => new Set(),
     activeRenderCount: async () => 0,
+    pendingNewItemCount: async () => 0,
+    getUpgradeSent: async () => [],
+    setUpgradeSent: async () => {},
     getOrphanCursor: async () => 'c0',
     setOrphanCursor: async (c) => {
       track('cursor', c)
@@ -188,8 +191,34 @@ describe('template upgrade sweep', () => {
     expect(sent[0]).toEqual(candidates.slice(2, 2 + UPGRADE_BATCH_SIZE).map((c) => c.id))
   })
 
+  it('tops up only the free slots below the in-flight target', async () => {
+    const { deps, sent } = withUpgrade({ activeRenderCount: async () => 2 })
+    expect(await upgradeTemplates(deps, silentLog)).toBe(UPGRADE_IN_FLIGHT_TARGET - 2)
+    expect(sent[0]).toHaveLength(UPGRADE_IN_FLIGHT_TARGET - 2)
+  })
+
+  it('counts new-item backlog and recently sent upgrades before adding more', async () => {
+    const recent = candidates.slice(0, 2).map((c) => ({ id: c.id, at: now.getTime() - 60_000 }))
+    const saved: unknown[] = []
+    const { deps, sent } = withUpgrade({
+      pendingNewItemCount: async () => 1,
+      getUpgradeSent: async () => recent,
+      setUpgradeSent: async (s) => void saved.push(s),
+    })
+    expect(await upgradeTemplates(deps, silentLog, now)).toBe(UPGRADE_IN_FLIGHT_TARGET - 3)
+    expect(sent[0]).toEqual(candidates.slice(2, 2 + UPGRADE_IN_FLIGHT_TARGET - 3).map((c) => c.id))
+    expect(saved[0]).toHaveLength(2 + UPGRADE_IN_FLIGHT_TARGET - 3)
+  })
+
+  it('ignores sent entries older than the pending window', async () => {
+    const old = candidates.slice(0, 3).map((c) => ({ id: c.id, at: now.getTime() - 3_600_000 }))
+    const { deps, sent } = withUpgrade({ getUpgradeSent: async () => old })
+    await upgradeTemplates(deps, silentLog, now)
+    expect(sent[0]).toEqual(candidates.slice(0, UPGRADE_BATCH_SIZE).map((c) => c.id))
+  })
+
   it('does nothing while a render is in flight, when up to date, or when not configured', async () => {
-    const busy = withUpgrade({ activeRenderCount: async () => 1 })
+    const busy = withUpgrade({ activeRenderCount: async () => UPGRADE_IN_FLIGHT_TARGET })
     expect(await upgradeTemplates(busy.deps, silentLog)).toBe(0)
     const current = withUpgrade({ existingRenderKeys: async (keys) => new Set(keys) })
     expect(await upgradeTemplates(current.deps, silentLog)).toBe(0)

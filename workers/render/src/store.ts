@@ -1,6 +1,6 @@
 import { sql } from 'kysely'
 import type { Database, ItemStatus, Logger, RenderStatus, Source } from '@reelset/core'
-import { MAX_RETRIES, ORPHAN_CURSOR_SETTING_KEY } from './constants'
+import { MAX_RETRIES, ORPHAN_CURSOR_SETTING_KEY, UPGRADE_SENT_SETTING_KEY } from './constants'
 import { sourceLabel } from './plan'
 
 export type ItemForRender = {
@@ -42,6 +42,7 @@ export interface RenderStore {
 export type StuckRender = { renderId: string; itemId: string }
 export type ExpiredRender = { id: string; videoKey: string | null; posterKey: string | null }
 
+export type UpgradeSent = { id: string; at: number }
 export type UpgradeCandidate = { id: string; contentHash: string; promptVersion: string }
 
 export interface MaintenanceStore {
@@ -54,6 +55,9 @@ export interface MaintenanceStore {
   renderedForUpgrade(limit: number): Promise<UpgradeCandidate[]>
   existingRenderKeys(keys: readonly string[]): Promise<Set<string>>
   activeRenderCount(): Promise<number>
+  pendingNewItemCount(): Promise<number>
+  getUpgradeSent(): Promise<UpgradeSent[]>
+  setUpgradeSent(sent: UpgradeSent[]): Promise<void>
   getOrphanCursor(): Promise<string | null>
   setOrphanCursor(cursor: string | null): Promise<void>
 }
@@ -289,6 +293,38 @@ export function createMaintenanceStore(db: Database): MaintenanceStore {
         .where('status', '=', 'rendering')
         .executeTakeFirstOrThrow()
       return Number(row.n)
+    },
+
+    async pendingNewItemCount() {
+      const row = await db
+        .selectFrom('item')
+        .select(sql<string>`count(*)`.as('n'))
+        .where('status', 'in', ['embedded', 'voiced'])
+        .executeTakeFirstOrThrow()
+      return Number(row.n)
+    },
+
+    async getUpgradeSent() {
+      const row = await db
+        .selectFrom('app_setting')
+        .select('value')
+        .where('key', '=', UPGRADE_SENT_SETTING_KEY)
+        .executeTakeFirst()
+      const value = row?.value
+      if (!Array.isArray(value)) return []
+      return value.flatMap((v) => {
+        const e = v as Partial<UpgradeSent> | null
+        return typeof e?.id === 'string' && typeof e.at === 'number' ? [{ id: e.id, at: e.at }] : []
+      })
+    },
+
+    async setUpgradeSent(sent) {
+      const value = JSON.stringify(sent)
+      await db
+        .insertInto('app_setting')
+        .values({ key: UPGRADE_SENT_SETTING_KEY, value })
+        .onConflict((oc) => oc.column('key').doUpdateSet({ value, updated_at: sql`now()` }))
+        .execute()
     },
 
     async getOrphanCursor() {

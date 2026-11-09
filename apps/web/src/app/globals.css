@@ -137,6 +137,8 @@ body {
 @utility pt-safe {
   padding-top: max(0.75rem, env(safe-area-inset-top));
 }
+@custom-variant short (@media (max-height: 760px));
+
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar {

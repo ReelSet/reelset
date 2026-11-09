@@ -3,6 +3,7 @@ import { CONTAINER_USD_PER_SECOND } from './constants'
 import { RenderJobError } from './errors'
 import { containerJobId, posterKeyFor, videoKeyFor } from './keys'
 import {
+  upgradeBatchSize,
   classifyFailure,
   collectImageUrls,
   deadLetterGrowing,
@@ -182,5 +183,21 @@ describe('sourceImageUrls', () => {
     expect(sourceImageUrls('github', ['not a url', 'https://github.com/'])).toEqual([])
     expect(sourceImageUrls('youtube', ['https://youtube.com/watch?v=short'])).toEqual([])
     expect(sourceImageUrls(null, [])).toEqual([])
+  })
+})
+
+describe('upgradeBatchSize', () => {
+  const base = { target: 6, rendering: 0, pendingUpgrades: 0, pendingNew: 0, cap: 6 }
+
+  it('fills the free in-flight slots up to the cap', () => {
+    expect(upgradeBatchSize(base)).toBe(6)
+    expect(upgradeBatchSize({ ...base, rendering: 2, pendingUpgrades: 1 })).toBe(3)
+    expect(upgradeBatchSize({ ...base, cap: 4 })).toBe(4)
+  })
+
+  it('gives new items priority and never goes negative', () => {
+    expect(upgradeBatchSize({ ...base, pendingNew: 4 })).toBe(2)
+    expect(upgradeBatchSize({ ...base, pendingNew: 9 })).toBe(0)
+    expect(upgradeBatchSize({ ...base, rendering: 3, pendingUpgrades: 3 })).toBe(0)
   })
 })
