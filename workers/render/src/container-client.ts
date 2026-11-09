@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { Logger, Source } from '@reelset/core'
 import { errorFields } from '@reelset/core'
-import { CONTAINER_BASE_URL, RENDER_TIMEOUT_MS } from './constants'
+import { CONTAINER_BASE_URL, RENDER_TIMEOUT_MS, TEMPLATE_VERSION } from './constants'
 import { RenderJobError, parseErrorCode } from './errors'
 
 export type ContainerFetcher = { fetch(request: Request): Promise<Response> }
@@ -28,6 +28,7 @@ const metadataSchema = z.object({
   renderMs: z.number().int().nonnegative(),
   illustration: z.boolean().default(false),
   cover: z.boolean().default(false),
+  templateVersion: z.string().optional(),
 })
 export type RenderMetadata = z.infer<typeof metadataSchema>
 
@@ -85,6 +86,17 @@ export function createContainerClient(fetcher: ContainerFetcher, log: Logger): C
       const parsed = metadataSchema.safeParse(await res.json().catch(() => null))
       if (!parsed.success) {
         throw new RenderJobError('bad_container_response', 'render metadata did not validate')
+      }
+      if (parsed.data.templateVersion !== TEMPLATE_VERSION) {
+        log.warn(
+          { reported: parsed.data.templateVersion ?? null, expected: TEMPLATE_VERSION },
+          'container rendered with a different template version, discarding',
+        )
+        await this.remove(input.jobId)
+        throw new RenderJobError(
+          'stale_container_template',
+          `container template ${parsed.data.templateVersion ?? 'unknown'} != ${TEMPLATE_VERSION}`,
+        )
       }
       return parsed.data
     },

@@ -225,6 +225,7 @@ async function summarize(
     .execute()
   const promptChunks = selectPromptChunks(stored)
   const chunkIds = new Set(stored.map((c) => c.id))
+  const promptChunkIds = new Set(promptChunks.map((c) => c.id))
   const sourceText = [
     item.title,
     item.canonical_url,
@@ -276,7 +277,7 @@ async function summarize(
       'llm call done',
     )
 
-    const parsed = parseModelOutput(result.text)
+    const parsed = parseModelOutput(result.text, promptChunkIds)
     if (!parsed.ok) {
       rejection = parsed.reason
       log.warn({ attempt, reason: rejection }, 'model output rejected (parse)')

@@ -76,7 +76,8 @@ export function selectPromptChunks<T extends { text: string }>(chunks: readonly 
   const out: T[] = []
   let chars = 0
   for (const chunk of chunks) {
-    if (out.length >= MAX_PROMPT_CHUNKS || chars + chunk.text.length > MAX_PROMPT_CHARS) break
+    if (out.length >= MAX_PROMPT_CHUNKS) break
+    if (chars + chunk.text.length > MAX_PROMPT_CHARS) continue
     out.push(chunk)
     chars += chunk.text.length
   }

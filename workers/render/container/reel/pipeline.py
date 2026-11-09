@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
+from .version import TEMPLATE_VERSION
 from . import illustration, images, props, sources, timing, tts, video, words as words_lib
 from .errors import RenderError
 from .validation import RenderRequest
@@ -159,6 +160,7 @@ def run_render(
         "renderMs": render_ms,
         "illustration": bool(illustration_file),
         "cover": bool(assets.get("cover")),
+        "templateVersion": TEMPLATE_VERSION,
     }
     log.info("%s render ok %s", log_ctx, meta)
     return meta

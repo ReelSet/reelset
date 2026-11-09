@@ -150,7 +150,22 @@ function clip(o: Obj, key: string, max: number): void {
  * the LLM spend and the daily reel slot, so trim at word boundaries and fill a missing quote
  * attribution before strict validation. Anything structurally wrong is still rejected.
  */
-export function repairModelOutput(json: unknown): unknown {
+export function dropUnknownChunkIds(claims: unknown[], allowed: ReadonlySet<string>): unknown[] {
+  const byLower = new Map([...allowed].map((id) => [id.toLowerCase(), id]))
+  const kept: unknown[] = []
+  for (const claim of claims) {
+    if (!isObj(claim) || !Array.isArray(claim.chunkIds)) continue
+    const ids = claim.chunkIds
+      .map((id) => (typeof id === 'string' ? byLower.get(id.trim().toLowerCase()) : undefined))
+      .filter((id): id is string => id !== undefined)
+    if (ids.length === 0) continue
+    claim.chunkIds = [...new Set(ids)]
+    kept.push(claim)
+  }
+  return kept
+}
+
+export function repairModelOutput(json: unknown, allowedChunkIds?: ReadonlySet<string>): unknown {
   if (!isObj(json)) return json
   clip(json, 'tldr', MAX_TLDR_CHARS)
   if (Array.isArray(json.topics)) {
@@ -166,6 +181,7 @@ export function repairModelOutput(json: unknown): unknown {
   clip(script, 'outro', 120)
   if (Array.isArray(script.claims)) {
     for (const claim of script.claims) if (isObj(claim)) clip(claim, 'text', 220)
+    if (allowedChunkIds) script.claims = dropUnknownChunkIds(script.claims, allowedChunkIds)
   }
   if (Array.isArray(script.beats)) {
     const beats: unknown[] = script.beats.slice(0, 6)
@@ -199,7 +215,10 @@ export function repairModelOutput(json: unknown): unknown {
 
 export type ParsedOutput = { ok: true; value: GeneratedContent } | { ok: false; reason: string }
 
-export function parseModelOutput(text: string): ParsedOutput {
+export function parseModelOutput(
+  text: string,
+  allowedChunkIds?: ReadonlySet<string>,
+): ParsedOutput {
   const stripped = text
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -210,7 +229,7 @@ export function parseModelOutput(text: string): ParsedOutput {
   } catch {
     return { ok: false, reason: 'response was not valid JSON' }
   }
-  const parsed = outputSchema.safeParse(repairModelOutput(json))
+  const parsed = outputSchema.safeParse(repairModelOutput(json, allowedChunkIds))
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 5)

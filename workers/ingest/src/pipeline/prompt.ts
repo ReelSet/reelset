@@ -21,7 +21,7 @@ Rules:
 - Use only facts stated in the sources. Do not invent numbers, names, benchmarks or quotes.
 - Do not write any URL unless it appears verbatim in the sources.
 - Neutral, plain language. No profanity, slurs or insults, even when quoting.
-- Every claim in "claims" must cite the chunk_id values (UUIDs) of the sources that support it. Use only chunk_ids shown in the sources.
+- Every claim in "claims" must cite the chunk_id values (UUIDs) of the sources that support it. Copy them exactly from the ALLOWED_CHUNK_IDS list. Never invent, shorten or alter an id, and never cite anything else (not arXiv ids, DOIs or section names).
 - Image visuals may only use a URL from the ALLOWED_IMAGE_URLS list. If the list is empty, do not use image visuals.
 - Character limits below are hard limits. Aim for about 80% of each limit and count characters before answering. Every quote visual needs a non-empty attribution.
 - Total narration (hook, beats, outro) should take about 30 to 45 seconds to speak.
@@ -62,6 +62,7 @@ export function buildUserPrompt(input: PromptInput): string {
     `Item title (untrusted): ${escapeUntrusted(input.title)}`,
     `Item URL: ${input.canonicalUrl}`,
     `ALLOWED_IMAGE_URLS:\n${escapeUntrusted(images)}`,
+    `ALLOWED_CHUNK_IDS:\n${input.chunks.map((c) => c.id).join('\n')}`,
     `SOURCES:\n${sources}`,
   ]
   if (input.rejection) {

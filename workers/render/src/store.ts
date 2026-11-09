@@ -273,6 +273,11 @@ export function createMaintenanceStore(db: Database): MaintenanceStore {
         .selectFrom('render')
         .select('render_key')
         .where('render_key', 'in', keys)
+        .where((eb) =>
+          eb.not(
+            eb.and([eb('status', '=', 'failed'), eb('error', '=', 'stale_container_template')]),
+          ),
+        )
         .execute()
       return new Set(rows.map((r) => r.render_key))
     },

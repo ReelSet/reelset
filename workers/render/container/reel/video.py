@@ -74,7 +74,11 @@ def run_remotion(job_dir: str, timeout: int = REMOTION_TIMEOUT_SECONDS) -> None:
     """Render <job_dir>/props.json to <job_dir>/raw.mp4 with the prebuilt composition bundle."""
     try:
         proc = subprocess.run(
-            ["node", REMOTION_SCRIPT, job_dir], capture_output=True, text=True, timeout=timeout
+            ["node", REMOTION_SCRIPT, job_dir],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=os.path.dirname(os.path.abspath(REMOTION_SCRIPT)),
         )
     except subprocess.TimeoutExpired as err:
         raise RenderError("ffmpeg_failed", "remotion render timed out") from err

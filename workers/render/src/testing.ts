@@ -1,4 +1,5 @@
 import { createLogger, type SpendInput, type TransitionInput } from '@reelset/core'
+import { TEMPLATE_VERSION } from './constants'
 import type { ContainerFetcher } from './container-client'
 import type { ItemForRender, RenderDone, RenderRow, RenderStore } from './store'
 
@@ -104,6 +105,7 @@ export class FakeContainer implements ContainerFetcher {
         renderMs: 20_000,
         illustration: true,
         cover: true,
+        templateVersion: TEMPLATE_VERSION,
       }
       return Response.json(body, { status })
     }
