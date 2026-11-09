@@ -8,10 +8,6 @@ describe('containerEnvVars', () => {
     })
   })
 
-  it('passes GEMINI_API_KEY through for illustrations', () => {
-    expect(containerEnvVars({ GEMINI_API_KEY: ' k ' })).toEqual({ GEMINI_API_KEY: 'k' })
-  })
-
   it('is empty without PROXY_URLS so the container runs direct', () => {
     expect(containerEnvVars({})).toEqual({})
     expect(containerEnvVars({ PROXY_URLS: '  ' })).toEqual({})

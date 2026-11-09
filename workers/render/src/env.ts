@@ -7,7 +7,6 @@ export type Env = {
   TTS_VOICE?: string
   ALERT_WEBHOOK_URL?: string
   PROXY_URLS?: string
-  GEMINI_API_KEY?: string
   RENDER_JOBS: Queue<{ itemId: string }>
   LOG_LEVEL?: string
 }

@@ -26,16 +26,11 @@ def build_props(
     total_seconds: float,
     assets: dict,
 ) -> dict:
-    """Composition props. `assets` maps role -> file name inside the job's assets dir:
-    illustration, cover, audio, and images {script url: file name}."""
+    """Composition props. `assets` maps role -> file name inside the job's assets dir: cover
+    (optional source card) and audio. All visuals are drawn by the composition."""
     scenes = [{"kind": "hook", "start": spans[0][0], "end": spans[0][1], "text": req.hook}]
     for beat, (start, end) in zip(req.beats, spans[1:-1]):
-        visual = dict(beat.visual)
-        if visual["type"] == "image":
-            visual = {"type": "image"}
-            file = assets.get("images", {}).get(beat.visual["url"])
-            if file:
-                visual["file"] = file
+        visual = {"type": "image"} if beat.visual["type"] == "image" else dict(beat.visual)
         scenes.append(
             {"kind": "beat", "start": start, "end": end, "text": beat.text, "visual": visual}
         )
@@ -51,13 +46,8 @@ def build_props(
         "words": [_word(w) for w in words],
         "audio": f"job/{assets['audio']}",
     }
-    for role in ("illustration", "cover"):
-        if assets.get(role):
-            props[role] = f"job/{assets[role]}"
-    for scene in props["scenes"]:
-        file = scene.get("visual", {}).get("file")
-        if file:
-            scene["visual"]["file"] = f"job/{file}"
+    if assets.get("cover"):
+        props["cover"] = f"job/{assets['cover']}"
     return props
 
 

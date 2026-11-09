@@ -30,7 +30,6 @@ class RenderRequest:
     source: str = "news"
     canonical_url: str = ""
     source_image_urls: list = field(default_factory=list)
-    illustrate: bool = True
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -137,7 +136,6 @@ def validate_render_request(payload) -> RenderRequest:
         source=source,
         canonical_url=canonical_url,
         source_image_urls=list(source_image_urls),
-        illustrate=payload.get("illustrate", True) is not False,
     )
 
 

@@ -1,6 +1,6 @@
 """Render one payload through the real pipeline without HTTP: python tools/render_local.py payload.json out_dir
 
-Needs node + `npm run bundle` in remotion/ (or the Docker image). GEMINI_API_KEY enables illustrations.
+Needs node + `npm run bundle` in remotion/ (or the Docker image).
 """
 import json
 import logging

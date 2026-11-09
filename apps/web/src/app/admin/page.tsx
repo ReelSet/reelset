@@ -2,7 +2,15 @@ import { Source } from '@reelset/core'
 import Link from 'next/link'
 import { z } from 'zod'
 import { fmtDate, fmtMs, truncate } from '@/lib/admin/format'
-import { parsePage } from '@/lib/admin/pagination'
+import { pageHref, parsePage } from '@/lib/admin/pagination'
+import { parseSort, sortParams, type SortState } from '@/lib/admin/sort'
+import {
+  SortBar,
+  SortTh,
+  sortQuery,
+  type SortColumn,
+  type SortCtx,
+} from '@/components/admin/sortable'
 import { suggestRetryStage } from '@/lib/admin/retry'
 import {
   DiscardItemForm,
@@ -23,16 +31,37 @@ import {
 import { SourceDot } from '@/components/ui/sources'
 import { assertAdmin } from '@/server/admin/guard'
 import {
+  FAILED_SORT_KEYS,
+  STUCK_SORT_KEYS,
   failedItems,
   itemTimeline,
   sourceStatusMatrix,
   statusCounts,
   stuckItems,
   STUCK_MINUTES,
+  type FailedSortKey,
+  type StuckSortKey,
 } from '@/server/admin/queries'
 import { getDb } from '@/server/db'
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
+
+const FAILED_DEFAULT: SortState<FailedSortKey> = { key: 'failed', dir: 'desc' }
+const FAILED_COLUMNS: SortColumn<FailedSortKey>[] = [
+  { key: 'title', label: 'Item', firstDir: 'asc' },
+  { key: 'failed', label: 'Failed at' },
+  { key: 'attempts', label: 'Attempts' },
+  { key: 'error', label: 'Error', firstDir: 'asc' },
+]
+const STUCK_NAMES = { sort: 'ssort', dir: 'sdir' }
+const STUCK_DEFAULT: SortState<StuckSortKey> = { key: 'queued', dir: 'asc' }
+const STUCK_COLUMNS: SortColumn<StuckSortKey>[] = [
+  { key: 'title', label: 'Item', firstDir: 'asc' },
+  { key: 'status', label: 'Status', firstDir: 'asc' },
+  { key: 'attempts', label: 'Attempts' },
+  { key: 'queued', label: 'Queued at', firstDir: 'asc' },
+  { key: 'error', label: 'Last error', firstDir: 'asc' },
+]
 
 export default async function PipelinePage({ searchParams }: Props) {
   await assertAdmin()
@@ -41,11 +70,39 @@ export default async function PipelinePage({ searchParams }: Props) {
   const page = parsePage(sp.page, 25)
   const itemId = z.guid().safeParse(Array.isArray(sp.item) ? sp.item[0] : sp.item)
 
+  const failedSort = parseSort(sp, FAILED_SORT_KEYS, FAILED_DEFAULT)
+  const stuckSort = parseSort(sp, STUCK_SORT_KEYS, STUCK_DEFAULT, STUCK_NAMES)
+  const itemParam = itemId.success ? itemId.data : undefined
+  const failedCtx: SortCtx<FailedSortKey> = {
+    path: '/admin',
+    params: {
+      item: itemParam,
+      ...sortParams(stuckSort, STUCK_DEFAULT, STUCK_NAMES),
+    },
+    sort: failedSort,
+    fallback: FAILED_DEFAULT,
+    columns: FAILED_COLUMNS,
+  }
+  const stuckCtx: SortCtx<StuckSortKey> = {
+    path: '/admin',
+    params: {
+      item: itemParam,
+      page: page.page > 1 ? String(page.page) : undefined,
+      ...sortQuery(failedCtx),
+    },
+    sort: stuckSort,
+    fallback: STUCK_DEFAULT,
+    columns: STUCK_COLUMNS,
+    names: STUCK_NAMES,
+  }
+  const listParams = { ...failedCtx.params, ...sortQuery(failedCtx) }
+  const returnTo = pageHref('/admin', { ...listParams, item: undefined }, page.page)
+
   const [counts, matrix, stuck, failed, timeline] = await Promise.all([
     statusCounts(db),
     sourceStatusMatrix(db),
-    stuckItems(db),
-    failedItems(db, page),
+    stuckItems(db, stuckSort),
+    failedItems(db, page, failedSort),
     itemId.success ? itemTimeline(db, itemId.data) : Promise.resolve(null),
   ])
 
@@ -212,30 +269,31 @@ export default async function PipelinePage({ searchParams }: Props) {
         {stuck.length === 0 ? (
           <Empty>No stuck items</Empty>
         ) : (
-          <Table>
-            <thead>
-              <tr>
-                <th className={th}>Item</th>
-                <th className={th}>Status</th>
-                <th className={th}>Attempts</th>
-                <th className={th}>Queued at</th>
-                <th className={th}>Last error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stuck.map((i) => (
-                <tr key={i.id}>
-                  <td className={td}>
-                    <Link href={`/admin?item=${i.id}`}>{truncate(i.title, 80)}</Link>
-                  </td>
-                  <td className={td}>{i.status}</td>
-                  <td className={td}>{i.attempts}</td>
-                  <td className={td}>{fmtDate(i.queued_at)}</td>
-                  <td className={`${td} text-danger`}>{truncate(i.last_error, 120)}</td>
+          <>
+            <SortBar ctx={stuckCtx} />
+            <Table>
+              <thead>
+                <tr>
+                  {STUCK_COLUMNS.map((c) => (
+                    <SortTh key={c.key} ctx={stuckCtx} col={c.key} />
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {stuck.map((i) => (
+                  <tr key={i.id}>
+                    <td className={td}>
+                      <Link href={`/admin?item=${i.id}`}>{truncate(i.title, 80)}</Link>
+                    </td>
+                    <td className={td}>{i.status}</td>
+                    <td className={td}>{i.attempts}</td>
+                    <td className={td}>{fmtDate(i.queued_at)}</td>
+                    <td className={`${td} text-danger`}>{truncate(i.last_error, 120)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </>
         )}
       </Section>
 
@@ -243,44 +301,43 @@ export default async function PipelinePage({ searchParams }: Props) {
         {failed.rows.length === 0 ? (
           <Empty>No failed items</Empty>
         ) : (
-          <Table>
-            <thead>
-              <tr>
-                <th className={th}>Item</th>
-                <th className={th}>Failed at</th>
-                <th className={th}>Attempts</th>
-                <th className={th}>Error</th>
-                <th className={th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {failed.rows.map((i) => (
-                <tr key={i.id}>
-                  <td className={td}>
-                    <Link href={`/admin?item=${i.id}`}>{truncate(i.title, 80)}</Link>
-                  </td>
-                  <td className={td}>{fmtDate(i.status_changed_at)}</td>
-                  <td className={td}>{i.attempts}</td>
-                  <td className={`${td} text-danger`}>{truncate(i.last_error, 200)}</td>
-                  <td className={td}>
-                    <div className="flex gap-3">
-                      <RetryItemForm
-                        itemId={i.id}
-                        defaultStage={suggestRetryStage(i.last_ok_stage)}
-                        returnTo={page.page > 1 ? `/admin?page=${page.page}` : '/admin'}
-                      />
-                      <DiscardItemForm
-                        itemId={i.id}
-                        returnTo={page.page > 1 ? `/admin?page=${page.page}` : '/admin'}
-                      />
-                    </div>
-                  </td>
+          <>
+            <SortBar ctx={failedCtx} />
+            <Table>
+              <thead>
+                <tr>
+                  {FAILED_COLUMNS.map((c) => (
+                    <SortTh key={c.key} ctx={failedCtx} col={c.key} />
+                  ))}
+                  <th className={th}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {failed.rows.map((i) => (
+                  <tr key={i.id}>
+                    <td className={td}>
+                      <Link href={`/admin?item=${i.id}`}>{truncate(i.title, 80)}</Link>
+                    </td>
+                    <td className={td}>{fmtDate(i.status_changed_at)}</td>
+                    <td className={td}>{i.attempts}</td>
+                    <td className={`${td} text-danger`}>{truncate(i.last_error, 200)}</td>
+                    <td className={td}>
+                      <div className="flex gap-3">
+                        <RetryItemForm
+                          itemId={i.id}
+                          defaultStage={suggestRetryStage(i.last_ok_stage)}
+                          returnTo={returnTo}
+                        />
+                        <DiscardItemForm itemId={i.id} returnTo={returnTo} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </>
         )}
-        <Pager path="/admin" params={{}} page={page.page} hasMore={failed.hasMore} />
+        <Pager path="/admin" params={listParams} page={page.page} hasMore={failed.hasMore} />
       </Section>
     </div>
   )

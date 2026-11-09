@@ -26,7 +26,6 @@ const metadataSchema = z.object({
   ttsDurationMs: z.number().int().nonnegative(),
   ttsChars: z.number().int().nonnegative(),
   renderMs: z.number().int().nonnegative(),
-  illustration: z.boolean().default(false),
   cover: z.boolean().default(false),
   templateVersion: z.string().optional(),
 })

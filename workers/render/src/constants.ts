@@ -1,4 +1,4 @@
-export const TEMPLATE_VERSION = '2'
+export const TEMPLATE_VERSION = '3'
 export const DEFAULT_VOICE = 'en-US-AriaNeural'
 
 export const MAX_RETRIES = 3
@@ -26,7 +26,6 @@ export const DEAD_LETTER_WINDOW_MS = 60 * 60_000
 // Cloudflare Containers list pricing (standard-3: 2 vCPU, 8 GiB, 16 GB disk), USD per second.
 export const CONTAINER_USD_PER_SECOND = 2 * 0.00002 + 8 * 0.0000025 + 16 * 0.00000007
 export const EDGE_TTS_USD_PER_CHAR = 0
-export const ILLUSTRATION_USD = 0.039
 
 export const UPGRADE_BATCH_SIZE = 6
 export const UPGRADE_CANDIDATE_LIMIT = 500

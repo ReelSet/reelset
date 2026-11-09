@@ -103,7 +103,6 @@ export class FakeContainer implements ContainerFetcher {
         ttsDurationMs: 29_000,
         ttsChars: 400,
         renderMs: 20_000,
-        illustration: true,
         cover: true,
         templateVersion: TEMPLATE_VERSION,
       }

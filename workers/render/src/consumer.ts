@@ -18,7 +18,6 @@ import {
   classifyFailure,
   collectImageUrls,
   decideRenderAction,
-  illustrationCostUsd,
   renderCostUsd,
   sourceImageUrls,
   type FailureDecision,
@@ -220,14 +219,6 @@ async function recordSpend(
       costUsd: renderCostUsd(seconds),
       meta: { renderKey: key },
     })
-    if (metadata.illustration) {
-      await deps.spend({
-        category: 'render',
-        units: 1,
-        costUsd: illustrationCostUsd(true),
-        meta: { renderKey: key, kind: 'illustration' },
-      })
-    }
   } catch (err) {
     log.warn(errorFields(err), 'spend not recorded (non-fatal)')
   }

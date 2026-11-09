@@ -38,7 +38,6 @@ NO_NET = dict(
     downloader=lambda u, d: False,
     public_downloader=lambda u, d: False,
     page_fetcher=lambda u: None,
-    generate=lambda title, hook, dest: False,
 )
 
 
@@ -89,10 +88,11 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(fh.read(3), b"\xff\xd8\xff")
         self.assertFalse(os.path.exists(os.path.join(job_dir, "raw.mp4")))
         self.assertEqual(meta["ttsChars"], len(req.narration_text()))
-        self.assertEqual((meta["illustration"], meta["cover"]), (False, False))
+        self.assertEqual(meta["cover"], False)
+        self.assertEqual(sorted(meta), sorted(["jobId","bytes","posterBytes","durationMs","ttsDurationMs","ttsChars","renderMs","cover","templateVersion"]))
         self.assertLessEqual(meta["bytes"], video.MAX_OUTPUT_BYTES)
 
-    def test_missing_images_and_illustration_do_not_fail_the_render(self):
+    def test_render_needs_no_external_images(self):
         def synth(text, voice, rate, audio_path):
             make_silence(audio_path, 4)
             return []
@@ -102,7 +102,6 @@ class PipelineTests(unittest.TestCase):
 
         with open(os.path.join(job_dir, "props.json")) as fh:
             composition = json.load(fh)
-        self.assertNotIn("illustration", composition)
         self.assertNotIn("cover", composition)
         self.assertEqual([s["kind"] for s in composition["scenes"]], ["hook", "beat", "beat", "outro"])
         self.assertEqual(meta["jobId"], "job12345")

@@ -1,12 +1,8 @@
 import type { Env } from './env'
 
-export function containerEnvVars(
-  env: Pick<Env, 'PROXY_URLS' | 'GEMINI_API_KEY'>,
-): Record<string, string> {
+export function containerEnvVars(env: Pick<Env, 'PROXY_URLS'>): Record<string, string> {
   const vars: Record<string, string> = {}
   const proxyUrls = env.PROXY_URLS?.trim()
   if (proxyUrls) vars.PROXY_URLS = proxyUrls
-  const geminiKey = env.GEMINI_API_KEY?.trim()
-  if (geminiKey) vars.GEMINI_API_KEY = geminiKey
   return vars
 }
