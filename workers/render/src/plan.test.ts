@@ -11,7 +11,6 @@ import {
   findOrphanKeys,
   renderCostUsd,
   retentionCutoff,
-  illustrationCostUsd,
   sourceImageUrls,
   sourceLabel,
   stuckCutoff,
@@ -183,10 +182,5 @@ describe('sourceImageUrls', () => {
     expect(sourceImageUrls('github', ['not a url', 'https://github.com/'])).toEqual([])
     expect(sourceImageUrls('youtube', ['https://youtube.com/watch?v=short'])).toEqual([])
     expect(sourceImageUrls(null, [])).toEqual([])
-  })
-
-  it('charges for an illustration only when one was generated', () => {
-    expect(illustrationCostUsd(true)).toBe(0.039)
-    expect(illustrationCostUsd(false)).toBe(0)
   })
 })

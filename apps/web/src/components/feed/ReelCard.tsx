@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useEffect, useId, useRef, useState, type MutableRefObject } from 'react'
 import type { FeedItemDto } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import {
@@ -60,6 +60,7 @@ export function ReelCard(props: Props) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const toast = useToast()
+  const detailsId = useId()
   const [heart, setHeart] = useState(0)
 
   soundRef.current = soundOn
@@ -210,7 +211,8 @@ export function ReelCard(props: Props) {
     }
   }
 
-  const sources = [...new Set(item.mentions.map((m) => m.source))].slice(0, 3)
+  const sources = [...new Set(item.mentions.map((m) => m.source))]
+  const hasMore = Boolean(item.tldr) || item.title.length > 80
 
   return (
     <section
@@ -309,71 +311,87 @@ export function ReelCard(props: Props) {
         </div>
       )}
 
-      <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/55 to-transparent pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-4 pr-[4.5rem] pt-28 transition-[max-height] duration-300 ${expanded ? 'max-h-[75%]' : 'max-h-[60%]'}`}
-      >
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-3.5 pr-[4.25rem] pt-16">
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"
+        />
+        <div
+          aria-hidden
+          className={`absolute inset-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}
+        />
+        <div className="relative flex min-h-0 flex-col" onClick={(e) => e.stopPropagation()}>
           {active && !soundOn && !blocked && !paused && !failed && (
             <button
               type="button"
               onClick={() => onSound(true)}
-              className="glass animate-fade-in pointer-events-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
+              className="glass animate-fade-in pointer-events-auto mb-2 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
             >
               <VolumeIcon muted className="h-3.5 w-3.5" />
               Tap for sound
             </button>
           )}
-          {sources.map((source) => (
-            <span
-              key={source}
-              className="glass inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white/90"
-            >
-              <SourceDot source={source} />
-              {sourceMeta(source).label}
+          <p className="pointer-events-auto mb-1 flex w-fit max-w-full items-center gap-1.5 text-[13px] text-white/70">
+            <SourceDot source={sources[0] ?? 'news'} />
+            <span className="shrink-0 font-medium text-white/85">
+              {sourceMeta(sources[0] ?? 'news').label}
             </span>
-          ))}
-          {item.topics.slice(0, 2).map((t) => (
-            <span key={t} className="px-1 text-[11px] text-white/55">
-              #{t}
-            </span>
-          ))}
-        </div>
-        <h2 className="text-[17px] font-semibold leading-snug tracking-tight text-white [text-wrap:balance]">
-          {item.title}
-        </h2>
-        {item.tldr && (
-          <div
-            className={`mt-1.5 min-h-0 ${expanded ? 'pointer-events-auto overflow-y-auto no-scrollbar' : ''}`}
-          >
-            <p
-              className={`text-[13.5px] leading-relaxed text-white/75 ${expanded ? '' : 'line-clamp-2'}`}
-            >
-              {item.tldr}
-            </p>
-          </div>
-        )}
-        <div className="pointer-events-auto mt-2.5 flex items-center gap-3 text-xs">
-          {item.tldr && item.tldr.length > 90 && (
+            <span aria-hidden>·</span>
+            <span className="truncate">{host(item.canonicalUrl)}</span>
+          </p>
+          <h2 className="pointer-events-auto text-[15px] font-semibold leading-snug text-white">
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="text-white/60 transition hover:text-white"
+              aria-expanded={expanded}
+              aria-controls={detailsId}
+              onClick={() => hasMore && setExpanded((v) => !v)}
+              className={`block w-full text-left ${hasMore ? 'cursor-pointer' : 'cursor-default'}`}
             >
-              {expanded ? 'Less' : 'More'}
+              <span className={expanded ? '' : 'line-clamp-2'}>{item.title}</span>
+              {hasMore && !expanded && (
+                <span className="text-[13px] font-normal text-white/60">more</span>
+              )}
             </button>
-          )}
-          <a
-            href={item.canonicalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() =>
-              track({ name: 'item_open', itemId: item.id, meta: { source: 'original' } })
-            }
-            className="inline-flex max-w-[60%] items-center gap-1 truncate rounded-full bg-white/10 px-2.5 py-1 text-white/85 transition hover:bg-white/20"
+          </h2>
+          <div
+            id={detailsId}
+            inert={!expanded}
+            className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
           >
-            <span className="truncate">{host(item.canonicalUrl)}</span>
-            <ArrowUpRightIcon className="h-3 w-3 shrink-0" />
-          </a>
+            <div className="pointer-events-auto min-h-0 overflow-hidden">
+              <div className="no-scrollbar max-h-[38vh] overflow-y-auto overscroll-contain pt-1.5">
+                {item.tldr && (
+                  <p
+                    onClick={() => setExpanded(false)}
+                    className="cursor-pointer text-[14px] leading-snug text-white/80"
+                  >
+                    {item.tldr}
+                  </p>
+                )}
+                <div className="mt-2 flex items-center gap-3 text-[13px]">
+                  <a
+                    href={item.canonicalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      track({ name: 'item_open', itemId: item.id, meta: { source: 'original' } })
+                    }
+                    className="inline-flex min-w-0 items-center gap-1 text-white/90 underline decoration-white/30 underline-offset-2 transition hover:decoration-white/80"
+                  >
+                    <span className="truncate">{host(item.canonicalUrl)}</span>
+                    <ArrowUpRightIcon className="h-3 w-3 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(false)}
+                    className="text-white/60 transition hover:text-white"
+                  >
+                    less
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

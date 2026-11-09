@@ -1,20 +1,31 @@
+import { Art } from '../art'
 import { Rise, useSpring } from '../fx'
+import type { ArtKind } from '../lib/art'
 import { fitText } from '../lib/text'
-import { COLOR, CONTENT_W, FONT, MONO, SAFE, SCENE_H, SCENE_TOP } from '../theme'
+import { Card } from '../Media'
+import { COLOR, CONTENT_W, FONT, SAFE, SCENE_H, SCENE_TOP } from '../theme'
+
+const ART_H = 236
 
 export function TitleScene({
   title,
   subtitle,
-  index,
+  kind,
+  seed,
+  tool,
+  frames,
 }: {
   title: string
   subtitle?: string
-  index: number
+  kind: ArtKind
+  seed: number
+  tool: string
+  frames: number
 }) {
   const size = fitText(
     title,
-    { width: CONTENT_W, height: 330 },
-    { min: 40, max: 80, lineHeight: 1.06 },
+    { width: CONTENT_W, height: subtitle ? 190 : 240 },
+    { min: 38, max: 68, lineHeight: 1.06 },
   )
   const line = useSpring(4, 20, 0.9)
   return (
@@ -30,27 +41,10 @@ export function TitleScene({
         justifyContent: 'center',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          right: -60,
-          top: 10,
-          fontFamily: FONT,
-          fontWeight: 800,
-          fontSize: 340,
-          letterSpacing: '-0.06em',
-          lineHeight: 1,
-          color: 'rgba(255,255,255,0.035)',
-        }}
-      >
-        {index}
-      </div>
-      <Rise>
-        <div
-          style={{ fontFamily: MONO, fontSize: 18, color: COLOR.accent, letterSpacing: '0.12em' }}
-        >
-          {String(index).padStart(2, '0')}
-        </div>
+      <Rise distance={26}>
+        <Card width={CONTENT_W} height={ART_H}>
+          <Art kind={kind} w={CONTENT_W} h={ART_H} frames={frames} seed={seed} tool={tool} />
+        </Card>
       </Rise>
       <div
         style={{
@@ -58,7 +52,7 @@ export function TitleScene({
           width: 64 * line,
           background: COLOR.accent,
           borderRadius: 2,
-          margin: '18px 0 26px',
+          margin: '28px 0 22px',
         }}
       />
       <div
@@ -86,10 +80,10 @@ export function TitleScene({
         <Rise delay={9}>
           <div
             style={{
-              marginTop: 24,
+              marginTop: 18,
               fontFamily: FONT,
               fontWeight: 500,
-              fontSize: 28,
+              fontSize: 26,
               lineHeight: 1.3,
               color: COLOR.muted,
               letterSpacing: '-0.01em',

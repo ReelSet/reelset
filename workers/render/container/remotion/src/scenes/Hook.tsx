@@ -1,7 +1,9 @@
-import { Hero, Card } from '../Media'
+import { Art } from '../art'
+import type { ArtKind } from '../lib/art'
+import { Card } from '../Media'
 import { Rise, useSpring } from '../fx'
 import { fitText } from '../lib/text'
-import type { Source, Word } from '../lib/types'
+import type { Word } from '../lib/types'
 import { COLOR, CONTENT_W, FONT, SAFE, SCENE_H, SCENE_TOP } from '../theme'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 
@@ -32,19 +34,17 @@ function KineticWord({ word, size }: { word: Word; size: number }) {
 export function HookScene({
   text,
   words,
-  hero,
+  kind,
+  seed,
+  tool,
   frames,
-  source,
-  sourceLabel,
-  title,
 }: {
   text: string
   words: Word[]
-  hero?: string
+  kind: ArtKind
+  seed: number
+  tool: string
   frames: number
-  source: Source
-  sourceLabel: string
-  title: string
 }) {
   const size = fitText(
     text,
@@ -60,13 +60,7 @@ export function HookScene({
     <div style={{ position: 'absolute', left: SAFE.left, top: SCENE_TOP, width: CONTENT_W }}>
       <Rise distance={26}>
         <Card width={CONTENT_W} height={CARD_H}>
-          <Hero
-            file={hero}
-            frames={frames + 60}
-            source={source}
-            sourceLabel={sourceLabel}
-            title={title}
-          />
+          <Art kind={kind} w={CONTENT_W} h={CARD_H} frames={frames} seed={seed} tool={tool} />
         </Card>
       </Rise>
       <div

@@ -1,22 +1,21 @@
-import { Card, Hero } from '../Media'
+import { Art } from '../art'
+import type { ArtKind } from '../lib/art'
+import { Card } from '../Media'
 import { Rise } from '../fx'
-import type { Source } from '../lib/types'
 import { CONTENT_W, SAFE, SCENE_H, SCENE_TOP } from '../theme'
 
 const CARD_H = 440
 
-export function ImageScene({
-  file,
+export function ArtScene({
+  kind,
+  seed,
+  tool,
   frames,
-  source,
-  sourceLabel,
-  title,
 }: {
-  file?: string
+  kind: ArtKind
+  seed: number
+  tool: string
   frames: number
-  source: Source
-  sourceLabel: string
-  title: string
 }) {
   return (
     <div
@@ -29,13 +28,7 @@ export function ImageScene({
     >
       <Rise distance={28}>
         <Card width={CONTENT_W} height={CARD_H}>
-          <Hero
-            file={file}
-            frames={frames + 20}
-            source={source}
-            sourceLabel={sourceLabel}
-            title={title}
-          />
+          <Art kind={kind} w={CONTENT_W} h={CARD_H} frames={frames} seed={seed} tool={tool} />
         </Card>
       </Rise>
     </div>

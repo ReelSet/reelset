@@ -4,7 +4,6 @@ import {
   DEAD_LETTER_ALERT_MIN,
   FAILURE_RATE_MIN_RENDERS,
   FAILURE_RATE_THRESHOLD,
-  ILLUSTRATION_USD,
   MAX_RETRIES,
   ORPHAN_MIN_AGE_MS,
   RETRY_BASE_DELAY_SECONDS,
@@ -162,8 +161,4 @@ export function sourceImageUrls(
     }
   }
   return []
-}
-
-export function illustrationCostUsd(generated: boolean): number {
-  return generated ? ILLUSTRATION_USD : 0
 }

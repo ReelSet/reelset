@@ -84,14 +84,9 @@ describe('processRenderJob', () => {
       'voiced->rendered',
     ])
     expect(rec.transitions[0]?.meta).toEqual({ ttsChars: 400, ttsDurationMs: 29_000 })
-    expect(rec.spends.map((s) => s.category)).toEqual(['tts', 'render', 'render'])
+    expect(rec.spends.map((s) => s.category)).toEqual(['tts', 'render'])
     expect(rec.spends[0]).toMatchObject({ units: 400, costUsd: 0 })
     expect(rec.spends[1]?.costUsd).toBeGreaterThan(0)
-    expect(rec.spends[2]).toMatchObject({
-      units: 1,
-      costUsd: 0.039,
-      meta: { kind: 'illustration' },
-    })
   })
 
   it('does not call the container for a duplicate delivery of an already done render', async () => {

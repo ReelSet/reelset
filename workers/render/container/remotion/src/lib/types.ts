@@ -7,7 +7,7 @@ export type Visual =
   | { type: 'code'; language: string; code: string }
   | { type: 'stat'; label: string; value: string }
   | { type: 'quote'; text: string; attribution: string }
-  | { type: 'image'; file?: string }
+  | { type: 'image' }
 
 export type Scene =
   | { kind: 'hook'; start: number; end: number; text: string }
@@ -23,7 +23,6 @@ export type ReelProps = {
   scenes: Scene[]
   words: Word[]
   audio: string
-  illustration?: string
   cover?: string
 }
 

@@ -10,7 +10,7 @@ import {
   type Logger,
   type SettingDef,
 } from '@reelset/core'
-import { sql } from 'kysely'
+import { sql, type OrderByItemBuilder, type RawBuilder } from 'kysely'
 import {
   TTS_ERROR_CODE,
   parseAlertLastSent,
@@ -20,10 +20,16 @@ import {
 } from '@/lib/admin/health'
 import { DISCARD_META_KEY } from '@/lib/admin/retry'
 import { sliceWithMore, type PageRequest } from '@/lib/admin/pagination'
+import type { SortState } from '@/lib/admin/sort'
 import { lastDays, pivotSpend, type SpendRow } from '@/lib/admin/spend'
 
 export const STUCK_MINUTES = 30
 export const SPEND_DAYS = 14
+
+const ref = (name: string) => sql.ref(name)
+
+const dirOf = (sort: { dir: 'asc' | 'desc' }) => (ob: OrderByItemBuilder) =>
+  sort.dir === 'asc' ? ob.asc().nullsLast() : ob.desc().nullsLast()
 
 const iso = (value: Date | string) => new Date(value).toISOString()
 
@@ -58,9 +64,25 @@ export async function sourceStatusMatrix(db: Database) {
   return rows.map((r) => ({ source: r.source, status: r.status, count: Number(r.n) }))
 }
 
+export const ITEM_SORT_KEYS = ['title', 'source', 'status', 'score', 'attempts', 'changed'] as const
+export type ItemSortKey = (typeof ITEM_SORT_KEYS)[number]
+const ITEM_SORT: Record<ItemSortKey, RawBuilder<unknown>> = {
+  title: ref('item.title'),
+  source: itemSource,
+  status: ref('item.status'),
+  score: ref('item.score'),
+  attempts: ref('item.attempts'),
+  changed: ref('item.status_changed_at'),
+}
+
 export type ItemFilters = { source: string | null; status: ItemStatus | null; q: string | null }
 
-export async function listItems(db: Database, page: PageRequest, filters: ItemFilters) {
+export async function listItems(
+  db: Database,
+  page: PageRequest,
+  filters: ItemFilters,
+  sort: SortState<ItemSortKey>,
+) {
   let query = db
     .selectFrom('item')
     .select([
@@ -79,26 +101,47 @@ export async function listItems(db: Database, page: PageRequest, filters: ItemFi
   if (filters.source) query = query.where(sql<boolean>`${itemSource} = ${filters.source}`)
   if (filters.q) query = query.where('title', 'ilike', `%${filters.q.replace(/[%_]/g, '')}%`)
   const rows = await query
-    .orderBy('status_changed_at', 'desc')
+    .orderBy(ITEM_SORT[sort.key], dirOf(sort))
+    .orderBy('id')
     .limit(page.pageSize + 1)
     .offset(page.offset)
     .execute()
   return sliceWithMore(rows, page.pageSize)
 }
 
-export async function stuckItems(db: Database) {
+export const STUCK_SORT_KEYS = ['title', 'status', 'attempts', 'queued', 'error'] as const
+export type StuckSortKey = (typeof STUCK_SORT_KEYS)[number]
+const STUCK_SORT: Record<StuckSortKey, RawBuilder<unknown>> = {
+  title: ref('item.title'),
+  status: ref('item.status'),
+  attempts: ref('item.attempts'),
+  queued: ref('item.queued_at'),
+  error: ref('item.last_error'),
+}
+
+export async function stuckItems(db: Database, sort: SortState<StuckSortKey>) {
   return db
     .selectFrom('item')
     .select(['id', 'title', 'status', 'attempts', 'queued_at', 'status_changed_at', 'last_error'])
     .where('status', 'in', [ItemStatus.found, ItemStatus.summarized, ItemStatus.embedded])
     .where('queued_at', 'is not', null)
     .where(sql<boolean>`queued_at < now() - make_interval(mins => ${STUCK_MINUTES})`)
-    .orderBy('queued_at', 'asc')
+    .orderBy(STUCK_SORT[sort.key], dirOf(sort))
+    .orderBy('id')
     .limit(50)
     .execute()
 }
 
-export async function failedItems(db: Database, page: PageRequest) {
+export const FAILED_SORT_KEYS = ['title', 'failed', 'attempts', 'error'] as const
+export type FailedSortKey = (typeof FAILED_SORT_KEYS)[number]
+const FAILED_SORT: Record<FailedSortKey, RawBuilder<unknown>> = {
+  title: ref('item.title'),
+  failed: ref('item.status_changed_at'),
+  attempts: ref('item.attempts'),
+  error: ref('item.last_error'),
+}
+
+export async function failedItems(db: Database, page: PageRequest, sort: SortState<FailedSortKey>) {
   const rows = await db
     .selectFrom('item')
     .select((eb) => [
@@ -129,7 +172,8 @@ export async function failedItems(db: Database, page: PageRequest) {
           and d.created_at >= item.status_changed_at
       )`,
     )
-    .orderBy('status_changed_at', 'desc')
+    .orderBy(FAILED_SORT[sort.key], dirOf(sort))
+    .orderBy('id')
     .limit(page.pageSize + 1)
     .offset(page.offset)
     .execute()
@@ -154,7 +198,18 @@ export async function itemTimeline(db: Database, itemId: string) {
   return { item, events }
 }
 
-export async function ingestRuns(db: Database, page: PageRequest) {
+export const RUN_SORT_KEYS = ['started', 'mode', 'status', 'duration', 'tasks', 'failed'] as const
+export type RunSortKey = (typeof RUN_SORT_KEYS)[number]
+const RUN_SORT: Record<RunSortKey, RawBuilder<unknown>> = {
+  started: ref('ingest_run.started_at'),
+  mode: ref('ingest_run.mode'),
+  status: ref('ingest_run.status'),
+  duration: sql`extract(epoch from (ingest_run.finished_at - ingest_run.started_at))`,
+  tasks: ref('task_count'),
+  failed: ref('failed_count'),
+}
+
+export async function ingestRuns(db: Database, page: PageRequest, sort: SortState<RunSortKey>) {
   const rows = await db
     .selectFrom('ingest_run')
     .select((eb) => [
@@ -175,14 +230,39 @@ export async function ingestRuns(db: Database, page: PageRequest) {
         .where('ingest_task.status', '=', IngestTaskStatus.failed)
         .as('failed_count'),
     ])
-    .orderBy('started_at', 'desc')
+    .orderBy(RUN_SORT[sort.key], dirOf(sort))
+    .orderBy('id')
     .limit(page.pageSize + 1)
     .offset(page.offset)
     .execute()
   return sliceWithMore(rows, page.pageSize)
 }
 
-export async function ingestTasks(db: Database, runId: string) {
+export const TASK_SORT_KEYS = [
+  'position',
+  'source',
+  'scope',
+  'status',
+  'fetched',
+  'inserted',
+  'updated',
+  'duration',
+  'error',
+] as const
+export type TaskSortKey = (typeof TASK_SORT_KEYS)[number]
+const TASK_SORT: Record<TaskSortKey, RawBuilder<unknown>> = {
+  position: ref('ingest_task.position'),
+  source: ref('ingest_task.source'),
+  scope: ref('ingest_task.scope'),
+  status: ref('ingest_task.status'),
+  fetched: ref('ingest_task.fetched'),
+  inserted: ref('ingest_task.inserted'),
+  updated: ref('ingest_task.updated'),
+  duration: ref('ingest_task.duration_ms'),
+  error: ref('ingest_task.error'),
+}
+
+export async function ingestTasks(db: Database, runId: string, sort: SortState<TaskSortKey>) {
   return db
     .selectFrom('ingest_task')
     .select([
@@ -199,7 +279,8 @@ export async function ingestTasks(db: Database, runId: string) {
       'finished_at',
     ])
     .where('run_id', '=', runId)
-    .orderBy('position', 'asc')
+    .orderBy(TASK_SORT[sort.key], dirOf(sort))
+    .orderBy('position')
     .execute()
 }
 
@@ -213,7 +294,34 @@ export async function latestRunId(db: Database): Promise<string | null> {
   return row?.id ?? null
 }
 
-export async function renderRows(db: Database, page: PageRequest, status: RenderStatus | null) {
+export const RENDER_SORT_KEYS = [
+  'created',
+  'title',
+  'item_status',
+  'status',
+  'attempts',
+  'render_ms',
+  'bytes',
+  'error',
+] as const
+export type RenderSortKey = (typeof RENDER_SORT_KEYS)[number]
+const RENDER_SORT: Record<RenderSortKey, RawBuilder<unknown>> = {
+  created: ref('render.created_at'),
+  title: ref('item.title'),
+  item_status: ref('item.status'),
+  status: ref('render.status'),
+  attempts: ref('render.attempts'),
+  render_ms: ref('render.render_ms'),
+  bytes: ref('render.bytes'),
+  error: ref('render.error'),
+}
+
+export async function renderRows(
+  db: Database,
+  page: PageRequest,
+  status: RenderStatus | null,
+  sort: SortState<RenderSortKey>,
+) {
   let query = db
     .selectFrom('render')
     .innerJoin('item', 'item.id', 'render.item_id')
@@ -233,7 +341,8 @@ export async function renderRows(db: Database, page: PageRequest, status: Render
     ])
   if (status) query = query.where('render.status', '=', status)
   const rows = await query
-    .orderBy('render.created_at', 'desc')
+    .orderBy(RENDER_SORT[sort.key], dirOf(sort))
+    .orderBy('render.id')
     .limit(page.pageSize + 1)
     .offset(page.offset)
     .execute()
@@ -387,7 +496,30 @@ export async function spendLedger(db: Database, now = new Date()) {
   return pivotSpend(spendRows, days)
 }
 
-export async function askLog(db: Database, page: PageRequest, outcome: AskOutcome | null) {
+export const ASK_SORT_KEYS = [
+  'when',
+  'outcome',
+  'latency',
+  'question',
+  'tokens_in',
+  'tokens_out',
+] as const
+export type AskSortKey = (typeof ASK_SORT_KEYS)[number]
+const ASK_SORT: Record<AskSortKey, RawBuilder<unknown>> = {
+  when: ref('ask_query.created_at'),
+  outcome: ref('ask_query.outcome'),
+  latency: ref('ask_query.latency_ms'),
+  question: ref('ask_query.question'),
+  tokens_in: ref('ask_query.input_tokens'),
+  tokens_out: ref('ask_query.output_tokens'),
+}
+
+export async function askLog(
+  db: Database,
+  page: PageRequest,
+  outcome: AskOutcome | null,
+  sort: SortState<AskSortKey>,
+) {
   let query = db
     .selectFrom('ask_query')
     .select([
@@ -403,7 +535,8 @@ export async function askLog(db: Database, page: PageRequest, outcome: AskOutcom
     ])
   if (outcome) query = query.where('outcome', '=', outcome)
   const rows = await query
-    .orderBy('created_at', 'desc')
+    .orderBy(ASK_SORT[sort.key], dirOf(sort))
+    .orderBy('id')
     .limit(page.pageSize + 1)
     .offset(page.offset)
     .execute()
