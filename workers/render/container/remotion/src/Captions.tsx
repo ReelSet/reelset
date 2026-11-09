@@ -2,7 +2,17 @@ import { useMemo } from 'react'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 import { pageAt, toPages } from './lib/captions'
 import type { Word } from './lib/types'
-import { CAPTION_H, CAPTION_TOP, COLOR, CONTENT_W, FONT, SAFE } from './theme'
+import {
+  CAPTION_FONT,
+  CAPTION_H,
+  CAPTION_LEFT,
+  CAPTION_LINE_HEIGHT,
+  CAPTION_MAX_LINES,
+  CAPTION_TOP,
+  CAPTION_W,
+  COLOR,
+  FONT,
+} from './theme'
 
 export function Captions({ words }: { words: Word[] }) {
   const frame = useCurrentFrame()
@@ -20,9 +30,9 @@ export function Captions({ words }: { words: Word[] }) {
     <div
       style={{
         position: 'absolute',
-        left: SAFE.left,
+        left: CAPTION_LEFT,
         top: CAPTION_TOP,
-        width: CONTENT_W,
+        width: CAPTION_W,
         height: CAPTION_H,
         display: 'flex',
         alignItems: 'center',
@@ -34,8 +44,10 @@ export function Captions({ words }: { words: Word[] }) {
           textAlign: 'center',
           fontFamily: FONT,
           fontWeight: 700,
-          fontSize: 46,
-          lineHeight: 1.18,
+          fontSize: CAPTION_FONT,
+          lineHeight: CAPTION_LINE_HEIGHT,
+          maxHeight: CAPTION_FONT * CAPTION_LINE_HEIGHT * CAPTION_MAX_LINES,
+          overflow: 'hidden',
           letterSpacing: '-0.02em',
           opacity: enter,
           transform: `translateY(${(1 - enter) * 10}px)`,

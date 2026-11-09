@@ -77,7 +77,7 @@ No YouTube Data API and no API key. Discovery runs in the render container with 
 ## Render output
 
 - R2 bucket binding `MEDIA`. Keys: `reels/<itemId>/<renderKey>.mp4`, `reels/<itemId>/<renderKey>.jpg`.
-- Video: 720x1280 30 fps H.264 (~1.8 Mbps), `+faststart`, AAC, captions burned in, <= 60 s, <= 25 MB.
+- Video: 720x1280 30 fps H.264 (~1.8 Mbps), `+faststart`, AAC, karaoke captions burned in at 58-72% of frame height (centered, 80% wide, 2 lines max; `theme.ts` is the single source) so they clear the app bottom overlay and right rail, <= 60 s, <= 25 MB.
 - `render` row: unique `render_key` = core `renderKey({ itemId, contentHash, promptVersion, templateVersion, voice })`; `status done` with `video_key`, `poster_key`, `bytes`, `video_duration_ms`, `render_ms`.
 - Retention: renders whose item `published_at` is older than `SETTINGS.reelRetentionDays` get their R2 objects deleted and `video_key = NULL`.
 - Public URL = `MEDIA_PUBLIC_BASE_URL + "/" + video_key`.
@@ -92,7 +92,7 @@ Python server (`/health`, `/transcript`, `/youtube/search`, `/render`) orchestra
 - Scenes: kinetic hook, `title`, `code` (syntax highlight + typing), `stat` (count-up), `quote`, `image` (Ken Burns), outro with source and `reelset.app`. Content stays inside the app-UI safe zone (not in the bottom 22% or right 15%).
 - Imagery (best effort, never fails a render): `sourceImageUrls` are direct URLs tried in order (GitHub social preview `opengraph.githubassets.com/1/<owner>/<repo>`, YouTube `i.ytimg.com` thumbnails; worker derives them in `plan.sourceImageUrls`). Otherwise the container reads `og:image` from `canonicalUrl` (https, every resolved address must be globally routable, redirects re-checked, <= 5 MB). Script `image` beats use the `imageUrls` allowlist (`github`, `ytimg`). Missing assets fall back to a generated cover.
 - No AI/LLM image generation in rendering. All visuals are code-drawn Remotion/SVG motion graphics (`remotion/src/art/*`): the motif (network, terminal, git graph, bars, paper, video timeline, discussion thread) is chosen deterministically by `lib/art.ts` from source, title/script keywords and beat visual types. Real source imagery (YouTube thumbnail, GitHub social preview, og:image) is fetched best-effort and shown only as a small source card in the outro; a reel renders identically with zero external images. Render spend is `tts` + `render` rows only.
-- `TEMPLATE_VERSION` (worker `constants.ts`) is part of the render key. Bumping it re-renders: the render worker's 10-minute cron queues up to 6 `rendered` items per run that have no render row for the current key (skipped while any render is `rendering`), and the consumer renders `rendered` items without changing their status, so the old reel stays in the feed until the new `done` render (latest `finished_at` wins) replaces it.
+- `TEMPLATE_VERSION` (worker `constants.ts`) is part of the render key. Bumping it re-renders: the render worker's 5-minute cron tops re-renders up to 2x container `max_instances` (6) in flight: it queues `rendered` items with no render row for the current key, minus `rendering` renders, upgrades it sent in the last 15 min that have not started (tracked in `app_setting.render_upgrade_sent`), and the backlog of new `embedded`/`voiced` items, so new items keep priority, and the consumer renders `rendered` items without changing their status, so the old reel stays in the feed until the new `done` render (latest `finished_at` wins) replaces it.
 
 ## Feed visibility (web)
 

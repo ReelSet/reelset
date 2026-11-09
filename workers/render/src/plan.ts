@@ -162,3 +162,17 @@ export function sourceImageUrls(
   }
   return []
 }
+
+export type UpgradeLoad = {
+  target: number
+  rendering: number
+  pendingUpgrades: number
+  pendingNew: number
+  cap: number
+}
+
+/** Re-renders to queue now: fill up to `target` in flight, new items always count first. */
+export function upgradeBatchSize(load: UpgradeLoad): number {
+  const free = load.target - load.rendering - load.pendingUpgrades - load.pendingNew
+  return Math.max(0, Math.min(load.cap, free))
+}

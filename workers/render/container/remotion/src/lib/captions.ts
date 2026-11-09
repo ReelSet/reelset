@@ -2,7 +2,7 @@ import type { Word } from './types'
 
 const BREAK = /[.?!,;:]$/
 
-export function toPages(words: readonly Word[], maxWords = 4, maxChars = 30): Word[][] {
+export function toPages(words: readonly Word[], maxWords = 4, maxChars = 26): Word[][] {
   const pages: Word[][] = []
   let page: Word[] = []
   for (const word of words) {

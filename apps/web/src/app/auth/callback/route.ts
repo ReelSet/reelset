@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { safeReturnPath } from '@/lib/auth/return-url'
 import { ensureProfile } from '@/server/auth'
 import { routeLog } from '@/server/logger'
-import { createSupabaseServerClient } from '@/server/supabase'
+import { createSupabaseResponseClient } from '@/server/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const tokenHash = searchParams.get('token_hash')
 
-  const supabase = await createSupabaseServerClient()
+  const { supabase, apply } = createSupabaseResponseClient(request)
   try {
     const result = code
       ? await supabase.auth.exchangeCodeForSession(code)
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
     await ensureProfile(user.id)
     log.info({ profileId: user.id }, 'login completed')
-    return NextResponse.redirect(`${origin}${next}`)
+    return apply(NextResponse.redirect(`${origin}${next}`))
   } catch (err) {
     log.error(errorFields(err), 'auth callback failed')
     return NextResponse.redirect(`${origin}/login?error=callback`)

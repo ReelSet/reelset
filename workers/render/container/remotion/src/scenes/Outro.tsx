@@ -31,17 +31,17 @@ export function OutroScene({
 }) {
   const size = fitText(
     title,
-    { width: CONTENT_W, height: 140 },
+    { width: CONTENT_W, height: 100 },
     { min: 30, max: 46, lineHeight: 1.12 },
   )
   return (
     <div style={{ position: 'absolute', left: SAFE.left, top: SCENE_TOP, width: CONTENT_W }}>
       <Rise distance={26}>
-        <Card width={CONTENT_W} height={300}>
-          <Art kind={kind} w={CONTENT_W} h={300} frames={frames} seed={seed} tool={tool} />
+        <Card width={CONTENT_W} height={200}>
+          <Art kind={kind} w={CONTENT_W} h={200} frames={frames} seed={seed} tool={tool} />
         </Card>
       </Rise>
-      <Rise delay={5} style={{ marginTop: 30 }}>
+      <Rise delay={5} style={{ marginTop: 24 }}>
         <div
           style={{
             fontFamily: FONT,
@@ -59,7 +59,7 @@ export function OutroScene({
           {title}
         </div>
       </Rise>
-      <Rise delay={9} style={{ marginTop: 20 }}>
+      <Rise delay={9} style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div
             style={{
@@ -91,15 +91,15 @@ export function OutroScene({
           </div>
         </div>
       </Rise>
-      <Rise delay={14} style={{ marginTop: 34 }}>
+      <Rise delay={14} style={{ marginTop: 24 }}>
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 12,
-            height: 62,
+            height: 56,
             padding: '0 30px',
-            borderRadius: 31,
+            borderRadius: 28,
             background: COLOR.accent,
             color: COLOR.accentInk,
             fontFamily: FONT,
