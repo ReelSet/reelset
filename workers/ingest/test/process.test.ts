@@ -89,6 +89,67 @@ describe('processItem', () => {
     expect(t.send).not.toHaveBeenCalled()
   })
 
+  describe('paper items', () => {
+    const paperChunks = Array.from({ length: 4 }, (_, i) => ({
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-00000000000${i}`,
+      text: `Abstract and introduction text for the paper, part ${i}. ${'We study teacher drift. '.repeat(10)}`,
+    }))
+    const paperWorld = () =>
+      makeWorld({
+        canonicalKey: 'arxiv:2611.03953',
+        mentions: [
+          {
+            id: 'm1',
+            source: 'papers',
+            external_id: '2611.03953',
+            url: 'https://arxiv.org/abs/2611.03953',
+            title: 'Teacher drift in distillation',
+            body: paperChunks.map((c) => c.text).join('\n\n'),
+            raw: { extraTexts: [] },
+          },
+        ],
+        chunks: paperChunks,
+      })
+    const paperOutput = (chunkIds: string[]) =>
+      validOutput(CHUNK_1, {
+        claims: [{ text: 'Teachers drift', chunkIds }],
+      })
+
+    it('lists the allowed chunk ids explicitly in the prompt', async () => {
+      const t = makeDeps(paperWorld(), [paperOutput([paperChunks[0]!.id])])
+      await processItem(t.deps, ITEM_ID, 1)
+      const user = t.generate.mock.calls[0]![0].user
+      expect(user).toContain('ALLOWED_CHUNK_IDS:')
+      for (const c of paperChunks) expect(user).toContain(`${c.id}\n`)
+    })
+
+    it('drops claims citing invented ids and keeps the script when one claim is valid', async () => {
+      const good = paperChunks[1]!.id
+      const output = JSON.parse(paperOutput([good]))
+      output.script.claims.push(
+        { text: 'Made up', chunkIds: [FOREIGN_CHUNK] },
+        { text: 'Mixed', chunkIds: [FOREIGN_CHUNK, paperChunks[2]!.id.toUpperCase()] },
+        { text: 'Not a uuid', chunkIds: ['arxiv:2611.03953'] },
+      )
+      const t = makeDeps(paperWorld(), [JSON.stringify(output)])
+      expect(await processItem(t.deps, ITEM_ID, 1)).toBe('rendered_enqueued')
+      expect(t.generate).toHaveBeenCalledTimes(1)
+      const stored = t.fake
+        .find('"script" =')[0]!
+        .params.find((p) => typeof p === 'string' && p.startsWith('{"version"')) as string
+      const claims = JSON.parse(stored).claims
+      expect(claims.map((c: { text: string }) => c.text)).toEqual(['Teachers drift', 'Mixed'])
+      expect(claims[1].chunkIds).toEqual([paperChunks[2]!.id])
+    })
+
+    it('still rejects a script where every claim cites unknown ids', async () => {
+      const t = makeDeps(paperWorld(), [paperOutput([FOREIGN_CHUNK]), paperOutput(['bca8c9ad'])])
+      expect(await processItem(t.deps, ITEM_ID, 1)).toBe('generation_failed')
+      expect(t.generate).toHaveBeenCalledTimes(2)
+      expect(t.generate.mock.calls[1]![0].user).toContain('no claims citing evidence chunks')
+    })
+  })
+
   it('rejects slurs and foreign images', async () => {
     const slur = validOutput(CHUNK_1, { hook: 'what a retard idea' })
     const image = validOutput(CHUNK_1, {

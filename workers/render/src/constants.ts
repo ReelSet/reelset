@@ -23,8 +23,8 @@ export const FAILURE_RATE_WINDOW_MS = 60 * 60_000
 export const DEAD_LETTER_ALERT_MIN = 3
 export const DEAD_LETTER_WINDOW_MS = 60 * 60_000
 
-// Cloudflare Containers list pricing (standard-4: 4 vCPU, 12 GiB, 20 GB disk), USD per second.
-export const CONTAINER_USD_PER_SECOND = 4 * 0.00002 + 12 * 0.0000025 + 20 * 0.00000007
+// Cloudflare Containers list pricing (standard-3: 2 vCPU, 8 GiB, 16 GB disk), USD per second.
+export const CONTAINER_USD_PER_SECOND = 2 * 0.00002 + 8 * 0.0000025 + 16 * 0.00000007
 export const EDGE_TTS_USD_PER_CHAR = 0
 export const ILLUSTRATION_USD = 0.039
 

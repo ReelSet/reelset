@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { StaleTransitionError, renderKey } from '@reelset/core'
 import { describe, expect, it } from 'vitest'
 import { processRenderJob, type ConsumerDeps } from './consumer'
@@ -274,6 +275,7 @@ describe('processRenderJob', () => {
         ttsDurationMs: 1,
         ttsChars: 1,
         renderMs: 1,
+        templateVersion: TEMPLATE_VERSION,
       },
     })
     const { deps, rec } = setup({ containers: [container] })
@@ -301,6 +303,58 @@ describe('processRenderJob', () => {
     }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(rec.transitions.at(-1)).toMatchObject({ to: 'rendered' })
+  })
+
+  it.each([[undefined], ['1']])(
+    'discards a render from a container reporting template %s and retries',
+    async (reported) => {
+      const container = new FakeContainer({
+        renderBody: {
+          jobId: 'j',
+          bytes: 1000,
+          posterBytes: 50,
+          durationMs: 30_000,
+          ttsDurationMs: 29_000,
+          ttsChars: 400,
+          renderMs: 20_000,
+          templateVersion: reported,
+        },
+      })
+      const { deps, store, media, rec } = setup({ containers: [container] })
+
+      const result = await processRenderJob(deps, body, 1)
+
+      expect(result).toEqual({ action: 'retry', delaySeconds: 30 })
+      expect(media.puts).toEqual([])
+      expect(store.calls).toEqual(['rendering'])
+      expect(rec.transitions).toEqual([])
+      expect(path(container)).toEqual(['POST /render', 'DELETE /render/JOB'])
+    },
+  )
+
+  it('records stale_container_template on the render when retries run out', async () => {
+    const container = new FakeContainer({
+      renderBody: {
+        jobId: 'j',
+        bytes: 1000,
+        posterBytes: 50,
+        durationMs: 30_000,
+        ttsDurationMs: 0,
+        ttsChars: 0,
+        renderMs: 1,
+      },
+    })
+    const { deps, store } = setup({ containers: [container] })
+
+    const result = await processRenderJob(deps, body, 4)
+
+    expect(result).toEqual({ action: 'dead_letter' })
+    expect(store.calls).toContain('failed:stale_container_template')
+  })
+
+  it('keeps the container template version in sync with the worker constant', () => {
+    const py = readFileSync(new URL('../container/reel/version.py', import.meta.url), 'utf8')
+    expect(py).toContain(`TEMPLATE_VERSION = "${TEMPLATE_VERSION}"`)
   })
 
   it('produces a different render key per voice and template version', async () => {

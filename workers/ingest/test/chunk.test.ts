@@ -97,5 +97,7 @@ describe('misc decide helpers', () => {
     expect(selectPromptChunks(many)).toHaveLength(40)
     const big = Array.from({ length: 10 }, () => ({ text: 'x'.repeat(10_000) }))
     expect(selectPromptChunks(big)).toHaveLength(2)
+    const mixed = [{ text: 'x'.repeat(27_000) }, { text: 'x'.repeat(5_000) }, { text: 'tail' }]
+    expect(selectPromptChunks(mixed).map((c) => c.text.length)).toEqual([27_000, 4])
   })
 })

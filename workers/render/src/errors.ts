@@ -8,6 +8,7 @@ export const RENDER_ERROR_CODES = [
   'bad_container_response',
   'upload_failed',
   'script_invalid',
+  'stale_container_template',
 ] as const
 export type RenderErrorCode = (typeof RENDER_ERROR_CODES)[number]
 
