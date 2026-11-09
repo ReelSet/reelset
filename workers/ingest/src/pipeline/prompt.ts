@@ -1,6 +1,6 @@
 import { MAX_TLDR_CHARS } from '../config'
 
-export const PROMPT_VERSION = 'reel-v3'
+export const PROMPT_VERSION = 'reel-v4'
 
 export type PromptChunk = { id: string; text: string }
 
@@ -32,6 +32,8 @@ Rules:
 - "visual" and "shots" are different things: "visual" is only one of the 5 types listed under <visual> (title, code, stat, quote, image). Screen names such as StatSlam or Terminal go only in "shots".
 - Shot "show" is one of the screens below; "props" may only contain what the screen lists, and every number, command, name or quote in props must appear verbatim in the sources. If the sources have nothing for a screen, use KeyPoint or omit props.
 - Papers: say real numbers from the results table in the narration (for example "beats the baseline by 4.2 points on MMLU") and put TableScreen on the word that names the result. Never compare against a method or score that is not in the sources.
+- Number labels: a StatSlam or BarRace "label" must be the words the narration puts right next to that number (for example "stars" for "12k stars"). Never give two different numbers the same label, and never write a label for a number whose meaning the narration does not state; use a KeyPoint instead.
+- Each beat may have "broll": 1 or 2 lowercase abstract stock-footage search phrases of at most 3 words that match the mood of the beat, such as "server room", "circuit board", "code on screen", "network cables", "keyboard typing", "data center". Never a product, company, person or project name.
 - Optional shot "sfx": whoosh, pop, tick, ding, hit, riser, swoosh. Use ding on a reveal or result, hit on an emphasis, tick on a count-up number. Leave it out otherwise.
 
 Return a single JSON object and nothing else:
@@ -42,7 +44,7 @@ Return a single JSON object and nothing else:
     "version": 1,
     "hook": string (max 120 chars),
     "headline": string (at most 7 words),
-    "beats": [ { "text": string (max 220 chars), "visual": <visual>, "shots": [<shot>] } ] (3 to 5 beats),
+    "beats": [ { "text": string (max 220 chars), "visual": <visual>, "shots": [<shot>], "broll"?: string[] (1 to 2 abstract lowercase phrases) } ] (3 to 5 beats),
     "outro": string (max 120 chars),
     "claims": [ { "text": string (max 220 chars), "chunkIds": [chunk_id, ...] } ]
   }
@@ -70,6 +72,7 @@ Return a single JSON object and nothing else:
   ImageFull: {"image"?: number} the item's real image full frame (only when images exist)
   KeyPoint: {"text": string, "sub"?: string, "quote"?: string, "by"?: string} one big bold sentence or quote
   Compare: {"left": string, "right": string} before and after, two big text blocks
+  RepoDemo: {} the repo's README demo clip; the renderer places it itself, do not use it
   EndCard: {} final call to action, use only on the last beat's last shot`
 
 export function escapeUntrusted(text: string): string {

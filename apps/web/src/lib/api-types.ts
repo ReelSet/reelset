@@ -14,6 +14,7 @@ export type FeedItemDto = {
   durationMs: number | null
   likeCount: number
   liked: boolean
+  saved: boolean
   mentions: MentionDto[]
 }
 
@@ -23,10 +24,23 @@ export type FeedResponse = {
   viewer: { authenticated: boolean; needsTopics: boolean }
 }
 
+export type RelatedReelDto = {
+  itemId: string
+  title: string
+  posterUrl: string | null
+  source: string
+}
+
 export type CitationDto = { chunkId: string; title: string; url: string; publishedAt: string }
 
 export type AskResponse =
-  | { outcome: 'answered'; answer: string; citations: CitationDto[]; cached: boolean }
+  | {
+      outcome: 'answered'
+      answer: string
+      citations: CitationDto[]
+      cached: boolean
+      reels?: RelatedReelDto[]
+    }
   | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped'; message: string }
   | { outcome: 'error'; message: string; reason?: 'ai_unavailable' }
 

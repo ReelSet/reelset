@@ -60,7 +60,24 @@ def build_props(
         props["cover"] = f"job/{assets['cover']}"
     if assets.get("images"):
         props["images"] = [_image(i) for i in assets["images"]]
+    if assets.get("broll"):
+        props["broll"] = [_clip(c) for c in assets["broll"]]
+    if assets.get("demo"):
+        d = assets["demo"]
+        props["demo"] = {
+            "src": f"job/{d['file']}", "seconds": round(d["seconds"], 2),
+            "width": d["width"], "height": d["height"], "repo": d["repo"],
+        }  # fmt: skip
     return props
+
+
+def _clip(entry: dict) -> dict:
+    out = {"src": f"job/{entry['file']}", "seconds": entry["seconds"],
+           "width": entry["width"], "height": entry["height"]}  # fmt: skip
+    for key in ("beat", "creator", "creatorUrl", "pageUrl"):
+        if entry.get(key) is not None:
+            out[key] = entry[key]
+    return out
 
 
 def _round_scene(scene: dict) -> dict:
@@ -69,7 +86,7 @@ def _round_scene(scene: dict) -> dict:
 
 def _image(entry: dict) -> dict:
     out = {"src": f"job/{entry['file']}", "kind": entry["kind"]}
-    for key in ("width", "height", "alt"):
+    for key in ("width", "height", "alt", "caption", "focus"):
         if entry.get(key):
             out[key] = entry[key]
     return out

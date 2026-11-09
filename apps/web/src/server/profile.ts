@@ -1,33 +1,61 @@
 import { ItemStatus, RenderStatus, type Database } from '@reelset/core'
+import { enabledSources, type ProfileSource } from '@/lib/preferences'
 import { mediaUrl } from '@/lib/media'
 
-export type LikedReel = { id: string; title: string; posterUrl: string | null; likedAt: string }
+export type PosterReel = { id: string; title: string; posterUrl: string | null; at: string }
+
+export const LIBRARY_LIMIT = 60
+
+function reelsFrom(db: Database, table: 'like' | 'save', profileId: string) {
+  return db
+    .selectFrom(table)
+    .innerJoin('item', 'item.id', `${table}.item_id`)
+    .innerJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom('render')
+          .select('render.poster_key')
+          .whereRef('render.item_id', '=', 'item.id')
+          .where('render.status', '=', RenderStatus.done)
+          .where('render.video_key', 'is not', null)
+          .orderBy('render.created_at', 'desc')
+          .limit(1)
+          .as('r'),
+      (join) => join.onTrue(),
+    )
+    .select(['item.id', 'item.title', 'r.poster_key', `${table}.created_at as at`])
+    .where(`${table}.profile_id`, '=', profileId)
+    .where('item.status', '=', ItemStatus.rendered)
+    .orderBy(`${table}.created_at`, 'desc')
+    .limit(LIBRARY_LIMIT)
+}
+
+export function libraryQuery(db: Database, table: 'like' | 'save', profileId: string) {
+  return reelsFrom(db, table, profileId)
+}
 
 export async function profileSummary(db: Database, profileId: string, mediaBase: string) {
-  const [profile, rows] = await Promise.all([
-    db.selectFrom('profile').select('topics').where('id', '=', profileId).executeTakeFirst(),
-    db
-      .selectFrom('like')
-      .innerJoin('item', 'item.id', 'like.item_id')
-      .innerJoin('render', 'render.item_id', 'item.id')
-      .select(['item.id', 'item.title', 'render.poster_key', 'like.created_at'])
-      .distinctOn('item.id')
-      .where('like.profile_id', '=', profileId)
-      .where('item.status', '=', ItemStatus.rendered)
-      .where('render.status', '=', RenderStatus.done)
-      .where('render.video_key', 'is not', null)
-      .orderBy('item.id')
-      .orderBy('render.created_at', 'desc')
-      .execute(),
-  ])
-  const likes: LikedReel[] = rows
-    .map((r) => ({
+  const toReel = (r: { id: string; title: string; poster_key: string | null; at: Date | string }) =>
+    ({
       id: r.id,
       title: r.title,
       posterUrl: mediaUrl(mediaBase, r.poster_key),
-      likedAt: new Date(r.created_at).toISOString(),
-    }))
-    .sort((a, b) => b.likedAt.localeCompare(a.likedAt))
-    .slice(0, 60)
-  return { topics: profile?.topics ?? [], likes }
+      at: new Date(r.at).toISOString(),
+    }) satisfies PosterReel
+  const [profile, liked, saved] = await Promise.all([
+    db
+      .selectFrom('profile')
+      .select(['topics', 'sources', 'created_at'])
+      .where('id', '=', profileId)
+      .executeTakeFirst(),
+    libraryQuery(db, 'like', profileId).execute(),
+    libraryQuery(db, 'save', profileId).execute(),
+  ])
+  return {
+    topics: profile?.topics ?? [],
+    sources: enabledSources(profile?.sources ?? []) as ProfileSource[],
+    memberSince: profile ? new Date(profile.created_at).toISOString() : null,
+    liked: liked.map(toReel),
+    saved: saved.map(toReel),
+  }
 }

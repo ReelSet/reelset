@@ -15,7 +15,8 @@ const stage = path.join(serveUrl, 'public', 'job')
 fs.rmSync(stage, { recursive: true, force: true })
 fs.cpSync(path.join(jobDir, 'assets'), stage, { recursive: true })
 
-const concurrency = Number(process.env.REEL_CONCURRENCY) || Math.max(1, Math.min(2, os.availableParallelism()))
+const concurrency =
+  Number(process.env.REEL_CONCURRENCY) || Math.max(1, Math.min(2, os.availableParallelism()))
 const started = Date.now()
 let lastLogged = -1
 try {
@@ -32,6 +33,8 @@ try {
     JSON.stringify({
       fps,
       durationInFrames: composition.durationInFrames,
+      usedBroll: [...new Set(plan.map((s) => s.props?.bg).filter((n) => Number.isInteger(n)))],
+      usedDemo: plan.some((s) => s.show === 'RepoDemo'),
       shots: plan.map((s) => ({
         t: Math.round((s.from / fps) * 1000) / 1000,
         seconds: Math.round((s.frames / fps) * 1000) / 1000,
@@ -42,7 +45,9 @@ try {
       })),
     }),
   )
-  console.log(`plan shots=${plan.length} avg=${(composition.durationInFrames / fps / Math.max(1, plan.length)).toFixed(2)}s`)
+  console.log(
+    `plan shots=${plan.length} avg=${(composition.durationInFrames / fps / Math.max(1, plan.length)).toFixed(2)}s`,
+  )
   await renderMedia({
     composition,
     serveUrl,

@@ -27,6 +27,7 @@ export const SCREEN_NAMES = [
   'KeyPoint',
   'Compare',
   'EndCard',
+  'RepoDemo',
 ] as const
 export type ScreenName = (typeof SCREEN_NAMES)[number]
 
@@ -56,6 +57,18 @@ export type ReelImage = {
   width?: number
   height?: number
   alt?: string
+  /** Vetted figure caption (<= 60 chars) and the point of interest (0-1) for the Ken Burns target. */
+  caption?: string
+  focus?: { x: number; y: number }
+}
+
+/** README demo clip converted to mp4 by the container; shown full-bleed by RepoDemo. */
+export type ReelDemo = {
+  src: string
+  seconds: number
+  width?: number
+  height?: number
+  repo: string
 }
 
 /** Real item metadata, all optional. A screen only shows a number that is present here or in the script. */
@@ -78,6 +91,19 @@ export type ItemFacts = {
   article?: { site?: string; author?: string }
 }
 
+/** A trimmed, muted stock clip prepared by the container for screen backdrops. */
+export type BrollClip = {
+  src: string
+  seconds: number
+  width?: number
+  height?: number
+  /** Narration scene index the clip was chosen for. */
+  beat?: number
+  creator?: string
+  creatorUrl?: string
+  pageUrl?: string
+}
+
 export type ReelProps = {
   durationSeconds: number
   title: string
@@ -91,6 +117,8 @@ export type ReelProps = {
   facts?: ItemFacts
   cover?: string
   images?: ReelImage[]
+  broll?: BrollClip[]
+  demo?: ReelDemo
   plan?: TimedShot[]
   sfx?: { t: number; name: SfxName }[]
 }

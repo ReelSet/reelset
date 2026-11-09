@@ -34,6 +34,8 @@ import {
   stageFor,
   youtubeIdFromKey,
 } from './decide'
+import { captureRepoDemo, defaultDemoFetchers } from '../demo'
+import { vetImages, type VetDeps } from './image-vet'
 import { captureItemImages } from '../images'
 import { pdfMarkdownEvidence } from '../arxiv-html'
 import { arxivIdFromKey, type PaperClient } from '../paper-client'
@@ -56,6 +58,8 @@ export type ProcessDeps = {
   embeddingModel: string
   alertWebhookUrl?: string
   githubToken?: string
+  /** Gemini image vetting; absent in tests and when not configured. */
+  vet?: Omit<VetDeps, 'log'>
 }
 
 export type ProcessOutcome =
@@ -78,6 +82,7 @@ type ItemRow = {
   topics: string[]
   queued_at: Date | null
   images: unknown
+  demo?: unknown
 }
 
 const GENERATION_ATTEMPTS = 2
@@ -96,6 +101,7 @@ async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefin
       'topics',
       'queued_at',
       'images',
+      'demo',
     ])
     .where('id', '=', itemId)
     .executeTakeFirst()
@@ -153,7 +159,7 @@ async function storeImages(
   paper: ParsedPaper | null,
 ): Promise<ItemImage[]> {
   try {
-    const images = await captureItemImages(
+    const captured = await captureItemImages(
       {
         canonicalKey: item.canonical_key,
         canonicalUrl: item.canonical_url,
@@ -162,17 +168,31 @@ async function storeImages(
       },
       { log, githubToken: deps.githubToken },
     )
+    const images = deps.vet ? await vetImages(captured, { ...deps.vet, log }) : captured
     await deps.db
       .updateTable('item')
       .set({ images: JSON.stringify(images) })
       .where('id', '=', item.id)
       .where('images', 'is', null)
       .execute()
+    await storeDemo(deps, item, log)
     return images
   } catch (err) {
     log.warn(errorFields(err), 'image capture failed, continuing without images')
     return []
   }
+}
+
+async function storeDemo(deps: ProcessDeps, item: ItemRow, log: Logger): Promise<void> {
+  if (!item.canonical_key.startsWith('github:') || item.demo != null) return
+  const [owner, repo] = item.canonical_key.slice('github:'.length).split('/')
+  if (!owner || !repo) return
+  const demo = await captureRepoDemo(owner, repo, defaultDemoFetchers(), log)
+  await deps.db
+    .updateTable('item')
+    .set({ demo: JSON.stringify(demo ?? { none: true }) })
+    .where('id', '=', item.id)
+    .execute()
 }
 
 function paperTexts(paper: ParsedPaper | null, source: string): string[] | null {

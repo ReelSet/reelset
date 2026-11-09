@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { HeartIcon, HomeIcon } from '@/components/ui/icons'
-import { EmptyState } from '@/components/ui/EmptyState'
+import { ProfileLibrary } from '@/components/profile/ProfileLibrary'
+import { ProfileSources } from '@/components/profile/ProfileSources'
+import { ProfileTopics } from '@/components/profile/ProfileTopics'
+import { ClockIcon, HomeIcon } from '@/components/ui/icons'
 import { Wordmark } from '@/components/ui/Logo'
 import { buildLoginUrl } from '@/lib/auth/return-url'
 import { getOptionalUser } from '@/server/auth'
@@ -12,13 +14,42 @@ import { profileSummary } from '@/server/profile'
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Profile', robots: { index: false } }
 
+function Section({
+  title,
+  hint,
+  delay,
+  children,
+}: {
+  title: string
+  hint?: string
+  delay: number
+  children: React.ReactNode
+}) {
+  return (
+    <section className="animate-fade-up mt-10" style={{ animationDelay: `${delay}ms` }}>
+      <h2 className="text-xs font-medium uppercase tracking-wider text-faint">{title}</h2>
+      {hint && <p className="mt-1 mb-3 text-sm text-muted">{hint}</p>}
+      {!hint && <div className="mb-3" />}
+      {children}
+    </section>
+  )
+}
+
 export default async function ProfilePage() {
   const user = await getOptionalUser()
   if (!user) redirect(buildLoginUrl('/profile'))
-  const { topics, likes } = await profileSummary(getDb(), user.id, mediaBaseUrl())
+  const profile = await profileSummary(getDb(), user.id, mediaBaseUrl())
+  const initial = (user.email ?? '?').trim().charAt(0).toUpperCase() || '?'
+  const since = profile.memberSince
+    ? new Date(profile.memberSince).toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
+    : null
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 pb-16">
+    <div className="mx-auto w-full max-w-2xl px-5 pb-20">
       <header className="flex items-center justify-between pt-safe">
         <a href="/" aria-label="Reelset home">
           <Wordmark className="text-[15px]" />
@@ -32,89 +63,54 @@ export default async function ProfilePage() {
         </a>
       </header>
 
-      <section className="animate-fade-up mt-10 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-[28px] font-semibold tracking-tight">Your profile</h1>
-          <p className="mt-1 truncate text-sm text-muted">{user.email ?? 'Signed in'}</p>
+      <section className="animate-fade-up mt-10 flex items-center gap-4">
+        <div
+          aria-hidden
+          className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-line-strong bg-raised text-2xl font-semibold text-accent"
+        >
+          {initial}
         </div>
-        <form action="/auth/logout" method="post">
-          <button
-            type="submit"
-            className="rounded-full border border-line px-4 py-2 text-sm text-muted transition hover:bg-raised hover:text-fg active:scale-95"
-          >
-            Sign out
-          </button>
-        </form>
+        <div className="min-w-0">
+          <h1 className="truncate text-[22px] font-semibold tracking-tight">
+            {user.email ?? 'Signed in'}
+          </h1>
+          {since && <p className="mt-0.5 text-sm text-muted">Member since {since}</p>}
+        </div>
       </section>
 
-      {topics.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-faint">Topics</h2>
-          <ul className="flex flex-wrap gap-2">
-            {topics.map((t) => (
-              <li
-                key={t}
-                className="rounded-full border border-line bg-surface px-3 py-1 text-sm text-muted"
-              >
-                {t}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <Section title="Topics" hint="Reels on these topics rank higher in your feed." delay={60}>
+        <ProfileTopics initial={profile.topics} />
+      </Section>
 
-      <section className="mt-10">
-        <h2 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-faint">
-          <HeartIcon className="h-3.5 w-3.5" />
-          Liked reels
-          <span className="tabular-nums">{likes.length}</span>
-        </h2>
-        {likes.length === 0 ? (
-          <div className="rounded-md border border-dashed border-line py-10">
-            <EmptyState
-              icon={<HeartIcon className="h-8 w-8" />}
-              title="No likes yet"
-              body="Double tap a reel to save it here."
-              action={
-                <a
-                  href="/"
-                  className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
-                >
-                  Browse reels
-                </a>
-              }
-            />
-          </div>
-        ) : (
-          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {likes.map((l, i) => (
-              <li
-                key={l.id}
-                className="animate-fade-up"
-                style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
-              >
-                <a
-                  href={`/?reel=${l.id}`}
-                  className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-surface transition active:scale-[0.97]"
-                >
-                  {l.posterUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={l.posterUrl}
-                      alt=""
-                      loading="lazy"
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                    />
-                  )}
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2 pt-8 text-[11px] leading-snug">
-                    <span className="line-clamp-2">{l.title}</span>
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Section title="Sources" hint="Choose where your feed pulls from." delay={120}>
+        <ProfileSources initial={profile.sources} />
+      </Section>
+
+      <Section title="Your reels" delay={180}>
+        <ProfileLibrary liked={profile.liked} saved={profile.saved} />
+      </Section>
+
+      <Section title="Ask" delay={240}>
+        <a
+          href="/ask/history"
+          className="flex min-h-12 items-center gap-3 rounded-md border border-line bg-surface px-4 text-sm transition hover:bg-raised active:scale-[0.99]"
+        >
+          <ClockIcon className="h-[18px] w-[18px] text-muted" />
+          Your questions
+          <span aria-hidden className="ml-auto text-faint">
+            →
+          </span>
+        </a>
+      </Section>
+
+      <form action="/auth/logout" method="post" className="mt-12">
+        <button
+          type="submit"
+          className="w-full rounded-md border border-line py-3 text-sm text-muted transition hover:bg-raised hover:text-fg active:scale-[0.99]"
+        >
+          Sign out
+        </button>
+      </form>
     </div>
   )
 }

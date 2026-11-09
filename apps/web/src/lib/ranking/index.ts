@@ -23,6 +23,7 @@ export type RankedItem = {
   durationMs: number | null
   likeCount: number
   liked: boolean
+  saved: boolean
   mentions: { source: string; score: number | null; url: string }[]
 }
 
@@ -52,6 +53,7 @@ export function toRankedItem(row: FeedRow): RankedItem | null {
     durationMs: row.video_duration_ms,
     likeCount: Number(row.like_count ?? 0),
     liked: Boolean(row.liked),
+    saved: Boolean(row.saved),
     mentions: row.mentions,
   }
 }
@@ -77,9 +79,14 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
   try {
     const profile = params.profileId
       ? await loadProfileSignals(db, params.profileId)
-      : { signalCount: 0, topics: [] }
+      : { signalCount: 0, topics: [], sources: [] }
     const minTemplate = await loadFeedMinTemplate(db, log)
-    const candidates = await loadCandidates(db, { profileId: params.profileId, asOf, minTemplate })
+    const candidates = await loadCandidates(db, {
+      profileId: params.profileId,
+      asOf,
+      minTemplate,
+      sources: profile.sources,
+    })
     const ranked = rankCandidates(candidates, {
       asOf: new Date(asOf),
       signalCount: profile.signalCount,

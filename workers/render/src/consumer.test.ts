@@ -521,4 +521,60 @@ describe('aura-2 narration', () => {
     expect(sent.narration).toBeUndefined()
     expect(rec.spends.find((s) => s.category === 'tts')!.costUsd).toBe(0)
   })
+
+  describe('stock b-roll and demo', () => {
+    const pick = {
+      url: 'https://videos.pexels.com/a.mp4',
+      id: 1,
+      beat: 1,
+      seconds: 5,
+      creator: 'Ann',
+      creatorUrl: 'https://www.pexels.com/@ann',
+      pageUrl: 'https://www.pexels.com/video/1/',
+    }
+
+    it('sends clips and the demo to the container and stores the returned credits', async () => {
+      const container = new FakeContainer({
+        renderBody: {
+          jobId: 'x',
+          bytes: 1000,
+          posterBytes: 50,
+          durationMs: 30_000,
+          ttsDurationMs: 29_000,
+          ttsChars: 400,
+          renderMs: 20_000,
+          cover: true,
+          templateVersion: TEMPLATE_VERSION,
+          credits: [{ kind: 'stock', provider: 'pexels', creator: 'Ann', url: pick.pageUrl }],
+        },
+      })
+      const store = new FakeStore()
+      store.item = makeItem({
+        demo: {
+          url: 'https://github.com/user-attachments/assets/x',
+          kind: 'mp4',
+          repo: 'acme/widget',
+        },
+      })
+      const { deps } = setup({ store, containers: [container] })
+      deps.broll = async () => [pick]
+      await processRenderJob(deps, body, 1)
+      const call = container.requests[0]!.body as Record<string, unknown>
+      expect(call.broll).toEqual([pick])
+      expect(call.demo).toMatchObject({ kind: 'mp4', repo: 'acme/widget' })
+      const key = await keyFor()
+      expect(store.renders.get(key)?.done?.credits).toEqual([
+        { kind: 'stock', provider: 'pexels', creator: 'Ann', url: pick.pageUrl },
+      ])
+    })
+
+    it('still renders when the b-roll lookup throws', async () => {
+      const { deps, containers } = setup()
+      deps.broll = async () => {
+        throw new Error('pexels down')
+      }
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect((containers[0]!.requests[0]!.body as Record<string, unknown>).broll).toBeUndefined()
+    })
+  })
 })

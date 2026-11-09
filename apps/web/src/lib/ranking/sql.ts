@@ -40,8 +40,16 @@ export function candidatesQuery(params: {
   asOf: string
   poolSize: number
   minTemplate: number
+  sources?: readonly string[]
 }): RawBuilder<CandidateRow> {
   const { profileId, asOf, poolSize, minTemplate } = params
+  const sources = params.sources ?? []
+  const sourceFilter = sources.length
+    ? sql`and exists (
+        select 1 from mention m
+        where m.item_id = i.id and m.source::text = any(${sql.val([...sources])}::text[])
+      )`
+    : sql``
   return sql<CandidateRow>`
     select i.id, i.score, i.published_at, i.topics,
       case when p.taste_embedding is not null and i.embedding is not null
@@ -57,13 +65,20 @@ export function candidatesQuery(params: {
           and r.video_key is not null
           and coalesce(r.template_version, 0) >= ${minTemplate}
       )
+      ${sourceFilter}
     order by i.published_at desc, i.id desc
     limit ${poolSize}`
 }
 
 export async function loadCandidates(
   db: Database,
-  params: { profileId: string | null; asOf: string; minTemplate: number; poolSize?: number },
+  params: {
+    profileId: string | null
+    asOf: string
+    minTemplate: number
+    poolSize?: number
+    sources?: readonly string[]
+  },
 ): Promise<Candidate[]> {
   const result = await candidatesQuery({ poolSize: CANDIDATE_POOL_SIZE, ...params }).execute(db)
   return result.rows.map((row) => ({
@@ -78,13 +93,17 @@ export async function loadCandidates(
 export async function loadProfileSignals(
   db: Database,
   profileId: string,
-): Promise<{ signalCount: number; topics: string[] }> {
+): Promise<{ signalCount: number; topics: string[]; sources: string[] }> {
   const row = await db
     .selectFrom('profile')
-    .select(['signal_count', 'topics'])
+    .select(['signal_count', 'topics', 'sources'])
     .where('id', '=', profileId)
     .executeTakeFirst()
-  return { signalCount: row?.signal_count ?? 0, topics: row?.topics ?? [] }
+  return {
+    signalCount: row?.signal_count ?? 0,
+    topics: row?.topics ?? [],
+    sources: row?.sources ?? [],
+  }
 }
 
 export function hydrateQuery(
@@ -148,6 +167,17 @@ export function hydrateQuery(
             )
             .as('liked')
         : sql<boolean>`false`.as('liked'),
+      profileId
+        ? eb
+            .exists(
+              eb
+                .selectFrom('save')
+                .select(sql.lit(1).as('one'))
+                .whereRef('save.item_id', '=', 'item.id')
+                .where('save.profile_id', '=', profileId),
+            )
+            .as('saved')
+        : sql<boolean>`false`.as('saved'),
     ])
 }
 

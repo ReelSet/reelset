@@ -18,12 +18,14 @@ IMAGE_KINDS = ("og", "thumbnail", "figure", "screenshot", "avatar")
 SCREEN_NAMES = (
     "RepoPage", "Terminal", "CodeBlock", "StatSlam", "BarRace", "HNThread", "RedditPost",
     "YouTubePlayer", "PaperPage", "FigureZoom", "TableScreen", "EquationScreen", "ArticleHeadline", "ImageFull", "KeyPoint",
-    "Compare", "EndCard",
+    "Compare", "EndCard", "RepoDemo",
 )  # fmt: skip
 MAX_HEADLINE_WORDS = 7
 SFX_NAMES = ("whoosh", "pop", "tick", "ding", "hit", "riser", "swoosh")
 CUE_RE = re.compile(r"^[^\s#]{1,40}(#[1-9])?$")
 MAX_SHOTS_PER_BEAT = 6
+MAX_BROLL = 8
+DEMO_KINDS = ("gif", "mp4", "webm")
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,8 @@ class RenderRequest:
     narration_words: list = field(default_factory=list)
     headline: str = ""
     facts: dict = field(default_factory=dict)
+    broll: list = field(default_factory=list)
+    demo: dict | None = None
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -279,6 +283,8 @@ def validate_render_request(payload) -> RenderRequest:
         narration_words=narration_words,
         headline=" ".join(_text(script, "headline", 80, required=False).split()[:MAX_HEADLINE_WORDS]),
         facts=_validate_facts(payload.get("facts")),
+        broll=_validate_broll(payload.get("broll")),
+        demo=_validate_demo(payload.get("demo")),
     )
 
 
@@ -330,8 +336,63 @@ def _validate_images(value) -> list:
         alt = raw.get("alt")
         if isinstance(alt, str) and alt.strip():
             entry["alt"] = alt.strip()[:300]
+        caption = raw.get("caption")
+        if isinstance(caption, str) and caption.strip():
+            entry["caption"] = caption.strip()[:60]
+        focus = raw.get("focus")
+        if isinstance(focus, dict) and all(
+            isinstance(focus.get(k), (int, float)) and not isinstance(focus.get(k), bool) and 0 <= focus[k] <= 1
+            for k in ("x", "y")
+        ):
+            entry["focus"] = {"x": float(focus["x"]), "y": float(focus["y"])}
         out.append(entry)
     return out
+
+
+def _https_url(value, what: str) -> str:
+    if not isinstance(value, str) or len(value) > 2048 or not value.startswith("https://"):
+        _bad(f"{what} must be an https url")
+    return value
+
+
+def _validate_broll(value) -> list:
+    """Optional stock clips chosen by the worker: [{url, beat?, seconds?, creator?, creatorUrl?, pageUrl?}]."""
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > MAX_BROLL:
+        _bad(f"broll must be a list of at most {MAX_BROLL}")
+    out = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            _bad("broll entry must be an object")
+        entry = {"url": _https_url(raw.get("url"), "broll.url")}
+        beat = raw.get("beat")
+        if isinstance(beat, int) and not isinstance(beat, bool) and 0 <= beat <= 20:
+            entry["beat"] = beat
+        seconds = raw.get("seconds")
+        if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and 1 <= seconds <= 30:
+            entry["seconds"] = float(seconds)
+        for key in ("creator", "creatorUrl", "pageUrl"):
+            text = raw.get(key)
+            if isinstance(text, str) and text.strip():
+                entry[key] = text.strip()[:200 if key == "creator" else 500]
+        out.append(entry)
+    return out
+
+
+def _validate_demo(value) -> dict | None:
+    """Optional README demo media: {url, kind: gif|mp4|webm, repo}."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        _bad("demo must be an object")
+    kind = value.get("kind")
+    if kind not in DEMO_KINDS:
+        _bad("demo.kind is not supported")
+    repo = value.get("repo")
+    if not isinstance(repo, str) or not re.match(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$", repo):
+        _bad("demo.repo must be owner/name")
+    return {"url": _https_url(value.get("url"), "demo.url"), "kind": kind, "repo": repo}
 
 
 def validate_video_id(payload) -> str:

@@ -4,13 +4,22 @@ import { Captions } from './Captions'
 import { Transition } from './fx'
 import { Header } from './Header'
 import { Headline } from './Headline'
-import { headlineEnd, headlineOf, resolveShots, snapHeadlineEnd, toFrames, totalFrames } from './lib/timeline'
+import {
+  headlineEnd,
+  headlineOf,
+  resolveShots,
+  snapHeadlineEnd,
+  toFrames,
+  totalFrames,
+} from './lib/timeline'
 import { overlapFrames, pickTransitions } from './lib/transitions'
 import type { ReelProps } from './lib/types'
 import { SCREENS } from './screens'
-import type { ReelCtx } from './screens/ui'
+import { BackdropContext, type ReelCtx } from './screens/ui'
 import { COLOR, H, HEADLINE_PAD, W } from './theme'
 
+const clipFor = (clips: ReelProps['broll'], shotProps: Record<string, unknown>) =>
+  clips && typeof shotProps.bg === 'number' ? (clips[shotProps.bg] ?? null) : null
 
 function Finish() {
   return (
@@ -40,7 +49,10 @@ function Finish() {
 export function Reel(props: ReelProps) {
   const { fps } = useVideoConfig()
   const total = totalFrames(props.durationSeconds, fps)
-  const plan = useMemo(() => props.plan ?? resolveShots(props, fps, total).shots, [props, fps, total])
+  const plan = useMemo(
+    () => props.plan ?? resolveShots(props, fps, total).shots,
+    [props, fps, total],
+  )
   const scenes = useMemo(() => toFrames(props.scenes, fps, total), [props, fps, total])
   const ctx: ReelCtx = useMemo(
     () => ({
@@ -50,6 +62,7 @@ export function Reel(props: ReelProps) {
       domain: props.domain,
       facts: props.facts ?? {},
       images: props.images ?? [],
+      demo: props.demo,
       hook: props.scenes[0]?.kind === 'hook' ? props.scenes[0].text : props.title,
     }),
     [props],
@@ -70,7 +83,9 @@ export function Reel(props: ReelProps) {
             layout="none"
           >
             <Transition kind={transitions[i] ?? null}>
-              <Screen frames={shot.frames} ctx={ctx} props={shot.props} topPad={topPad} />
+              <BackdropContext.Provider value={clipFor(props.broll, shot.props)}>
+                <Screen frames={shot.frames} ctx={ctx} props={shot.props} topPad={topPad} />
+              </BackdropContext.Provider>
             </Transition>
           </Sequence>
         )

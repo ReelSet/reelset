@@ -38,6 +38,9 @@ export type AskQuery = {
   latency_ms: number | null
   input_tokens: number | null
   output_tokens: number | null
+  conversation_id: string | null
+  cached: Generated<boolean>
+  deleted_at: Timestamp | null
   created_at: Generated<Timestamp>
 }
 export type Event = {
@@ -93,6 +96,7 @@ export type Item = {
   tldr: string | null
   script: unknown | null
   images: unknown | null
+  demo: unknown | null
   content_hash: string | null
   prompt_version: string | null
   attempts: Generated<number>
@@ -142,6 +146,7 @@ export type Profile = {
   id: string
   role: Generated<UserRole>
   topics: Generated<string[]>
+  sources: Generated<string[]>
   signal_count: Generated<number>
   created_at: Generated<Timestamp>
   updated_at: Generated<Timestamp>
@@ -159,9 +164,15 @@ export type Render = {
   attempts: Generated<number>
   error: string | null
   template_version: number | null
+  credits: unknown | null
   created_at: Generated<Timestamp>
   started_at: Timestamp | null
   finished_at: Timestamp | null
+}
+export type Save = {
+  profile_id: string
+  item_id: string
+  created_at: Generated<Timestamp>
 }
 export type SourceWatermark = {
   source: Source
@@ -195,6 +206,7 @@ export type DB = {
   mention: Mention
   profile: Profile
   render: Render
+  save: Save
   source_watermark: SourceWatermark
   spend_ledger: SpendLedger
 }

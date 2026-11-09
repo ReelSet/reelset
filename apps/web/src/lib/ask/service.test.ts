@@ -130,13 +130,13 @@ describe('runAsk', () => {
     expect(deltas).toEqual(['Yes, ', 'mostly.'])
   })
 
-  it('serves the cache without calling Gemini and logs it without an answer', async () => {
+  it('serves the cache without calling Gemini and logs it as cached with its answer', async () => {
     const cached = { answer: 'cached', citations: [] }
     const { deps, logged } = makeDeps({ findCached: vi.fn(async () => cached) })
     const result = await runAsk(deps, input)
     expect(result).toMatchObject({ outcome: 'answered', answer: 'cached', cached: true })
     expect(deps.embed).not.toHaveBeenCalled()
-    expect(logged[0]).toMatchObject({ outcome: 'answered', answer: null })
+    expect(logged[0]).toMatchObject({ outcome: 'answered', answer: 'cached', cached: true })
   })
 
   it('answers no_evidence when nothing clears the similarity threshold', async () => {

@@ -4,6 +4,8 @@ import { errorFields } from '@reelset/core'
 import { CONTAINER_BASE_URL, RENDER_TIMEOUT_MS, TEMPLATE_VERSION } from './constants'
 import { RenderJobError, parseErrorCode } from './errors'
 import type { ItemFacts } from './facts'
+import type { BrollPick } from './pexels'
+import type { ItemDemo } from './demo'
 
 export type ContainerFetcher = { fetch(request: Request): Promise<Response> }
 
@@ -19,6 +21,8 @@ export type RenderInput = {
   sourceImageUrls: string[]
   images: ItemImage[]
   facts?: ItemFacts
+  broll?: BrollPick[]
+  demo?: ItemDemo
   narration?: { audioBase64: string; words: { text: string; start: number; end: number }[] }
 }
 
@@ -32,6 +36,18 @@ const metadataSchema = z.object({
   renderMs: z.number().int().nonnegative(),
   cover: z.boolean().default(false),
   templateVersion: z.string().optional(),
+  credits: z
+    .array(
+      z.object({
+        kind: z.enum(['stock', 'demo']),
+        provider: z.string().optional(),
+        creator: z.string().nullish(),
+        creatorUrl: z.string().nullish(),
+        repo: z.string().optional(),
+        url: z.string().nullish(),
+      }),
+    )
+    .default([]),
 })
 export type RenderMetadata = z.infer<typeof metadataSchema>
 

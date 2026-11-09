@@ -7,8 +7,10 @@ import {
   clipHeadline,
   narrationWordCount,
   numberValues,
+  repairBroll,
   repairShots,
 } from './shots'
+import type { Ledger } from './stat-labels'
 import { asQuotaError } from './quota'
 import type { GeneratedContent } from './safety'
 
@@ -201,10 +203,12 @@ export function repairModelOutput(
   if (Array.isArray(script.beats)) {
     const beats: unknown[] = script.beats.slice(0, 6)
     script.beats = beats
+    const labelLedger: Ledger = new Map()
     for (const beat of beats) {
       if (!isObj(beat)) continue
       clip(beat, 'text', 220)
-      repairShots(beat, factNumbers)
+      repairShots(beat, factNumbers, labelLedger)
+      repairBroll(beat)
       const v = beat.visual
       if (!isObj(v)) continue
       if (v.type === 'title') {

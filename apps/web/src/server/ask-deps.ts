@@ -36,6 +36,8 @@ function entryColumns(entry: AskLogEntry) {
     latency_ms: entry.latencyMs,
     input_tokens: entry.inputTokens,
     output_tokens: entry.outputTokens,
+    conversation_id: entry.conversationId,
+    cached: entry.cached,
   }
 }
 
@@ -72,6 +74,7 @@ export function createAskDeps(log: Logger): AskDeps {
             profile_id: input.profileId,
             question: input.question,
             normalized_question: input.normalized,
+            conversation_id: input.conversationId,
             outcome: AskOutcome.error,
           })
           .returning('id')
@@ -84,6 +87,7 @@ export function createAskDeps(log: Logger): AskDeps {
         .select(['answer', 'citations'])
         .where('normalized_question', '=', normalized)
         .where('outcome', '=', 'answered')
+        .where('cached', '=', false)
         .where('answer', 'is not', null)
         .where('created_at', '>', sql<Date>`now() - interval '1 hour'`)
         .orderBy('created_at', 'desc')

@@ -38,26 +38,7 @@ export function TopicPicker({ onDone }: { onDone: () => void }) {
         <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-white/15" />
         <h2 className="text-lg font-semibold tracking-tight">What do you want to see?</h2>
         <p className="mt-1 text-sm text-muted">Pick up to 8 topics to tune your feed.</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {TOPICS.map((topic) => {
-            const on = selected.includes(topic)
-            return (
-              <button
-                key={topic}
-                type="button"
-                onClick={() => toggle(topic)}
-                aria-pressed={on}
-                className={`rounded-full border px-3.5 py-1.5 text-sm transition duration-150 active:scale-95 ${
-                  on
-                    ? 'border-accent bg-accent text-accent-fg'
-                    : 'border-line bg-raised text-fg hover:border-line-strong'
-                }`}
-              >
-                {topic}
-              </button>
-            )
-          })}
-        </div>
+        <TopicChips selected={selected} onToggle={toggle} className="mt-4" />
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
         <div className="mt-5 flex gap-3">
           <button
@@ -79,6 +60,39 @@ export function TopicPicker({ onDone }: { onDone: () => void }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+export function TopicChips({
+  selected,
+  onToggle,
+  className = '',
+}: {
+  selected: string[]
+  onToggle: (topic: string) => void
+  className?: string
+}) {
+  return (
+    <div className={`flex flex-wrap gap-2 ${className}`}>
+      {TOPICS.map((topic) => {
+        const on = selected.includes(topic)
+        return (
+          <button
+            key={topic}
+            type="button"
+            onClick={() => onToggle(topic)}
+            aria-pressed={on}
+            className={`rounded-full border px-3.5 py-1.5 text-sm transition duration-150 active:scale-95 ${
+              on
+                ? 'border-accent bg-accent text-accent-fg'
+                : 'border-line bg-raised text-fg hover:border-line-strong'
+            }`}
+          >
+            {topic}
+          </button>
+        )
+      })}
     </div>
   )
 }

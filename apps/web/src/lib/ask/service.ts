@@ -27,6 +27,8 @@ export type AskLogEntry = {
   latencyMs: number
   inputTokens: number | null
   outputTokens: number | null
+  conversationId: string | null
+  cached: boolean
 }
 
 export type AskDeps = {
@@ -42,6 +44,7 @@ export type AskDeps = {
     question: string
     normalized: string
     hourlyLimit: number
+    conversationId: string | null
   }): Promise<string | null>
   findCached(normalized: string): Promise<CachedAnswer | null>
   embed(text: string): Promise<number[]>
@@ -63,7 +66,11 @@ export type AskResult =
 
 export async function runAsk(
   deps: AskDeps,
-  input: { profileId: string; check: Extract<QuestionCheck, { ok: true }> },
+  input: {
+    profileId: string
+    check: Extract<QuestionCheck, { ok: true }>
+    conversationId?: string | null
+  },
   onText: (text: string) => void = () => undefined,
 ): Promise<AskResult> {
   const started = performance.now()
@@ -74,7 +81,9 @@ export async function runAsk(
 
   const finish = async (
     result: AskResult,
-    extra: Partial<Pick<AskLogEntry, 'answer' | 'citations' | 'inputTokens' | 'outputTokens'>> = {},
+    extra: Partial<
+      Pick<AskLogEntry, 'answer' | 'citations' | 'inputTokens' | 'outputTokens' | 'cached'>
+    > = {},
   ): Promise<AskResult> => {
     const latencyMs = elapsedMs(started)
     try {
@@ -87,6 +96,8 @@ export async function runAsk(
         citations: null,
         inputTokens: null,
         outputTokens: null,
+        conversationId: input.conversationId ?? null,
+        cached: false,
         ...extra,
         latencyMs,
       }
@@ -114,6 +125,7 @@ export async function runAsk(
       question,
       normalized,
       hourlyLimit,
+      conversationId: input.conversationId ?? null,
     })
     log.info({ reserved: reservationId !== null, hourlyLimit }, 'ask rate limit decided')
     if (!reservationId) return finish({ outcome: 'rate_limited', message: RATE_LIMITED_MESSAGE })
@@ -121,8 +133,11 @@ export async function runAsk(
     const cached = await deps.findCached(normalized)
     if (cached) {
       log.info('ask served from cache')
-      // Logged without the answer so cache hits never refresh the one-hour cache window.
-      return finish({ outcome: 'answered', ...cached, cached: true })
+      // Stored with cached=true so it shows in history but never refreshes the cache window.
+      return finish(
+        { outcome: 'answered', ...cached, cached: true },
+        { answer: cached.answer, citations: cached.citations, cached: true },
+      )
     }
 
     const embedding = await deps.embed(normalized)

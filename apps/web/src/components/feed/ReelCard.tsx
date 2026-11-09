@@ -5,6 +5,7 @@ import type { FeedItemDto } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import {
   ArrowUpRightIcon,
+  BookmarkIcon,
   HeartIcon,
   LayersIcon,
   PlayIcon,
@@ -28,6 +29,7 @@ type Props = {
   onVisible: (index: number) => void
   onSound: (on: boolean) => void
   onToggleLike: (item: FeedItemDto) => void
+  onToggleSave: (item: FeedItemDto) => void
   onOpenSources: (item: FeedItemDto) => void
 }
 
@@ -43,7 +45,7 @@ function host(url: string): string {
 
 export function ReelCard(props: Props) {
   const { item, index, active, inWindow, preload, soundOn, controls } = props
-  const { onVisible, onSound, onToggleLike, onOpenSources } = props
+  const { onVisible, onSound, onToggleLike, onToggleSave, onOpenSources } = props
   const sectionRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -61,7 +63,6 @@ export function ReelCard(props: Props) {
   const [copied, setCopied] = useState(false)
   const toast = useToast()
   const detailsId = useId()
-  const shortViewport = useShortViewport()
   const [heart, setHeart] = useState(0)
 
   soundRef.current = soundOn
@@ -320,7 +321,7 @@ export function ReelCard(props: Props) {
         className={`absolute inset-0 z-[15] bg-gradient-to-t from-black/80 via-black/60 to-black/50 transition-opacity duration-300 ease-out ${expanded ? 'cursor-pointer opacity-100' : 'pointer-events-none opacity-0'}`}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3.5 pr-[16%] pt-10 short:pb-[max(0.5rem,env(safe-area-inset-bottom))] short:pt-6">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3.5 pr-[16%] pt-10 short:pb-[max(0.5rem,env(safe-area-inset-bottom))] short:pt-4">
         <div
           aria-hidden
           className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"
@@ -346,11 +347,7 @@ export function ReelCard(props: Props) {
               onClick={() => hasMore && setExpanded((v) => !v)}
               className={`relative block w-full text-left ${hasMore ? 'cursor-pointer' : 'cursor-default'}`}
             >
-              {expanded ? (
-                item.title
-              ) : (
-                <ClampedTitle title={item.title} more={hasMore} lines={shortViewport ? 1 : 2} />
-              )}
+              {expanded ? item.title : <ClampedTitle title={item.title} more={hasMore} lines={2} />}
             </button>
           </h2>
           <div
@@ -406,7 +403,7 @@ export function ReelCard(props: Props) {
         </button>
       )}
 
-      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2.5 short:bottom-[max(0.5rem,env(safe-area-inset-bottom))] short:gap-1">
+      <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2 short:bottom-[max(0.75rem,env(safe-area-inset-bottom))] short:gap-0.5">
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}
@@ -415,7 +412,7 @@ export function ReelCard(props: Props) {
         >
           <HeartIcon
             filled={item.liked}
-            className={`h-5 w-5 short:h-[18px] short:w-[18px] transition-all duration-300 ease-spring ${item.liked ? 'scale-110 text-danger' : ''}`}
+            className={`h-[30px] w-[30px] transition-all duration-300 ease-spring ${item.liked ? 'scale-110 text-danger' : ''}`}
           />
         </RailButton>
         <RailButton
@@ -423,10 +420,20 @@ export function ReelCard(props: Props) {
           text={String(item.mentions.length)}
           onClick={() => onOpenSources(item)}
         >
-          <LayersIcon className="h-5 w-5 short:h-[18px] short:w-[18px]" />
+          <LayersIcon className="h-[28px] w-[28px]" />
         </RailButton>
-        <RailButton label="Share" text={copied ? 'Copied' : 'Share'} onClick={() => void share()}>
-          <ShareIcon className="h-5 w-5 short:h-[18px] short:w-[18px]" />
+        <RailButton
+          label={item.saved ? 'Unsave' : 'Save'}
+          pressed={item.saved}
+          onClick={() => onToggleSave(item)}
+        >
+          <BookmarkIcon
+            filled={item.saved}
+            className="h-[28px] w-[28px] transition-all duration-300 ease-spring"
+          />
+        </RailButton>
+        <RailButton label={copied ? 'Copied' : 'Share'} onClick={() => void share()}>
+          <ShareIcon className="h-[28px] w-[28px]" />
         </RailButton>
         <RailButton
           label={soundOn ? 'Mute' : 'Unmute'}
@@ -435,7 +442,7 @@ export function ReelCard(props: Props) {
             onSound(!soundOn)
           }}
         >
-          <VolumeIcon muted={!soundOn} className="h-5 w-5 short:h-[18px] short:w-[18px]" />
+          <VolumeIcon muted={!soundOn} className="h-[26px] w-[26px]" />
         </RailButton>
       </div>
 
@@ -447,18 +454,6 @@ export function ReelCard(props: Props) {
       </div>
     </section>
   )
-}
-
-function useShortViewport(): boolean {
-  const [short, setShort] = useState(false)
-  useEffect(() => {
-    const query = window.matchMedia('(max-height: 760px)')
-    const update = () => setShort(query.matches)
-    update()
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
-  return short
 }
 
 function ClampedTitle({ title, more, lines }: { title: string; more: boolean; lines: number }) {
@@ -537,16 +532,10 @@ function RailButton({
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className="group flex w-full flex-col items-center gap-0.5 text-white"
+      className="group flex min-h-11 w-full min-w-11 flex-col items-center justify-center gap-0.5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)]"
     >
-      <span className="glass grid aspect-square w-10 max-w-full place-items-center short:w-9 rounded-full transition duration-150 ease-out group-hover:bg-white/15 group-active:scale-90">
-        {children}
-      </span>
-      {text && (
-        <span className="text-[11px] font-medium leading-none text-white/80 tabular-nums short:hidden">
-          {text}
-        </span>
-      )}
+      <span className="transition duration-150 ease-out group-active:scale-90">{children}</span>
+      {text && <span className="text-[12px] font-semibold leading-none tabular-nums">{text}</span>}
     </button>
   )
 }

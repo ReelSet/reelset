@@ -1,15 +1,18 @@
 import { errorFields } from '@reelset/core'
 import { z } from 'zod'
-import type { AskStreamEvent } from '@/lib/api-types'
+import type { AskResponse, AskStreamEvent } from '@/lib/api-types'
 import { validateQuestion } from '@/lib/ask/question'
 import { ERROR_MESSAGE, runAsk } from '@/lib/ask/service'
 import { authErrorResponse, requireUser } from '@/server/auth'
 import { createAskDeps } from '@/server/ask-deps'
+import { getDb } from '@/server/db'
+import { mediaBaseUrl } from '@/server/env'
+import { resolveRelatedReels } from '@/server/related-reels'
 import { routeLog } from '@/server/logger'
 
 export const dynamic = 'force-dynamic'
 
-const bodySchema = z.object({ question: z.unknown() })
+const bodySchema = z.object({ question: z.unknown(), conversationId: z.guid().optional() })
 
 export async function POST(request: Request) {
   const log = routeLog('api/ask')
@@ -45,10 +48,19 @@ export async function POST(request: Request) {
         }
       }
       try {
-        const result = await runAsk(createAskDeps(log), { profileId: userId, check }, (text) =>
-          send({ type: 'delta', text }),
+        const result = await runAsk(
+          createAskDeps(log),
+          { profileId: userId, check, conversationId: body.data.conversationId },
+          (text) => send({ type: 'delta', text }),
         )
-        send({ type: 'result', result })
+        const final: AskResponse =
+          result.outcome === 'answered'
+            ? {
+                ...result,
+                reels: await resolveRelatedReels(getDb(), result.citations, mediaBaseUrl(), log),
+              }
+            : result
+        send({ type: 'result', result: final })
       } catch (err) {
         log.error(errorFields(err), 'ask route failed')
         send({ type: 'result', result: { outcome: 'error', message: ERROR_MESSAGE } })
