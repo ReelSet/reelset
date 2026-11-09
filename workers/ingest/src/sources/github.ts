@@ -20,6 +20,7 @@ export const repoSchema = z.looseObject({
   html_url: z.url(),
   description: z.string().nullish(),
   stargazers_count: z.number(),
+  forks_count: z.number().nullish(),
   created_at: z.string(),
   language: z.string().nullish(),
   topics: z.array(z.string()).nullish(),
@@ -96,6 +97,40 @@ export function repoToMention(repo: GithubRepo): NormalizedMention | null {
     numComments: null,
     publishedAt: created,
     extraTexts: [],
+    facts: {
+      owner: repo.owner?.login ?? repo.full_name.split('/')[0],
+      name: repo.full_name.split('/')[1] ?? repo.full_name,
+      description: repo.description?.trim() || null,
+      forks: repo.forks_count ?? null,
+      language: repo.language ?? null,
+      topics: repo.topics?.length ? repo.topics.slice(0, 8) : null,
+    },
+  }
+}
+
+const releaseSchema = z.looseObject({
+  tag_name: z.string().min(1),
+  published_at: z.string().nullish(),
+})
+
+export async function fetchLatestRelease(
+  fullName: string,
+  token: string | undefined,
+  log: Logger,
+  hostIntervalMs: number,
+): Promise<{ tag: string; publishedAt: string | null } | null> {
+  try {
+    const json = await fetchJson(`${GITHUB_API_BASE}/repos/${fullName}/releases/latest`, log, {
+      headers: headers(token),
+      hostIntervalMs,
+    })
+    const parsed = releaseSchema.safeParse(json)
+    return parsed.success
+      ? { tag: parsed.data.tag_name.slice(0, 40), publishedAt: parsed.data.published_at ?? null }
+      : null
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 404) return null
+    throw err
   }
 }
 
@@ -182,6 +217,24 @@ async function fetchRepos(scope: string, log: Logger, ctx: FetchContext): Promis
       } else if (readme) mention.extraTexts = [readme]
     } catch (err) {
       l.warn({ repo: mention.title, ...errorFields(err) }, 'github readme fetch failed')
+    }
+    if (spam.has(mention)) continue
+    try {
+      const release = await fetchLatestRelease(
+        mention.title,
+        ctx.githubToken,
+        l,
+        ctx.hostIntervalMs,
+      )
+      if (release) {
+        mention.facts = {
+          ...mention.facts,
+          latestRelease: release.tag,
+          latestReleaseAt: release.publishedAt,
+        }
+      }
+    } catch (err) {
+      l.warn({ repo: mention.title, ...errorFields(err) }, 'github release fetch failed')
     }
   }
 

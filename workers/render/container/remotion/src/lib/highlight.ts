@@ -57,16 +57,16 @@ export function sliceTokens(tokens: readonly Token[], chars: number): Token[] {
   return out
 }
 
-export function codeMetrics(code: string, width: number, maxHeight: number) {
+export function codeMetrics(code: string, width: number, maxHeight: number, scale = 1) {
   const lines = code.split('\n')
   const cols = Math.max(...lines.map((l) => l.length), 1)
-  const maxSize = lines.length <= 5 ? 32 : 24
+  const maxSize = Math.round((lines.length <= 5 ? 32 : 24) * scale)
   const wrappedLines = (size: number) =>
     lines.reduce((n, l) => n + Math.max(1, Math.ceil((l.length * 0.62 * size) / width)), 0)
   let size = Math.floor(Math.min(maxSize, width / (cols * 0.62)))
-  while (size > 20 && wrappedLines(size) * size * 1.55 > maxHeight) size -= 1
-  size = Math.max(size, 20)
-  while (size > 15 && wrappedLines(size) * size * 1.55 > maxHeight) size -= 1
+  while (size > 20 * scale && wrappedLines(size) * size * 1.55 > maxHeight) size -= 1
+  size = Math.max(size, Math.round(20 * scale))
+  while (size > 15 * scale && wrappedLines(size) * size * 1.55 > maxHeight) size -= 1
   const wrap = cols * 0.62 * size > width
   return { size, wrap, lines: wrap ? wrappedLines(size) : lines.length }
 }

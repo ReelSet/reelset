@@ -366,3 +366,54 @@ export function wordsToJson(words: TimedWord[]) {
 export function audioToBase64(audio: Uint8Array): string {
   return toBase64(audio)
 }
+
+const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length
+
+function cueText(cue: string): string {
+  return cue
+    .replace(/#\d+$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+/**
+ * Drops the last sentence of the longest multi-sentence beats until the narration is about
+ * `ratio` of its length. Hook and outro are untouched. Returns null if nothing can be cut.
+ */
+export function shortenScript(script: ReelScript, ratio: number): ReelScript | null {
+  const total = wordCount(narrationText(script))
+  const target = Math.floor(total * Math.min(0.95, Math.max(0.3, ratio)))
+  const sentences = script.beats.map((b) =>
+    b.text
+      .trim()
+      .split(/(?<=[.!?])\s+/)
+      .filter(Boolean),
+  )
+  let words = total
+  let changed = false
+  while (words > target) {
+    let pick = -1
+    let best = 0
+    sentences.forEach((s, i) => {
+      const w = wordCount(s.join(' '))
+      if (s.length >= 2 && w > best) {
+        best = w
+        pick = i
+      }
+    })
+    if (pick < 0) break
+    const dropped = sentences[pick]!.pop()!
+    words -= wordCount(dropped)
+    changed = true
+  }
+  if (!changed) return null
+  return {
+    ...script,
+    beats: script.beats.map((beat, i) => {
+      const text = sentences[i]!.join(' ')
+      const spoken = text.toLowerCase().replace(/[^a-z0-9]+/g, '')
+      const shots = beat.shots?.filter((s) => spoken.includes(cueText(s.at)))
+      return { ...beat, text, ...(shots ? { shots } : {}) }
+    }),
+  }
+}

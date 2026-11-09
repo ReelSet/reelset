@@ -1,0 +1,51 @@
+% Average PSNR comparison across different numbers of input views.
+    \centering
+    \caption{Average PSNR comparison under different numbers of input views. Results are averaged across the different datasets. The top-3 results are highlighted as \colorbox{rankfirst}{first}, \colorbox{ranksecond}{second}, and \colorbox{rankthird}{third}.}
+    \vspace{0.05in}
+    \label{tab:main_comparison_psnr}
+    \setlength{\tabcolsep}{8.5pt}
+    \renewcommand{\arraystretch}{1}
+    \small
+    \begin{tabular}{clccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Input}}
+        & \multirow{2}{*}{\textbf{Method}}
+        & \textbf{4 Views}
+        & \textbf{8 Views}
+        & \textbf{16 Views}
+        & \textbf{32 Views}
+        & \textbf{64 Views} \\
+        & & PSNR$\uparrow$ & PSNR$\uparrow$ & PSNR$\uparrow$ & PSNR$\uparrow$ & PSNR$\uparrow$ \\
+        \midrule
+        \multirow{6}{*}{\rotatebox[origin=c]{90}{w/o Pose}}
+        & AnySplat
+        & 12.68 & 13.20 & 12.83 & 13.12 & 14.26 \\
+        & YoNoSplat
+        & \first{18.23} & \first{18.64} & \first{18.73} & \first{18.34} & 15.79 \\
+        & DA3-GS
+        & 16.32 & 16.94 & 16.73 & 17.17 & \second{17.26} \\
+        & Mirror2-GS
+        & 17.20 & 17.60 & 17.98 & 17.04 & \third{17.09} \\
+        & QuerySplat
+        & \third{17.77} & \third{18.26} & \third{18.33} & \third{17.84} & 16.90 \\
+        & \textbf{Ours}
+        & \second{17.85} & \second{18.28} & \second{18.61} & \second{17.85} & \first{17.98} \\
+        \midrule
+        \multirow{7}{*}{\rotatebox[origin=c]{90}{w/ Pose}}
+        & DepthSplat
+        & 15.60 & 16.89 & 17.24 & 17.68 & 16.35 \\
+        & TokenGS
+        & \third{17.65} & \third{18.42} & \third{18.77} & \third{18.33} & \third{17.95} \\
+        & tttLRM
+        & 15.35 & 16.68 & 17.61 & 17.13 & 16.94 \\
+        & ReSplat
+        & \first{19.03} & \first{19.52} & \first{19.67} & \first{19.44} & \second{18.23} \\
+        & DA3-GS (Pose Cond.)
+        & 16.18 & 16.96 & 16.99 & 17.32 & 17.55 \\
+        & Mirror2-GS (Pose Cond.)
+        & 17.53 & 18.00 & 18.36 & 17.56 & 17.43 \\
+        & \textbf{Ours (Pose Cond.)}
+        & \second{18.39} & \second{18.82} & \second{19.12} & \second{18.39} & \first{18.50} \\
+        \bottomrule
+    \end{tabular}
+\vspace{-0.15in}

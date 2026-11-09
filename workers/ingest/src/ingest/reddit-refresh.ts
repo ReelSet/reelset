@@ -76,7 +76,9 @@ async function refreshBatch(
         score: post.score ?? null,
         num_comments: numComments,
         scored_at: sql`now()`,
-        ...(extraTexts && extraTexts.length > 0 ? { raw: JSON.stringify({ extraTexts }) } : {}),
+        ...(extraTexts && extraTexts.length > 0
+          ? { raw: sql`coalesce(raw, '{}'::jsonb) || ${JSON.stringify({ extraTexts })}::jsonb` }
+          : {}),
       })
       .where('id', '=', row.id)
       .execute()

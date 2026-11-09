@@ -17,6 +17,8 @@ export type NormalizedMention = {
   publishedAt: Date
   /** top comments, README excerpt, etc. Stored in mention.raw.extraTexts and chunked later. */
   extraTexts: string[]
+  /** Real source metadata (forks, release, subreddit, duration...) stored in mention.raw.facts. */
+  facts?: Record<string, unknown>
 }
 
 export type IngestSettings = {

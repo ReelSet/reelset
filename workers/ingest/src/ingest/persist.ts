@@ -17,6 +17,13 @@ export type PersistCounts = {
   itemIds: string[]
 }
 
+export function mentionRaw(mention: NormalizedMention): string {
+  const facts = Object.fromEntries(
+    Object.entries(mention.facts ?? {}).filter(([, v]) => v !== null && v !== undefined),
+  )
+  return JSON.stringify({ extraTexts: mention.extraTexts, facts })
+}
+
 type Resolved = { mention: NormalizedMention; target: ItemTarget }
 
 function dedupeBy<T>(rows: readonly T[], key: (row: T) => string): T[] {
@@ -81,7 +88,7 @@ async function persistChunk(
         score: mention.score === null ? null : Math.min(Math.round(mention.score), MAX_INT4),
         num_comments: mention.numComments,
         published_at: mention.publishedAt,
-        raw: JSON.stringify({ extraTexts: mention.extraTexts }),
+        raw: mentionRaw(mention),
       })),
     )
     .onConflict((oc) =>
@@ -91,7 +98,10 @@ async function persistChunk(
         score: sql`coalesce(excluded.score, mention.score)`,
         num_comments: sql`coalesce(excluded.num_comments, mention.num_comments)`,
         fetched_at: sql`now()`,
-        raw: sql`case when excluded.raw->'extraTexts' = '[]'::jsonb then mention.raw else excluded.raw end`,
+        raw: sql`coalesce(mention.raw, '{}'::jsonb) || jsonb_build_object(
+          'extraTexts', case when excluded.raw->'extraTexts' = '[]'::jsonb
+            then coalesce(mention.raw->'extraTexts', '[]'::jsonb) else excluded.raw->'extraTexts' end,
+          'facts', coalesce(mention.raw->'facts', '{}'::jsonb) || coalesce(excluded.raw->'facts', '{}'::jsonb))`,
       }),
     )
     .returning(sql<boolean>`(xmax = 0)`.as('inserted'))

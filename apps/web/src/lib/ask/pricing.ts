@@ -1,8 +1,8 @@
 import type { SpendCategory, SpendInput } from '@reelset/core'
 
-// Rough list prices used only for the spend guard; real billing lives with the provider.
-const LLM_INPUT_USD_PER_MTOK = 0.3
-const LLM_OUTPUT_USD_PER_MTOK = 2.5
+// Rough gemini-3.1-flash-lite list prices used only for the spend guard; billing lives with the provider.
+const LLM_INPUT_USD_PER_MTOK = 0.25
+const LLM_OUTPUT_USD_PER_MTOK = 1.5
 const EMBEDDING_USD_PER_MTOK = 0.15
 
 export function estimateTokens(text: string): number {

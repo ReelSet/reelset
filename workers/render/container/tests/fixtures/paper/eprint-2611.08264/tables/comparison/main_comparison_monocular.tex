@@ -1,0 +1,64 @@
+% Monocular comparison across seven benchmark datasets.
+    \centering
+    \caption{Quantitative comparison of feed-forward 3DGS methods using a \textbf{single input view}. The top-3 results are highlighted as \colorbox{rankfirst}{first}, \colorbox{ranksecond}{second}, and \colorbox{rankthird}{third}.}
+    \vspace{0.01in}
+    \label{tab:main_comparison_monocular}
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.15}
+    \small
+    \makebox[\linewidth][c]{%
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{lcccccccccccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Method}}
+        & \multicolumn{2}{c}{\textbf{ScanNet}}
+        & \multicolumn{2}{c}{\textbf{NRGBD}}
+        & \multicolumn{2}{c}{\textbf{DL3DV}}
+        & \multicolumn{2}{c}{\textbf{Tanks \& Temples}}
+        & \multicolumn{2}{c}{\textbf{Mip-NeRF 360}}
+        & \multicolumn{2}{c}{\textbf{ETH3D}}
+        & \multicolumn{2}{c}{\textbf{DTU}} \\
+        \cmidrule(lr){2-3}
+        \cmidrule(lr){4-5}
+        \cmidrule(lr){6-7}
+        \cmidrule(lr){8-9}
+        \cmidrule(lr){10-11}
+        \cmidrule(lr){12-13}
+        \cmidrule(lr){14-15}
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$ \\
+        \midrule
+        SHARP
+        & \first{0.223} & \first{0.244}
+        & \first{0.238} & \first{0.174}
+        & \second{0.335} & \second{0.280}
+        & \second{0.374} & \second{0.470}
+        & \first{0.328} & \first{0.505}
+        & \second{0.200} & \second{0.133}
+        & \second{0.433} & \second{0.724} \\
+        InfiniSplat
+        & \third{0.266} & \third{0.280}
+        & \third{0.336} & \third{0.345}
+        & \third{0.527} & \third{0.596}
+        & \third{0.452} & \third{0.531}
+        & \third{0.505} & \third{0.654}
+        & \third{0.367} & \third{0.376}
+        & \third{0.562} & \third{0.754} \\
+        \textbf{Ours}
+        & \second{0.238} & \second{0.274}
+        & \second{0.265} & \second{0.284}
+        & \first{0.279} & \first{0.220}
+        & \first{0.342} & \first{0.430}
+        & \second{0.410} & \second{0.599}
+        & \first{0.195} & \first{0.104}
+        & \first{0.327} & \first{0.657} \\
+        \bottomrule
+    \end{tabular}%
+    }%
+    }
+    \vspace{-0.1in}

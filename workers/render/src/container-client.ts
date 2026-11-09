@@ -3,6 +3,7 @@ import type { ItemImage, Logger, Source } from '@reelset/core'
 import { errorFields } from '@reelset/core'
 import { CONTAINER_BASE_URL, RENDER_TIMEOUT_MS, TEMPLATE_VERSION } from './constants'
 import { RenderJobError, parseErrorCode } from './errors'
+import type { ItemFacts } from './facts'
 
 export type ContainerFetcher = { fetch(request: Request): Promise<Response> }
 
@@ -17,6 +18,7 @@ export type RenderInput = {
   canonicalUrl: string
   sourceImageUrls: string[]
   images: ItemImage[]
+  facts?: ItemFacts
   narration?: { audioBase64: string; words: { text: string; start: number; end: number }[] }
 }
 

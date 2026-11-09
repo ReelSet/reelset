@@ -18,6 +18,7 @@ import {
   audioToBase64,
   generateNarration,
   narrationText,
+  shortenScript,
   shouldFallbackToEdge,
   wordsToJson,
   type AiLike,
@@ -134,8 +135,13 @@ async function runJob(
   }
 
   await deps.store.markRendering(key)
-  const narration = await prepareNarration(deps, script.data, deliveryAttempts, rlog)
-  const metadata = await renderAndUpload(deps, item, script.data, key, narration, rlog)
+  const { narration, script: renderScript } = await prepareNarration(
+    deps,
+    script.data,
+    deliveryAttempts,
+    rlog,
+  )
+  const metadata = await renderAndUpload(deps, item, renderScript, key, narration, rlog)
   await recordSpend(deps, metadata, key, narration, rlog)
   await finishItem(
     deps,
@@ -149,29 +155,52 @@ async function runJob(
   return { action: 'ack' }
 }
 
+type Prepared = { narration: Narration | null; script: ReelScript }
+
+function combine(first: Narration, second: Narration): Narration {
+  return {
+    ...second,
+    chars: first.chars + second.chars,
+    costUsd: Number((first.costUsd + second.costUsd).toFixed(6)),
+  }
+}
+
+/** Aura narration over the cap is re-synthesized once from a shortened script, then falls back to edge-tts. */
 async function prepareNarration(
   deps: ConsumerDeps,
   script: ReelScript,
   deliveryAttempts: number,
   log: Logger,
-): Promise<Narration | null> {
-  if (!deps.aura) return null
+): Promise<Prepared> {
+  if (!deps.aura) return { narration: null, script }
   try {
-    const narration = await generateNarration(
+    const first = await generateNarration(
       deps.aura.ai,
       narrationText(script),
       deps.aura.speaker,
       log,
     )
-    if (narration.audioSeconds > MAX_NARRATION_SECONDS) {
-      log.warn({ audioSeconds: narration.audioSeconds }, 'aura narration too long, using edge-tts')
-      return null
+    if (first.audioSeconds <= MAX_NARRATION_SECONDS) return { narration: first, script }
+    const shorter = shortenScript(script, (MAX_NARRATION_SECONDS - 3) / first.audioSeconds)
+    if (shorter) {
+      log.warn({ audioSeconds: first.audioSeconds }, 'aura narration too long, retrying shorter')
+      const second = await generateNarration(
+        deps.aura.ai,
+        narrationText(shorter),
+        deps.aura.speaker,
+        log,
+      )
+      if (second.audioSeconds <= MAX_NARRATION_SECONDS) {
+        return { narration: combine(first, second), script: shorter }
+      }
+      log.warn({ audioSeconds: second.audioSeconds }, 'shortened aura narration still too long')
     }
-    return narration
+    log.warn({ audioSeconds: first.audioSeconds }, 'aura narration too long, using edge-tts')
+    return { narration: null, script }
   } catch (err) {
     if (!(err instanceof RenderJobError) || !shouldFallbackToEdge(deliveryAttempts)) throw err
     log.warn({ deliveryAttempts }, 'aura tts kept failing, falling back to edge-tts')
-    return null
+    return { narration: null, script }
   }
 }
 
@@ -200,6 +229,7 @@ async function renderAndUpload(
       canonicalUrl: item.canonicalUrl,
       sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
       images: item.images,
+      facts: item.facts,
     },
     log,
   )

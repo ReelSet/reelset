@@ -15,7 +15,7 @@ const stage = path.join(serveUrl, 'public', 'job')
 fs.rmSync(stage, { recursive: true, force: true })
 fs.cpSync(path.join(jobDir, 'assets'), stage, { recursive: true })
 
-const concurrency = Number(process.env.REEL_CONCURRENCY) || Math.max(1, os.availableParallelism())
+const concurrency = Number(process.env.REEL_CONCURRENCY) || Math.max(1, Math.min(2, os.availableParallelism()))
 const started = Date.now()
 let lastLogged = -1
 try {
@@ -25,6 +25,24 @@ try {
     inputProps: props,
     logLevel: 'warn',
   })
+  const fps = composition.fps
+  const plan = composition.props.plan ?? []
+  fs.writeFileSync(
+    path.join(jobDir, 'timeline.json'),
+    JSON.stringify({
+      fps,
+      durationInFrames: composition.durationInFrames,
+      shots: plan.map((s) => ({
+        t: Math.round((s.from / fps) * 1000) / 1000,
+        seconds: Math.round((s.frames / fps) * 1000) / 1000,
+        show: s.show,
+        sfx: s.sfx,
+        origin: s.origin,
+        scene: s.sceneIndex,
+      })),
+    }),
+  )
+  console.log(`plan shots=${plan.length} avg=${(composition.durationInFrames / fps / Math.max(1, plan.length)).toFixed(2)}s`)
   await renderMedia({
     composition,
     serveUrl,
@@ -32,7 +50,7 @@ try {
     codec: 'h264',
     outputLocation: path.join(jobDir, 'raw.mp4'),
     concurrency,
-    videoBitrate: '1800k',
+    videoBitrate: '2800k',
     audioBitrate: '96k',
     x264Preset: 'veryfast',
     pixelFormat: 'yuv420p',

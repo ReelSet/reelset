@@ -11,6 +11,8 @@ export const videoSchema = z.looseObject({
   url: z.string().nullish(),
   publishedAt: z.string(),
   viewCount: z.number().nullish(),
+  durationSec: z.number().nullish(),
+  channelId: z.string().nullish(),
   description: z.string().nullish(),
 })
 
@@ -42,6 +44,11 @@ export function videoToMention(video: YoutubeSearchVideo): NormalizedMention | n
     numComments: null,
     publishedAt,
     extraTexts: [],
+    facts: {
+      channel: video.channelName ?? null,
+      durationSec:
+        video.durationSec && video.durationSec > 0 ? Math.round(video.durationSec) : null,
+    },
   }
 }
 

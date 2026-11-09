@@ -1,0 +1,321 @@
+import { createContext, useContext, type CSSProperties, type ReactNode } from 'react'
+import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
+import { Drift, easeOut } from '../fx'
+import { fitImage } from '../lib/images'
+import type { ItemFacts, ReelImage, Source } from '../lib/types'
+import { COLOR, CONTENT_TOP, FONT, H, SAFE, W } from '../theme'
+
+export type ReelCtx = {
+  title: string
+  source: Source
+  sourceLabel: string
+  domain: string
+  facts: ItemFacts
+  images: ReelImage[]
+  hook: string
+}
+
+export type ScreenProps = {
+  frames: number
+  ctx: ReelCtx
+  props: Record<string, unknown>
+  topPad: number
+}
+
+export const prop = <T,>(props: Record<string, unknown>, key: string, fallback: T): T => {
+  const v = props[key]
+  return v === undefined || v === null || v === '' ? fallback : (v as T)
+}
+
+export const TopPadContext = createContext(0)
+
+export function Page({
+  frames,
+  tint = COLOR.accent,
+  bg = COLOR.bg,
+  topPad = 0,
+  bleed = false,
+  children,
+  style,
+}: {
+  frames: number
+  tint?: string
+  bg?: string
+  topPad?: number
+  bleed?: boolean
+  children?: ReactNode
+  style?: CSSProperties
+}) {
+  const frame = useCurrentFrame()
+  const gx = Math.sin(frame / 40) * 60
+  return (
+    <AbsoluteFill style={{ background: bg, fontFamily: FONT, color: COLOR.text }}>
+      <Drift frames={frames} to={1.045}>
+        <AbsoluteFill>
+          <div
+            style={{
+              position: 'absolute',
+              width: 1200,
+              height: 1200,
+              left: W - 760 + gx,
+              top: -420,
+              background: `radial-gradient(closest-side, ${tint}3d, ${tint}00)`,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              width: 1500,
+              height: 1100,
+              left: -210 - gx,
+              top: 330,
+              background: `radial-gradient(closest-side, ${tint}1c, ${tint}00)`,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              width: 1300,
+              height: 1300,
+              left: -640 - gx,
+              top: H - 800,
+              background: 'radial-gradient(closest-side, rgba(120,140,255,0.14), rgba(120,140,255,0))',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)',
+              backgroundSize: '108px 108px',
+            }}
+          />
+          {bleed ? null : (
+            <div
+              style={{
+                position: 'absolute',
+                left: SAFE.left,
+                right: SAFE.right,
+                top: CONTENT_TOP + topPad,
+                bottom: 0,
+                ...style,
+              }}
+            >
+              <TopPadContext.Provider value={topPad}>{children}</TopPadContext.Provider>
+            </div>
+          )}
+          {bleed ? children : null}
+        </AbsoluteFill>
+      </Drift>
+    </AbsoluteFill>
+  )
+}
+
+export function useCount(frames: number, share = 0.5, delay = 4): number {
+  const frame = useCurrentFrame()
+  return easeOut(
+    interpolate(frame, [delay, Math.max(delay + 1, frames * share)], [0, 1], {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+    }),
+  )
+}
+
+export const grouped = (n: number) => Math.round(n).toLocaleString('en-US')
+
+export function compact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(n)
+}
+
+export function Chip({
+  children,
+  color = COLOR.text,
+  bg = 'rgba(255,255,255,0.08)',
+  size = 34,
+  style,
+}: {
+  children: ReactNode
+  color?: string
+  bg?: string
+  size?: number
+  style?: CSSProperties
+}) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: `${size * 0.3}px ${size * 0.7}px`,
+        borderRadius: 999,
+        background: bg,
+        color,
+        fontSize: size,
+        fontWeight: 700,
+        letterSpacing: '-0.01em',
+        ...style,
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+/** A real source image: sharp when it fits, over a blurred darkened copy of itself that fills the frame. */
+export function Photo({
+  image,
+  frames,
+  x = 0,
+  y = 0,
+  w = W,
+  h = H,
+  zoomTo = 1.08,
+  maxUp = 1.7,
+  origin = '50% 50%',
+  radius = 0,
+  backdrop = true,
+  pan = 0,
+  keepInFrame = true,
+}: {
+  image: ReelImage
+  frames: number
+  x?: number
+  y?: number
+  w?: number
+  h?: number
+  zoomTo?: number
+  maxUp?: number
+  origin?: string
+  radius?: number
+  backdrop?: boolean
+  pan?: number
+  /** Contained images never zoom or pan past the frame edge, so no part of them is cut off. */
+  keepInFrame?: boolean
+}) {
+  const frame = useCurrentFrame()
+  const p = easeOut(Math.min(1, frame / Math.max(1, frames)))
+  const iw = image.width ?? 1280
+  const ih = image.height ?? 720
+  const cover = fitImage(iw, ih, w, h)
+  let dw: number
+  let dh: number
+  let zoom = zoomTo
+  let panLimit = Infinity
+  if (cover.mode === 'cover') {
+    dw = cover.width
+    dh = cover.height
+  } else {
+    const scale = keepInFrame
+      ? Math.min((w * 0.92) / iw, maxUp, h / ih)
+      : Math.min(Math.min(w / iw, maxUp), h / ih)
+    dw = iw * scale
+    dh = ih * scale
+    if (keepInFrame) {
+      zoom = Math.max(1, Math.min(zoomTo, w / dw, h / dh))
+      panLimit = Math.max(0, (w - dw * zoom) / 2)
+    }
+  }
+  const src = staticFile(image.src)
+  return (
+    <div style={{ position: 'absolute', left: x, top: y, width: w, height: h, overflow: 'hidden' }}>
+      {backdrop ? (
+        <Img
+          src={src}
+          style={{
+            position: 'absolute',
+            inset: -60,
+            width: w + 120,
+            height: h + 120,
+            objectFit: 'cover',
+            filter: 'blur(44px) brightness(0.45) saturate(1.25)',
+          }}
+        />
+      ) : null}
+      <div
+        style={{
+          position: 'absolute',
+          left: (w - dw) / 2 + Math.max(-panLimit, Math.min(panLimit, pan * (p - 0.5))),
+          top: (h - dh) / 2,
+          width: dw,
+          height: dh,
+          transform: `scale(${1 + (zoom - 1) * p})`,
+          transformOrigin: cover.mode !== 'cover' && keepInFrame ? '50% 50%' : origin,
+          borderRadius: radius,
+          overflow: 'hidden',
+          boxShadow: cover.mode === 'cover' ? undefined : '0 30px 80px rgba(0,0,0,0.55)',
+        }}
+      >
+        <Img src={src} style={{ width: '100%', height: '100%', display: 'block' }} />
+      </div>
+    </div>
+  )
+}
+
+export function imageAt(ctx: ReelCtx, props: Record<string, unknown>): ReelImage | undefined {
+  const idx = prop<number>(props, 'image', 0)
+  return ctx.images[idx] ?? ctx.images[0]
+}
+
+export function Sweep({
+  text,
+  phrase,
+  frames,
+  color = COLOR.accent,
+  ink = COLOR.accentInk,
+  delay = 10,
+}: {
+  text: string
+  phrase: string | null
+  frames: number
+  color?: string
+  ink?: string
+  delay?: number
+}) {
+  const frame = useCurrentFrame()
+  const at = phrase ? text.toLowerCase().indexOf(phrase.toLowerCase()) : -1
+  if (!phrase || at < 0) return <>{text}</>
+  const p = easeOut(interpolate(frame, [delay, Math.max(delay + 1, frames * 0.55)], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }))
+  return (
+    <>
+      {text.slice(0, at)}
+      <span
+        style={{
+          backgroundImage: `linear-gradient(${color}, ${color})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: `${p * 100}% 100%`,
+          color: p > 0.5 ? ink : 'inherit',
+          borderRadius: 8,
+          padding: '0 6px',
+          margin: '0 -6px',
+          boxDecorationBreak: 'clone',
+          WebkitBoxDecorationBreak: 'clone',
+        }}
+      >
+        {text.slice(at, at + phrase.length)}
+      </span>
+      {text.slice(at + phrase.length)}
+    </>
+  )
+}
+
+export const ghLanguageColor: Record<string, string> = {
+  JavaScript: '#f1e05a',
+  TypeScript: '#3178c6',
+  Python: '#3572a5',
+  Rust: '#dea584',
+  Go: '#00add8',
+  Java: '#b07219',
+  'C++': '#f34b7d',
+  C: '#9aa0a6',
+  Ruby: '#701516',
+  Swift: '#f05138',
+  Kotlin: '#a97bff',
+  Shell: '#89e051',
+  HTML: '#e34c26',
+  CSS: '#563d7c',
+  Zig: '#ec915c',
+}

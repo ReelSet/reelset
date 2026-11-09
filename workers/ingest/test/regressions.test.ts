@@ -104,7 +104,7 @@ describe('gemini output repair', () => {
 
   it('trims beat, visual and topic overflow and extra beats', () => {
     const many = Array.from({ length: 8 }, () => ({
-      text: words,
+      text: 'x'.repeat(300),
       visual: { type: 'stat', label: words, value: words },
     }))
     const result = parseModelOutput(JSON.stringify(output({ topics: [words] }, { beats: many })))

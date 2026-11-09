@@ -3,12 +3,13 @@ import { errorFields, type Logger } from '@reelset/core'
 import { CONTAINER_BASE_URL, TRANSCRIPT_TIMEOUT_MS, YOUTUBE_SEARCH_TIMEOUT_MS } from './constants'
 import type { ContainerFetcher } from './container-client'
 
-export type Route = 'transcript' | 'youtube_search' | 'not_found'
+export type Route = 'transcript' | 'youtube_search' | 'parse_paper' | 'not_found'
 
 export function matchRoute(method: string, pathname: string): Route {
   if (method !== 'POST') return 'not_found'
   if (pathname === '/transcript') return 'transcript'
   if (pathname === '/youtube/search') return 'youtube_search'
+  if (pathname === '/parse/paper') return 'parse_paper'
   return 'not_found'
 }
 

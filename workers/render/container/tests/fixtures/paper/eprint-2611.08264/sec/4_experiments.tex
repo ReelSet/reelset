@@ -1,0 +1,122 @@
+% \vspace{-0.15in}
+\section{Experiments}
+\label{sec:experiments}
+\begin{table*}[t]
+    \input{tables/comparison/main_comparison_4_64view.tex}
+    % \input{tables/comparison/main_comparison_32view.tex}
+\end{table*}
+
+% \vspace{-0.1in}
+\subsection{Evaluation Benchmark}
+Existing benchmarks are typically concentrated on a small set of datasets and evaluate interpolated target views, making it difficult to assess cross-domain and viewpoint generalization. To provide a more comprehensive evaluation, we design a new benchmark with the following properties:
+
+% \vspace{-0.02in}
+
+\textbf{Cross-domain and cross-scale coverage.}
+We evaluate on \textbf{seven datasets}: ScanNet~\citep{dai2017scannet}, NRGBD~\citep{azinovic2022neural}, DL3DV~\citep{ling2024dl3dv}, Tanks and Temples~\citep{knapitsch2017tanks}, Mip-NeRF 360~\citep{barron2022mip}, ETH3D~\citep{schops2017multi}, and DTU~\citep{jensen2014large}. These datasets span a wide range of physical scene scales, providing a substantially broader test of cross-domain and cross-scale generalization.
+
+% \vspace{-0.02in}
+
+\textbf{Controlled extrapolation and observation sparsity.}
+We sample context views from a compact trajectory span and select target
+views using an occlusion-aware symmetric co-visibility criterion.
+The input--target overlap is controlled within \textbf{0.2--0.6}, with
+lower overlap corresponding to more challenging extrapolation.
+We further evaluate \textbf{1/4/8/16/32/64 input views} under a fixed
+context span to isolate the effect of observation density.
+More details are provided in the appendix.
+
+\begin{figure*}[t] 
+    \centering
+    \includegraphics[width=\textwidth]{figures/exp/main_compare.jpg}
+    \vspace{-0.2in}
+    \caption{Qualitative comparisons across diverse scenes and viewpoints with multi-view input.}
+    \label{fig:qualitative}
+    \vspace{-0.2in}
+\end{figure*}
+
+
+\textbf{Multi-resolution.}
+Our benchmark covers a broad resolution range, from approximately \textbf{480p to 1K}, enabling evaluation under both low- and high-resolution settings.
+
+\textbf{Compared methods.}
+We evaluate two categories methods according to whether camera poses are provided. In the \emph{w/o Pose} setting, methods reconstruct the scene directly from RGB observations, including AnySplat~\citep{jiang2025anysplat}, YoNoSplat~\citep{ye2026yonosplat}, DA3-GS~\citep{lin2025depth}, Mirror2-GS~\citep{team2026hy}, and QuerySplat~\citep{li2026querysplat}.
+
+\begin{wraptable}{r}{0.50\textwidth}
+    \vspace{-0.15in}
+    \input{tables/comparison/main_comparison_monocular.tex}
+    \par\vspace{0.1in}
+    \centering
+    \includegraphics[width=\linewidth]{figures/exp/main_compare_mono.jpg}
+    \vspace{-0.23in}
+    \captionof{figure}{Qualitative comparisons across diverse scenes and viewpoints with monocular input.}
+    \label{fig:qualitative_mono}
+    \vspace{-0.5in}
+\end{wraptable}
+
+In the \emph{w/ Pose} setting, camera poses are additionally provided for model input. We compare against DepthSplat~\citep{xu2025depthsplat}, TokenGS~\citep{ren2026tokengs}, tttLRM~\citep{wang2026tttlrm}, ReSplat~\citep{xu2025resplat}, as well as pose-conditioned variants of DA3-GS~\citep{lin2025depth} and Mirror2-GS~\citep{team2026hy}.
+Additionally, we compare against SHARP~\citep{mescheder2026sharp} and InfiniSplat~\citep{wang2026infinisplat}, which target for monocular view synthesis.
+
+% \vspace{-0.1in}
+\subsection{Quantitative Comparisons}
+% \vspace{-0.07in}
+
+We report the average metrics over \textbf{4/8/16/32/64 input views} in Table~\ref{tab:main_comparison_4_64view}, specific results under different input-view settings are provided in the appendix. Following SHARP~\citep{mescheder2026sharp}, we primarily report \textit{LPIPS} and \textit{DISTS} in the main paper, as they better reflect rendering quality and higher-frequency details. We also report the results in the monocular setting in Table~\ref{tab:main_comparison_monocular}.
+Overall, SplatAnything achieves the strongest performance across most datasets and evaluation settings, demonstrating its superior generalization capabilities.
+
+% \vspace{-0.1in}
+\subsection{Qualitative Comparisons}
+% \vspace{-0.1in}
+
+Figs.~\ref{fig:qualitative} and~\ref{fig:qualitative_mono} present qualitative comparisons across diverse scenes and extrapolated viewpoints under multi-view and monocular input settings, covering object-centric captures, indoor environments, and large-scale outdoor scenes. \textbf{SplatAnything} demonstrates a significant advantage in rendering quality: it generalizes robustly across a wide range of scene types and spatial scales, maintains geometric consistency under challenging large viewpoint
+extrapolation, and produces sharp, detailed renderings that faithfully recover fine local structures. More results are provided in the appendix.
+% \vspace{-0.08in}
+\subsection{Efficiency Analysis}
+% \vspace{-0.08in}
+We evaluate the inference efficiency of \textbf{SplatAnything} and other methods under different input-view settings. Detailed timing results are provided in the appendix.
+
+% \vspace{-0.08in}
+\subsection{Ablation Studies}
+% \vspace{-0.06in}
+\paragraph{Effect of Gaussian spacing normalization.}
+We ablate the normalization space for Gaussian prediction in
+Table~\ref{tab:ablation_normalization_space}, comparing RDNorm,
+RDNorm with scale calibration, and GSNorm under the same architecture
+and training settings.
+For RDNorm with scale calibration, Gaussian prediction remains in the
+RDNorm space, while the predicted Gaussian scales are uniformly rescaled
+to match the scene's median Gaussian spacing. Both RDNorm variants remain consistently inferior to GSNorm.
+Qualitatively, RDNorm tends to produce holes in small object-centric
+scenes and over-smoothed results in large outdoor scenes
+(Fig.~\ref{fig:ablation}).
+Scale calibration alleviates the holes on object-centric scenes, but
+often turns them into over-smoothed reconstructions, while outdoor scenes
+remain blurry.
+These results indicate that post-prediction scale correction cannot
+resolve the ambiguity in scale supervision introduced by RDNorm.
+By canonicalizing the representative Gaussian spacing scale before Gaussian
+prediction, GSNorm provides a better-aligned prediction space and yields
+more complete and sharper reconstructions across diverse scenes. 
+Additional results are provided in the appendix.
+
+% \vspace{-0.1in}
+\paragraph{Training design choices}
+We also analyze several architecture and training design choices, including
+fine-tuning the pretrained geometry backbone, fixing Gaussian centers,
+scaling the amount of training data, and using mixed sampling strategies
+for Gaussian supervision. Please refer to the appendix for more analysis and results.
+
+\input{tables/ablation/ablation_normalization_space.tex}
+\begin{figure*}[t] 
+    \centering
+    \vspace{-0.1in}
+    \includegraphics[width=\linewidth]{figures/exp/ablation.jpg}
+    \vspace{-0.25in}
+    \caption{Ablation studies on the effect of GSNorm across different scene types.}
+    \label{fig:ablation}
+    \vspace{-0.12in}
+\end{figure*}
+
+% Quantitative and qualitative results are shown in Tab.~\ref{tab:ablation_training_design_choices} and Fig.~\ref{fig:ablation_training_design_choices}. We find that finetuning the pretrained geometry backbone brings improvements. Fixing the gaussian centers ensures more correct geometry across viewpoint changes, as RGB-projection loss tends to overfit the geometry to the input views. Also, using mixed sampling strategies for training feed-forward Gaussian Splatting can learn more reaonable Gaussian attributes, especially under the extrapolation viewpoint shifts.
+
+

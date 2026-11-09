@@ -1,4 +1,5 @@
 import base64
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -13,12 +14,23 @@ SOURCES = ("hn", "github", "news", "reddit", "youtube", "papers")
 MAX_IMAGE_URLS = 10
 MAX_SOURCE_IMAGES = 8
 IMAGE_KINDS = ("og", "thumbnail", "figure", "screenshot", "avatar")
+# Keep in sync with remotion/src/lib/types.ts (SCREEN_NAMES, SFX_NAMES).
+SCREEN_NAMES = (
+    "RepoPage", "Terminal", "CodeBlock", "StatSlam", "BarRace", "HNThread", "RedditPost",
+    "YouTubePlayer", "PaperPage", "FigureZoom", "TableScreen", "EquationScreen", "ArticleHeadline", "ImageFull", "KeyPoint",
+    "Compare", "EndCard",
+)  # fmt: skip
+MAX_HEADLINE_WORDS = 7
+SFX_NAMES = ("whoosh", "pop", "tick", "ding", "hit", "riser", "swoosh")
+CUE_RE = re.compile(r"^[^\s#]{1,40}(#[1-9])?$")
+MAX_SHOTS_PER_BEAT = 6
 
 
 @dataclass(frozen=True)
 class Beat:
     text: str
     visual: dict
+    shots: list = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -37,6 +49,8 @@ class RenderRequest:
     images: list = field(default_factory=list)
     narration_audio: bytes | None = None
     narration_words: list = field(default_factory=list)
+    headline: str = ""
+    facts: dict = field(default_factory=dict)
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -58,6 +72,55 @@ def _text(obj: dict, key: str, max_len: int, *, required: bool = True) -> str:
     if len(value) > max_len:
         _bad(f"{key} exceeds {max_len} characters")
     return value
+
+
+def _validate_shots(raw) -> list:
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or len(raw) > MAX_SHOTS_PER_BEAT:
+        _bad(f"shots must be a list of at most {MAX_SHOTS_PER_BEAT}")
+    shots = []
+    for item in raw:
+        if not isinstance(item, dict):
+            _bad("shot must be an object")
+        at = item.get("at")
+        if not isinstance(at, str) or not CUE_RE.match(at):
+            _bad("shot.at must be a word cue like 'word' or 'word#2'")
+        if item.get("show") not in SCREEN_NAMES:
+            _bad("shot.show is not supported")
+        shot = {"at": at, "show": item["show"]}
+        shot_props = item.get("props")
+        if shot_props is not None:
+            ok = isinstance(shot_props, dict) and len(shot_props) <= 12 and all(
+                isinstance(k, str) and len(k) <= 32 and _prop_value_ok(v)
+                for k, v in shot_props.items()
+            )
+            if not ok:
+                _bad("shot.props must map short keys to strings, numbers or string lists")
+            shot["props"] = shot_props
+        sfx = item.get("sfx")
+        if sfx is not None:
+            if sfx not in SFX_NAMES:
+                _bad("shot.sfx is not supported")
+            shot["sfx"] = sfx
+        shots.append(shot)
+    return shots
+
+
+def _prop_value_ok(v, depth: int = 0) -> bool:
+    if isinstance(v, bool) or depth > 2:
+        return False
+    if isinstance(v, str):
+        return len(v) <= 400
+    if isinstance(v, (int, float)):
+        return True
+    if isinstance(v, list):
+        return len(v) <= 8 and all(_prop_value_ok(x, depth + 1) for x in v)
+    if isinstance(v, dict):
+        return len(v) <= 6 and all(
+            isinstance(k, str) and len(k) <= 32 and _prop_value_ok(x, depth + 1) for k, x in v.items()
+        )
+    return False
 
 
 def _validate_visual(visual) -> dict:
@@ -89,6 +152,66 @@ def _validate_visual(visual) -> dict:
     return {"type": kind, "url": _text(visual, "url", 2048)}
 
 
+def _clean(value, kind, limit=300):
+    if kind == "str":
+        return value.strip()[:limit] if isinstance(value, str) and value.strip() else None
+    if kind == "int":
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value < 1e10
+        return int(value) if ok else None
+    return None
+
+
+FACT_FIELDS = {
+    "repo": {"owner": "str", "name": "str", "description": "str", "stars": "int", "forks": "int", "language": "str", "latestRelease": "str"},
+    "hn": {"points": "int", "comments": "int", "author": "str", "topComment": "str"},
+    "reddit": {"subreddit": "str", "upvotes": "int", "comments": "int", "author": "str"},
+    "youtube": {"channel": "str", "views": "int", "duration": "str"},
+    "paper": {"abstract": "str", "upvotes": "int"},
+    "article": {"site": "str", "author": "str"},
+}  # fmt: skip
+
+
+def _validate_facts(raw) -> dict:
+    """Optional real item metadata for count-ups and headers. Unknown or malformed fields are dropped."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    for group, fields in FACT_FIELDS.items():
+        src = raw.get(group)
+        if not isinstance(src, dict):
+            continue
+        clean = {}
+        for key, kind in fields.items():
+            value = _clean(src.get(key), kind, 600 if key in ("abstract", "topComment") else 300)
+            if value is not None:
+                clean[key] = value
+        if group == "repo":
+            langs = src.get("languages")
+            if isinstance(langs, list):
+                parsed = [
+                    {"name": l["name"][:30], "pct": float(l["pct"])}
+                    for l in langs[:6]
+                    if isinstance(l, dict) and isinstance(l.get("name"), str)
+                    and isinstance(l.get("pct"), (int, float)) and 0 <= l["pct"] <= 100
+                ]  # fmt: skip
+                if parsed:
+                    clean["languages"] = parsed
+            topics = src.get("topics")
+            if isinstance(topics, list):
+                kept = [t[:40] for t in topics[:8] if isinstance(t, str) and t.strip()]
+                if kept:
+                    clean["topics"] = kept
+        if group == "paper":
+            authors = src.get("authors")
+            if isinstance(authors, list):
+                kept = [a[:60] for a in authors[:8] if isinstance(a, str) and a.strip()]
+                if kept:
+                    clean["authors"] = kept
+        if clean:
+            out[group] = clean
+    return out
+
+
 def validate_render_request(payload) -> RenderRequest:
     if not isinstance(payload, dict):
         _bad("body must be a JSON object")
@@ -111,7 +234,13 @@ def validate_render_request(payload) -> RenderRequest:
     for raw in beats_raw:
         if not isinstance(raw, dict):
             _bad("beat must be an object")
-        beats.append(Beat(text=_text(raw, "text", 220), visual=_validate_visual(raw.get("visual"))))
+        beats.append(
+            Beat(
+                text=_text(raw, "text", 220),
+                visual=_validate_visual(raw.get("visual")),
+                shots=_validate_shots(raw.get("shots")),
+            )
+        )
 
     image_urls = payload.get("imageUrls", [])
     if not isinstance(image_urls, list) or len(image_urls) > MAX_IMAGE_URLS:
@@ -148,6 +277,8 @@ def validate_render_request(payload) -> RenderRequest:
         images=_validate_images(payload.get("images")),
         narration_audio=narration_audio,
         narration_words=narration_words,
+        headline=" ".join(_text(script, "headline", 80, required=False).split()[:MAX_HEADLINE_WORDS]),
+        facts=_validate_facts(payload.get("facts")),
     )
 
 

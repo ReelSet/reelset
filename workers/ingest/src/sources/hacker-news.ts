@@ -131,6 +131,8 @@ async function fetchStories(
         hostIntervalMs: ctx.hostIntervalMs,
       })
       mention.extraTexts = topLevelComments(item)
+      const topComment = mention.extraTexts[0]
+      if (topComment) mention.facts = { ...mention.facts, topComment }
     } catch (err) {
       l.warn({ story: mention.externalId, ...errorFields(err) }, 'hn comments fetch failed')
     }

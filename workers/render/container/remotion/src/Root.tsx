@@ -1,7 +1,7 @@
 import { loadFont } from '@remotion/fonts'
 import { Composition, staticFile, type CalculateMetadataFunction } from 'remotion'
 import { Reel } from './Reel'
-import { totalFrames } from './lib/timeline'
+import { resolveShots, totalFrames } from './lib/timeline'
 import type { ReelProps } from './lib/types'
 import { FPS, H, W } from './theme'
 import { sampleProps } from './sample'
@@ -29,7 +29,10 @@ const fonts = Promise.all([
 
 const calculateMetadata: CalculateMetadataFunction<ReelProps> = async ({ props }) => {
   await fonts
-  return { durationInFrames: totalFrames(props.durationSeconds, FPS) }
+  const durationInFrames = totalFrames(props.durationSeconds, FPS)
+  const { shots, warnings } = resolveShots(props, FPS, durationInFrames)
+  for (const w of warnings) console.warn(`[plan] ${w}`)
+  return { durationInFrames, props: { ...props, plan: shots } }
 }
 
 export function Root() {

@@ -42,3 +42,28 @@ export function extractPaperSections(html: string): PaperSections {
     conclusion: text(/conclusion|concluding|discussion|summary/),
   }
 }
+
+const MD_HEADING = /^#{1,4}\s+(?:\*\*)?(?:\d+(?:\.\d+)*[.\s]+)?([^\n*]+?)(?:\*\*)?\s*$/gm
+
+/** Evidence texts from a PDF's markdown (Firecrawl fallback): method, results and conclusion bodies. */
+export function pdfMarkdownEvidence(markdown: string, maxChars = 9000): string[] {
+  const heads = [...markdown.matchAll(MD_HEADING)]
+  const body = (i: number) =>
+    markdown
+      .slice((heads[i]!.index ?? 0) + heads[i]![0].length, heads[i + 1]?.index ?? markdown.length)
+      .replace(/\s+/g, ' ')
+      .trim()
+  const pick = (label: string, re: RegExp, chars: number) => {
+    const i = heads.findIndex((h) => re.test((h[1] ?? '').toLowerCase()))
+    const text = i >= 0 ? body(i) : ''
+    return text.length > 200 ? `${label}: ${text.slice(0, chars)}` : null
+  }
+  const out = [
+    pick('Introduction', /^introduction/, 3000),
+    pick('Method', /method|approach|model|architecture/, 3000),
+    pick('Experiments and results', /experiment|result|evaluation/, 3000),
+    pick('Conclusion', /conclusion|discussion|summary/, 1500),
+  ].filter((t): t is string => t !== null)
+  let used = 0
+  return out.filter((t) => (used += t.length) <= maxChars)
+}

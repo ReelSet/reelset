@@ -1,108 +1,97 @@
 import { useMemo } from 'react'
 import { AbsoluteFill, Audio, Sequence, staticFile, useVideoConfig } from 'remotion'
-import { Background, BottomFade } from './Background'
 import { Captions } from './Captions'
-import { SceneFrame } from './fx'
+import { Transition } from './fx'
 import { Header } from './Header'
-import { artForSlot, planArt, type ArtPlan } from './lib/art'
-import { planImages, type ImagePlan } from './lib/images'
-import { toFrames, totalFrames } from './lib/timeline'
-import type { ReelProps, TimedScene } from './lib/types'
-import { CodeScene } from './scenes/Code'
-import { HookScene } from './scenes/Hook'
-import { ImageScene } from './scenes/ImageScene'
-import { ArtScene } from './scenes/ArtScene'
-import { OutroScene } from './scenes/Outro'
-import { QuoteScene } from './scenes/Quote'
-import { StatScene } from './scenes/Stat'
-import { TitleScene } from './scenes/Title'
-import { OVERLAP } from './theme'
+import { Headline } from './Headline'
+import { headlineEnd, headlineOf, resolveShots, snapHeadlineEnd, toFrames, totalFrames } from './lib/timeline'
+import { overlapFrames, pickTransitions } from './lib/transitions'
+import type { ReelProps } from './lib/types'
+import { SCREENS } from './screens'
+import type { ReelCtx } from './screens/ui'
+import { COLOR, H, HEADLINE_PAD, W } from './theme'
 
-function SceneBody({
-  scene,
-  index,
-  props,
-  plan,
-  imagePlan,
-}: {
-  scene: TimedScene
-  index: number
-  props: ReelProps
-  plan: ArtPlan
-  imagePlan: ImagePlan
-}) {
-  const { source, sourceLabel, title, cover } = props
-  const art = { kind: artForSlot(plan, index), seed: plan.seed, tool: plan.tool }
-  if (scene.kind === 'hook') {
-    const words = props.words.filter((w) => w.start < scene.end)
-    return (
-      <HookScene
-        text={scene.text}
-        words={words}
-        frames={scene.frames}
-        hero={imagePlan.hero}
-        play={source === 'youtube' && imagePlan.hero?.kind === 'thumbnail'}
-        {...art}
+
+function Finish() {
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none' }}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.45) 100%), linear-gradient(to top, rgba(9,9,11,0.55) 0%, rgba(9,9,11,0) 18%)',
+        }}
       />
-    )
-  }
-  if (scene.kind === 'outro') {
-    return (
-      <OutroScene
-        title={title}
-        domain={props.domain}
-        sourceLabel={sourceLabel}
-        source={source}
-        cover={cover}
-        frames={scene.frames}
-        {...art}
-        kind={artForSlot(plan, 0)}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(${staticFile('grain.png')})`,
+          backgroundSize: '256px 256px',
+          opacity: 0.05,
+          mixBlendMode: 'overlay',
+        }}
       />
-    )
-  }
-  const shown = imagePlan.beats.get(index)
-  if (shown) return <ImageScene image={shown} domain={props.domain} frames={scene.frames} />
-  const v = scene.visual
-  switch (v.type) {
-    case 'title':
-      return <TitleScene title={v.title} subtitle={v.subtitle} frames={scene.frames} {...art} />
-    case 'code':
-      return <CodeScene language={v.language} code={v.code} frames={scene.frames} />
-    case 'stat':
-      return <StatScene label={v.label} value={v.value} frames={scene.frames} />
-    case 'quote':
-      return <QuoteScene text={v.text} attribution={v.attribution} />
-    default:
-      return <ArtScene frames={scene.frames} {...art} />
-  }
+    </AbsoluteFill>
+  )
 }
 
 export function Reel(props: ReelProps) {
   const { fps } = useVideoConfig()
   const total = totalFrames(props.durationSeconds, fps)
-  const plan = useMemo(() => planArt(props), [props])
-  const imagePlan = useMemo(() => planImages(props), [props])
-  const scenes = toFrames(props.scenes, fps, total)
-  const hookEnd = props.scenes[0]?.kind === 'hook' ? props.scenes[0].end : 0
-  const captionWords = props.words.filter((w) => w.start >= hookEnd - 0.01)
+  const plan = useMemo(() => props.plan ?? resolveShots(props, fps, total).shots, [props, fps, total])
+  const scenes = useMemo(() => toFrames(props.scenes, fps, total), [props, fps, total])
+  const ctx: ReelCtx = useMemo(
+    () => ({
+      title: props.title,
+      source: props.source,
+      sourceLabel: props.sourceLabel,
+      domain: props.domain,
+      facts: props.facts ?? {},
+      images: props.images ?? [],
+      hook: props.scenes[0]?.kind === 'hook' ? props.scenes[0].text : props.title,
+    }),
+    [props],
+  )
+  const headline = headlineOf(props)
+  const headlineFrames = Math.round(snapHeadlineEnd(headlineEnd(props), plan, fps) * fps)
+  const transitions = useMemo(() => pickTransitions(plan.map((s) => s.show)), [plan])
   return (
-    <AbsoluteFill>
-      <Background />
-      {scenes.map((scene, i) => (
-        <Sequence
-          key={i}
-          from={scene.from}
-          durationInFrames={scene.frames + (i < scenes.length - 1 ? OVERLAP : 0)}
-          layout="none"
-        >
-          <SceneFrame frames={scene.frames + (i < scenes.length - 1 ? OVERLAP : 0)}>
-            <SceneBody scene={scene} index={i} props={props} plan={plan} imagePlan={imagePlan} />
-          </SceneFrame>
-        </Sequence>
-      ))}
-      <BottomFade />
+    <AbsoluteFill style={{ background: COLOR.bg, width: W, height: H }}>
+      {plan.map((shot, i) => {
+        const Screen = SCREENS[shot.show]
+        const topPad = shot.from < headlineFrames ? HEADLINE_PAD : 0
+        return (
+          <Sequence
+            key={i}
+            from={shot.from}
+            durationInFrames={shot.frames + overlapFrames(transitions[i + 1])}
+            layout="none"
+          >
+            <Transition kind={transitions[i] ?? null}>
+              <Screen frames={shot.frames} ctx={ctx} props={shot.props} topPad={topPad} />
+            </Transition>
+          </Sequence>
+        )
+      })}
+      <Finish />
       <Header scenes={scenes} source={props.source} sourceLabel={props.sourceLabel} />
-      <Captions words={captionWords} />
+      <Sequence durationInFrames={headlineFrames} layout="none">
+        <Headline text={headline} frames={headlineFrames} />
+      </Sequence>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: Math.round(H * 0.53),
+          height: Math.round(H * 0.25),
+          background:
+            'linear-gradient(to bottom, rgba(9,9,11,0) 0%, rgba(9,9,11,0.62) 30%, rgba(9,9,11,0.62) 70%, rgba(9,9,11,0) 100%)',
+        }}
+      />
+      <Captions words={props.words} />
       {props.audio ? <Audio src={staticFile(props.audio)} /> : null}
     </AbsoluteFill>
   )

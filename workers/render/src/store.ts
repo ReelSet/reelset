@@ -17,6 +17,7 @@ import {
   UPGRADE_SENT_SETTING_KEY,
 } from './constants'
 import { RETRYABLE_FAILURE_CODES } from './errors'
+import { buildFacts, type ItemFacts } from './facts'
 import { sourceLabel } from './plan'
 
 export type ItemForRender = {
@@ -31,6 +32,7 @@ export type ItemForRender = {
   canonicalUrl: string
   mentionUrl: string | null
   images: ItemImage[]
+  facts: ItemFacts
 }
 
 export type RenderRow = {
@@ -105,13 +107,14 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         .where('id', '=', itemId)
         .executeTakeFirst()
       if (!item) return null
-      const mention = await db
+      const mentions = await db
         .selectFrom('mention')
-        .select(['source', 'url'])
+        .select(['source', 'url', 'title', 'author', 'score', 'num_comments', 'raw'])
         .where('item_id', '=', itemId)
         .orderBy(sql`score desc nulls last`)
-        .limit(1)
-        .executeTakeFirst()
+        .limit(12)
+        .execute()
+      const mention = mentions[0]
       return {
         id: item.id,
         title: item.title,
@@ -124,6 +127,18 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         canonicalUrl: item.canonical_url,
         mentionUrl: mention?.url ?? null,
         images: parseItemImages(item.images),
+        facts: buildFacts(
+          mentions.map((m) => ({
+            source: m.source as Source,
+            url: m.url,
+            title: m.title,
+            author: m.author,
+            score: m.score,
+            numComments: m.num_comments,
+            raw: m.raw,
+          })),
+          item.canonical_url,
+        ),
       }
     },
 
