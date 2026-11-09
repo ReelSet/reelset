@@ -81,6 +81,14 @@ describe('classifyFailure', () => {
     expect(classifyFailure(err, 4)).toMatchObject({ terminal: true, deadLetter: true })
   })
 
+  it('retries container_unreachable longer with capped exponential backoff', () => {
+    const err = new RenderJobError('container_unreachable')
+    const delays = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => classifyFailure(err, n))
+    expect(delays.every((d) => !d.terminal)).toBe(true)
+    expect(delays.map((d) => d.retryDelaySeconds)).toEqual([30, 60, 120, 240, 300, 300, 300, 300])
+    expect(classifyFailure(err, 9)).toMatchObject({ terminal: true, deadLetter: true })
+  })
+
   it('fails permanent errors immediately without dead-lettering', () => {
     expect(classifyFailure(new RenderJobError('invalid_input'), 1)).toMatchObject({
       terminal: true,

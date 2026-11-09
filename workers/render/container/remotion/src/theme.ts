@@ -22,8 +22,8 @@ export const SAFE = { left: 44, right: 112, top: 56, bottom: 282 } as const
 export const CONTENT_W = W - SAFE.left - SAFE.right
 export const SCENE_TOP = 140
 
-// Karaoke band: 58-72% of frame height, centered, 80% wide, two lines max.
-export const CAPTION_BAND = { topPct: 0.58, bottomPct: 0.72, widthPct: 0.8 } as const
+// Karaoke band: 58-72% of frame height, centered, 72% wide (14% margins, clear of the right rail), two lines max.
+export const CAPTION_BAND = { topPct: 0.58, bottomPct: 0.72, widthPct: 0.72 } as const
 export const CAPTION_TOP = Math.round(H * CAPTION_BAND.topPct)
 export const CAPTION_H = Math.round(H * CAPTION_BAND.bottomPct) - CAPTION_TOP
 export const CAPTION_W = Math.round(W * CAPTION_BAND.widthPct)

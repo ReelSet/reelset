@@ -7,6 +7,8 @@ import {
   MAX_RETRIES,
   ORPHAN_MIN_AGE_MS,
   RETRY_BASE_DELAY_SECONDS,
+  UNREACHABLE_MAX_DELAY_SECONDS,
+  UNREACHABLE_MAX_RETRIES,
 } from './constants'
 import { RenderJobError, isRetryable, type RenderErrorCode } from './errors'
 
@@ -37,19 +39,27 @@ export type FailureDecision = {
   retryDelaySeconds: number
 }
 
-export function retryDelaySeconds(attempts: number): number {
-  return RETRY_BASE_DELAY_SECONDS * Math.max(1, attempts)
+export function retryDelaySeconds(attempts: number, code?: RenderErrorCode): number {
+  const n = Math.max(1, attempts)
+  if (code === 'container_unreachable') {
+    return Math.min(RETRY_BASE_DELAY_SECONDS * 2 ** (n - 1), UNREACHABLE_MAX_DELAY_SECONDS)
+  }
+  return RETRY_BASE_DELAY_SECONDS * n
+}
+
+export function maxRetriesFor(code: RenderErrorCode): number {
+  return code === 'container_unreachable' ? UNREACHABLE_MAX_RETRIES : MAX_RETRIES
 }
 
 export function classifyFailure(err: unknown, attempts: number): FailureDecision {
   const code: RenderErrorCode = err instanceof RenderJobError ? err.code : 'container_unreachable'
-  const lastAttempt = attempts > MAX_RETRIES
+  const lastAttempt = attempts > maxRetriesFor(code)
   const terminal = !isRetryable(code) || lastAttempt
   return {
     code,
     terminal,
     deadLetter: terminal && lastAttempt,
-    retryDelaySeconds: retryDelaySeconds(attempts),
+    retryDelaySeconds: retryDelaySeconds(attempts, code),
   }
 }
 

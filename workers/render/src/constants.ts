@@ -1,8 +1,10 @@
-export const TEMPLATE_VERSION = '4'
+export const TEMPLATE_VERSION = '5'
 export const DEFAULT_VOICE = 'en-US-AriaNeural'
 
 export const MAX_RETRIES = 3
 export const RETRY_BASE_DELAY_SECONDS = 30
+export const UNREACHABLE_MAX_RETRIES = 8
+export const UNREACHABLE_MAX_DELAY_SECONDS = 300
 
 export const MAX_VIDEO_BYTES = 25 * 1024 * 1024
 export const CONTAINER_SLOTS = 3
