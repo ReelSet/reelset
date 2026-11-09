@@ -219,7 +219,7 @@ export function ReelCard(props: Props) {
     <section
       ref={sectionRef}
       data-index={index}
-      className="relative h-full w-full snap-start snap-always overflow-hidden bg-black"
+      className="relative h-full w-full snap-start snap-always overflow-hidden bg-black [container-type:size]"
     >
       {item.posterUrl && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -312,6 +312,14 @@ export function ReelCard(props: Props) {
         </div>
       )}
 
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden
+        onClick={() => setExpanded(false)}
+        className={`absolute inset-0 z-[15] bg-gradient-to-t from-black/80 via-black/60 to-black/50 transition-opacity duration-300 ease-out ${expanded ? 'cursor-pointer opacity-100' : 'pointer-events-none opacity-0'}`}
+      />
+
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3.5 pr-[16%] pt-10 short:pb-[max(0.5rem,env(safe-area-inset-bottom))] short:pt-6">
         <div
           aria-hidden
@@ -351,7 +359,7 @@ export function ReelCard(props: Props) {
             className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
           >
             <div className="pointer-events-auto min-h-0 overflow-hidden">
-              <div className="no-scrollbar max-h-[38vh] overflow-y-auto overscroll-contain pt-1.5">
+              <div className="no-scrollbar max-h-[calc(45cqh-5rem)] overflow-y-auto overscroll-contain pt-1.5">
                 {item.tldr && (
                   <p
                     onClick={() => setExpanded(false)}
@@ -398,7 +406,7 @@ export function ReelCard(props: Props) {
         </button>
       )}
 
-      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] min-w-[3.25rem] flex-col items-center gap-2.5 short:bottom-[max(0.5rem,env(safe-area-inset-bottom))] short:gap-1">
+      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2.5 short:bottom-[max(0.5rem,env(safe-area-inset-bottom))] short:gap-1">
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}
@@ -531,7 +539,7 @@ function RailButton({
       onClick={onClick}
       className="group flex w-full flex-col items-center gap-0.5 text-white"
     >
-      <span className="glass grid h-10 w-10 place-items-center short:h-9 short:w-9 rounded-full transition duration-150 ease-out group-hover:bg-white/15 group-active:scale-90">
+      <span className="glass grid aspect-square w-10 max-w-full place-items-center short:w-9 rounded-full transition duration-150 ease-out group-hover:bg-white/15 group-active:scale-90">
         {children}
       </span>
       {text && (

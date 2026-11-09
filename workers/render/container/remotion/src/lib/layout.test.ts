@@ -21,8 +21,10 @@ describe('caption band layout', () => {
     expect(CAPTION_TOP + CAPTION_H).toBeLessThanOrEqual(H * 0.82)
   })
 
-  it('is horizontally centered and at most 80% wide', () => {
-    expect(CAPTION_W).toBeLessThanOrEqual(W * 0.8)
+  it('is horizontally centered, inside 14%-86% of the width', () => {
+    expect(CAPTION_W).toBeLessThanOrEqual(W * 0.72)
+    expect(CAPTION_LEFT).toBeGreaterThanOrEqual(W * 0.14 - 1)
+    expect(CAPTION_LEFT + CAPTION_W).toBeLessThanOrEqual(W * 0.86 + 1)
     expect(CAPTION_LEFT * 2 + CAPTION_W).toBe(W)
   })
 

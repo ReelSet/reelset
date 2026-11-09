@@ -35,17 +35,17 @@ Geist Sans and Geist Mono via `next/font` (swap, no layout shift). Scale: 11 (la
 
 The render lane burns karaoke captions into the frame, so the app overlay must stay out of that band. Fractions are of the visible video area (the full 9:16 frame on desktop; phones use `object-fit: cover`, which crops only the sides because phones are taller than 9:16).
 
-| Zone                 | Where                                                                                      | Owner  |
-| -------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| Burned captions      | 58% to 72% of frame height from the top, centered, 80% wide, 2 lines max                   | render |
-| Scene content        | above 58% minus a 16px gap, and clear of the bottom 18% and right 14%                      | render |
-| App caption          | bottom 18% (collapsed), full width minus the rail (`pr-[16%]`)                             | web    |
-| App rail             | right 14% (`w-[14%]`, min 3.25rem), anchored to the bottom                                 | web    |
-| "Tap for sound" pill | just above the caption zone, at `bottom: 18% + 0.5rem`, left aligned; hidden when expanded | web    |
+| Zone                 | Where                                                                                                                                                                      | Owner  |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Burned captions      | 58% to 72% of frame height from the top, centered, 72% wide (14% margins, clears the rail), 2 lines max                                                                    | render |
+| Scene content        | above 58% minus a 16px gap, and clear of the bottom 18% and right 14%                                                                                                      | render |
+| App caption          | bottom 18% (collapsed), full width minus the rail (`pr-[16%]`)                                                                                                             | web    |
+| App rail             | right 14% (`w-[14%]`, no min width, so it never exceeds 14% at any viewport width; buttons are 40px (36px short) circles capped at the rail width), anchored to the bottom | web    |
+| "Tap for sound" pill | just above the caption zone, at `bottom: 18% + 0.5rem`, left aligned; hidden when expanded                                                                                 | web    |
 
 Bottom 18% starts at 82% of frame height; the burned band ends at 72%, leaving a 10% gap, and the pill sits between at roughly 19 to 23% from the bottom (28% is the band's lower edge from the bottom).
 
-Short viewports (`short:` variant, `max-height: 760px`, covers 685px tall phones and small laptops): the caption title clamps to 1 line, the rail shrinks to 36px buttons with 4px gaps and drops its count labels, and padding tightens. Expanding the caption may grow beyond 18% on purpose (it is user initiated and hides the pill).
+Short viewports (`short:` variant, `max-height: 760px`, covers 685px tall phones and small laptops): the caption title clamps to 1 line, the rail shrinks to 36px buttons with 4px gaps and drops its count labels, and padding tightens. Expanding the caption may grow beyond 18% on purpose (it is user initiated and hides the pill). While expanded, a dark scrim (about 50 to 80% black gradient, `z-[15]`, between the tap layer and the caption) covers the video so the burned caption is suppressed; the video keeps playing. The expanded panel is capped at 45% of the video height (`45cqh`, the section is a size container) and scrolls inside. Tapping the scrim, the TLDR or "less" collapses it. The scrim fades in 300ms on opacity only; reduced motion removes the transition.
 
 ## Reel caption
 
@@ -53,7 +53,7 @@ Instagram-like and minimal, bottom-left, clear of the right action rail (`pr-[16
 
 - Collapsed: a 13px source line (dot, source name, domain), then the title at 15px semibold clamped to 2 lines (1 on short viewports) with a muted "more" inline at the end of the last line ("title text... more"). `ClampedTitle` measures a hidden twin and binary-searches the longest prefix that fits with the ellipsis and "more", re-running on resize. A faint bottom gradient (60% to 0) keeps it legible.
 - Expanded: tapping the title button reveals the full TLDR (14px) and the source link in place; the gradient deepens (85%) and the block grows with a 300ms grid-rows plus opacity transition (the one allowed exception to transform/opacity-only transitions). Tapping the TLDR or "less" collapses it. The title button carries `aria-expanded`/`aria-controls`; collapsed details are `inert`.
-- The caption stops click propagation so expanding never triggers the tap-to-pause or double-tap-like on the video. Expanded details scroll inside (`max-h-[38vh]`, `overscroll-contain`).
+- The caption stops click propagation so expanding never triggers the tap-to-pause or double-tap-like on the video. Expanded details scroll inside (`max-h-[calc(45cqh-5rem)]`, `overscroll-contain`).
 
 ## Auth cookies
 
