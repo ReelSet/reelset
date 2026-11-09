@@ -1,6 +1,22 @@
 import { sql } from 'kysely'
-import type { Database, ItemStatus, Logger, RenderStatus, Source } from '@reelset/core'
-import { MAX_RETRIES, ORPHAN_CURSOR_SETTING_KEY, UPGRADE_SENT_SETTING_KEY } from './constants'
+import {
+  SETTINGS,
+  getSetting,
+  parseItemImages,
+  type Database,
+  type ItemImage,
+  type ItemStatus,
+  type Logger,
+  type RenderStatus,
+  type Source,
+} from '@reelset/core'
+import {
+  MAX_RETRIES,
+  ORPHAN_CURSOR_SETTING_KEY,
+  UPGRADE_MAX_ATTEMPTS,
+  UPGRADE_SENT_SETTING_KEY,
+} from './constants'
+import { RETRYABLE_FAILURE_CODES } from './errors'
 import { sourceLabel } from './plan'
 
 export type ItemForRender = {
@@ -14,6 +30,7 @@ export type ItemForRender = {
   source: Source | null
   canonicalUrl: string
   mentionUrl: string | null
+  images: ItemImage[]
 }
 
 export type RenderRow = {
@@ -33,7 +50,7 @@ export type RenderDone = {
 
 export interface RenderStore {
   loadItem(itemId: string): Promise<ItemForRender | null>
-  ensureRender(itemId: string, renderKey: string): Promise<RenderRow>
+  ensureRender(itemId: string, renderKey: string, templateVersion?: number): Promise<RenderRow>
   markRendering(renderKey: string): Promise<void>
   markDone(renderKey: string, done: RenderDone): Promise<void>
   markFailed(renderKey: string, error: string): Promise<void>
@@ -43,7 +60,14 @@ export type StuckRender = { renderId: string; itemId: string }
 export type ExpiredRender = { id: string; videoKey: string | null; posterKey: string | null }
 
 export type UpgradeSent = { id: string; at: number }
-export type UpgradeCandidate = { id: string; contentHash: string; promptVersion: string }
+export type UpgradeCandidate = {
+  id: string
+  contentHash: string
+  promptVersion: string
+  score: number
+  publishedAt: Date
+  bestTemplate: number
+}
 
 export interface MaintenanceStore {
   failStuckRenders(cutoff: Date): Promise<StuckRender[]>
@@ -54,6 +78,7 @@ export interface MaintenanceStore {
   deadLetteredSince(since: Date): Promise<number>
   renderedForUpgrade(limit: number): Promise<UpgradeCandidate[]>
   existingRenderKeys(keys: readonly string[]): Promise<Set<string>>
+  feedMinTemplate(): Promise<number>
   activeRenderCount(): Promise<number>
   pendingNewItemCount(): Promise<number>
   getUpgradeSent(): Promise<UpgradeSent[]>
@@ -75,6 +100,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           'content_hash',
           'prompt_version',
           'canonical_url',
+          'images',
         ])
         .where('id', '=', itemId)
         .executeTakeFirst()
@@ -97,13 +123,18 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         source: (mention?.source ?? null) as Source | null,
         canonicalUrl: item.canonical_url,
         mentionUrl: mention?.url ?? null,
+        images: parseItemImages(item.images),
       }
     },
 
-    async ensureRender(itemId, renderKey) {
+    async ensureRender(itemId, renderKey, templateVersion) {
       await db
         .insertInto('render')
-        .values({ item_id: itemId, render_key: renderKey })
+        .values({
+          item_id: itemId,
+          render_key: renderKey,
+          template_version: templateVersion ?? null,
+        })
         .onConflict((oc) => oc.column('render_key').doNothing())
         .execute()
       const row = await db
@@ -158,7 +189,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
   }
 }
 
-export function createMaintenanceStore(db: Database): MaintenanceStore {
+export function createMaintenanceStore(db: Database, log: Logger): MaintenanceStore {
   return {
     async failStuckRenders(cutoff) {
       return db.transaction().execute(async (trx) => {
@@ -247,7 +278,17 @@ export function createMaintenanceStore(db: Database): MaintenanceStore {
     async renderedForUpgrade(limit) {
       const rows = await db
         .selectFrom('item')
-        .select(['id', 'content_hash', 'prompt_version'])
+        .select([
+          'id',
+          'content_hash',
+          'prompt_version',
+          'score',
+          'published_at',
+          sql<number>`coalesce((
+            select max(r.template_version) from render r
+            where r.item_id = item.id and r.status = 'done' and r.video_key is not null
+          ), 0)`.as('best_template'),
+        ])
         .where('status', '=', 'rendered')
         .where('content_hash', 'is not', null)
         .where('prompt_version', 'is not', null)
@@ -266,9 +307,22 @@ export function createMaintenanceStore(db: Database): MaintenanceStore {
         .execute()
       return rows.flatMap((r) =>
         r.content_hash && r.prompt_version
-          ? [{ id: r.id, contentHash: r.content_hash, promptVersion: r.prompt_version }]
+          ? [
+              {
+                id: r.id,
+                contentHash: r.content_hash,
+                promptVersion: r.prompt_version,
+                score: Number(r.score),
+                publishedAt: new Date(r.published_at),
+                bestTemplate: Number(r.best_template),
+              },
+            ]
           : [],
       )
+    },
+
+    async feedMinTemplate() {
+      return getSetting(db, SETTINGS.feedMinTemplate, log)
     },
 
     async existingRenderKeys(keys) {
@@ -279,7 +333,14 @@ export function createMaintenanceStore(db: Database): MaintenanceStore {
         .where('render_key', 'in', keys)
         .where((eb) =>
           eb.not(
-            eb.and([eb('status', '=', 'failed'), eb('error', '=', 'stale_container_template')]),
+            eb.or([
+              eb.and([eb('status', '=', 'failed'), eb('error', '=', 'stale_container_template')]),
+              eb.and([
+                eb('status', '=', 'failed'),
+                eb('error', 'in', RETRYABLE_FAILURE_CODES),
+                eb('attempts', '<', UPGRADE_MAX_ATTEMPTS),
+              ]),
+            ]),
           ),
         )
         .execute()

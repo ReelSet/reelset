@@ -1,7 +1,9 @@
+import base64
 import re
 from dataclasses import dataclass, field
 
 from .errors import RenderError
+from .timing import Word
 
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,80}$")
 VOICE_RE = re.compile(r"^[A-Za-z0-9-]{5,60}$")
@@ -9,6 +11,8 @@ VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 VISUAL_TYPES = ("title", "code", "stat", "quote", "image")
 SOURCES = ("hn", "github", "news", "reddit", "youtube", "papers")
 MAX_IMAGE_URLS = 10
+MAX_SOURCE_IMAGES = 8
+IMAGE_KINDS = ("og", "thumbnail", "figure", "screenshot", "avatar")
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,9 @@ class RenderRequest:
     source: str = "news"
     canonical_url: str = ""
     source_image_urls: list = field(default_factory=list)
+    images: list = field(default_factory=list)
+    narration_audio: bytes | None = None
+    narration_words: list = field(default_factory=list)
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -124,6 +131,8 @@ def validate_render_request(payload) -> RenderRequest:
     if not all(isinstance(u, str) and len(u) <= 2048 for u in source_image_urls):
         _bad("sourceImageUrls must contain strings")
 
+    narration_audio, narration_words = _validate_narration(payload.get("narration"))
+
     return RenderRequest(
         job_id=job_id,
         hook=_text(script, "hook", 120),
@@ -136,7 +145,62 @@ def validate_render_request(payload) -> RenderRequest:
         source=source,
         canonical_url=canonical_url,
         source_image_urls=list(source_image_urls),
+        images=_validate_images(payload.get("images")),
+        narration_audio=narration_audio,
+        narration_words=narration_words,
     )
+
+
+def _validate_narration(raw) -> tuple:
+    """Optional pre-synthesized narration: base64 mp3 plus word timings, so edge-tts is skipped."""
+    if raw is None:
+        return None, []
+    if not isinstance(raw, dict):
+        _bad("narration must be an object")
+    try:
+        audio = base64.b64decode(raw.get("audioBase64", ""), validate=True)
+    except (ValueError, TypeError):
+        _bad("narration.audioBase64 is not valid base64")
+    if not audio:
+        _bad("narration.audioBase64 is empty")
+    raw_words = raw.get("words")
+    if not isinstance(raw_words, list) or not raw_words or len(raw_words) > 1000:
+        _bad("narration.words must be a list of 1 to 1000 words")
+    words = []
+    for w in raw_words:
+        ok = (
+            isinstance(w, dict)
+            and isinstance(w.get("text"), str)
+            and all(isinstance(w.get(k), (int, float)) and not isinstance(w.get(k), bool) for k in ("start", "end"))
+            and 0 <= w["start"] <= w["end"] <= 600
+        )
+        if not ok:
+            _bad("narration.words entries need text, start and end seconds")
+        words.append(Word(w["text"], float(w["start"]), float(w["end"])))
+    return audio, words
+
+
+def _validate_images(value) -> list:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > MAX_SOURCE_IMAGES:
+        _bad(f"images must be a list of at most {MAX_SOURCE_IMAGES}")
+    out = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            _bad("image must be an object")
+        url = raw.get("url")
+        if not isinstance(url, str) or len(url) > 2048 or not url.startswith("https://"):
+            _bad("image.url must be an https url")
+        kind = raw.get("kind")
+        if kind not in IMAGE_KINDS:
+            _bad("image.kind is not supported")
+        entry = {"url": url, "kind": kind}
+        alt = raw.get("alt")
+        if isinstance(alt, str) and alt.strip():
+            entry["alt"] = alt.strip()[:300]
+        out.append(entry)
+    return out
 
 
 def validate_video_id(payload) -> str:

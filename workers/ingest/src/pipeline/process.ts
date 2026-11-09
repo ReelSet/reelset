@@ -30,6 +30,7 @@ import {
   stageFor,
   youtubeIdFromKey,
 } from './decide'
+import { captureItemImages } from '../images'
 import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
@@ -44,6 +45,7 @@ export type ProcessDeps = {
   geminiModel: string
   embeddingModel: string
   alertWebhookUrl?: string
+  githubToken?: string
 }
 
 export type ProcessOutcome =
@@ -65,6 +67,7 @@ type ItemRow = {
   tldr: string | null
   topics: string[]
   queued_at: Date | null
+  images: unknown
 }
 
 const GENERATION_ATTEMPTS = 2
@@ -82,6 +85,7 @@ async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefin
       'tldr',
       'topics',
       'queued_at',
+      'images',
     ])
     .where('id', '=', itemId)
     .executeTakeFirst()
@@ -131,6 +135,32 @@ export async function releaseItem(db: Database, itemId: string): Promise<void> {
     .execute()
 }
 
+async function storeImages(
+  deps: ProcessDeps,
+  item: ItemRow,
+  mentions: readonly { url: string }[],
+  log: Logger,
+): Promise<void> {
+  try {
+    const images = await captureItemImages(
+      {
+        canonicalKey: item.canonical_key,
+        canonicalUrl: item.canonical_url,
+        mentionUrls: mentions.map((m) => m.url),
+      },
+      { log, githubToken: deps.githubToken },
+    )
+    await deps.db
+      .updateTable('item')
+      .set({ images: JSON.stringify(images) })
+      .where('id', '=', item.id)
+      .where('images', 'is', null)
+      .execute()
+  } catch (err) {
+    log.warn(errorFields(err), 'image capture failed, continuing without images')
+  }
+}
+
 async function summarize(
   deps: ProcessDeps,
   item: ItemRow,
@@ -147,6 +177,8 @@ async function summarize(
     .orderBy('published_at', 'asc')
     .execute()
   if (mentions.length === 0) throw new Error('item has no mentions')
+
+  if (item.images == null) await storeImages(deps, item, mentions, log)
 
   let transcript: string | null = null
   const videoId = youtubeIdFromKey(item.canonical_key)

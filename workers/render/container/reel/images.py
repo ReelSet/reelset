@@ -100,9 +100,11 @@ def _fetch(url: str, check, opener, accept_prefix: str, limit: int):
     return data
 
 
-def download_image(url: str, dest_path: str, opener=None, check=is_allowed_image_url) -> bool:
+def download_image(
+    url: str, dest_path: str, opener=None, check=is_allowed_image_url, limit: int = MAX_IMAGE_BYTES
+) -> bool:
     """Download an image to dest_path. Returns False (never raises) on any problem."""
-    data = _fetch(url, check, opener, "image/", MAX_IMAGE_BYTES)
+    data = _fetch(url, check, opener, "image/", limit)
     if data is None:
         return False
     with open(dest_path, "wb") as fh:
@@ -110,8 +112,10 @@ def download_image(url: str, dest_path: str, opener=None, check=is_allowed_image
     return True
 
 
-def download_public_image(url: str, dest_path: str, opener=None) -> bool:
-    return download_image(url, dest_path, opener, check=is_public_https_url)
+def download_public_image(
+    url: str, dest_path: str, opener=None, limit: int = MAX_IMAGE_BYTES
+) -> bool:
+    return download_image(url, dest_path, opener, check=is_public_https_url, limit=limit)
 
 
 def fetch_page(url: str, opener=None) -> str | None:

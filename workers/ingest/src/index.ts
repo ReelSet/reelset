@@ -128,6 +128,7 @@ export default {
         geminiModel: env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
         alertWebhookUrl: env.ALERT_WEBHOOK_URL,
+        githubToken: env.GITHUB_TOKEN,
       }
       log.info({ size: batch.messages.length }, 'ingest-items batch start')
       for (const message of batch.messages) await handleMessage(deps, message)

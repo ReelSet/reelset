@@ -9,6 +9,7 @@ import {
   RETRY_BASE_DELAY_SECONDS,
   UNREACHABLE_MAX_DELAY_SECONDS,
   UNREACHABLE_MAX_RETRIES,
+  UPGRADE_FRESHNESS_HALF_LIFE_DAYS,
 } from './constants'
 import { RenderJobError, isRetryable, type RenderErrorCode } from './errors'
 
@@ -185,4 +186,27 @@ export type UpgradeLoad = {
 export function upgradeBatchSize(load: UpgradeLoad): number {
   const free = load.target - load.rendering - load.pendingUpgrades - load.pendingNew
   return Math.max(0, Math.min(load.cap, free))
+}
+
+export type UpgradePriorityInput = {
+  id: string
+  score: number
+  publishedAt: Date
+  bestTemplate: number
+}
+
+/** Items the feed hides (best done template below the minimum) go first, then by score x recency. */
+export function prioritizeUpgrades<T extends UpgradePriorityInput>(
+  candidates: readonly T[],
+  minTemplate: number,
+  now: Date,
+): T[] {
+  const weight = (c: T) => {
+    const ageDays = Math.max(0, (now.getTime() - c.publishedAt.getTime()) / 86_400_000)
+    return c.score * Math.pow(0.5, ageDays / UPGRADE_FRESHNESS_HALF_LIFE_DAYS)
+  }
+  return candidates
+    .map((c) => ({ c, hidden: c.bestTemplate < minTemplate, w: weight(c) }))
+    .sort((a, b) => Number(b.hidden) - Number(a.hidden) || b.w - a.w || (a.c.id < b.c.id ? -1 : 1))
+    .map((x) => x.c)
 }

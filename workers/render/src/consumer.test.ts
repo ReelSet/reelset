@@ -365,3 +365,56 @@ describe('processRenderJob', () => {
     expect(a).not.toBe(b)
   })
 })
+
+describe('aura-2 narration', () => {
+  const nova = {
+    results: {
+      channels: [{ alternatives: [{ words: [{ word: 'hook', start: 0, end: 1 }] }] }],
+    },
+  }
+  const okAi = {
+    async run(model: string) {
+      return model.includes('aura') ? new Uint8Array([1, 2, 3]) : nova
+    },
+  }
+  const brokenAi = {
+    async run(): Promise<unknown> {
+      throw new Error('down')
+    },
+  }
+
+  it('sends audio and word timings to the container and records priced tts spend', async () => {
+    const { deps, containers, rec } = setup()
+    deps.voice = 'aura2-hera'
+    deps.edgeVoice = 'en-US-AriaNeural'
+    deps.aura = { ai: okAi, speaker: 'hera' }
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    expect(sent.voice).toBe('aura2-hera')
+    expect(sent.narration.audioBase64).toBe('AQID')
+    expect(sent.narration.words[0].text).toBe('Hook')
+    const tts = rec.spends.find((s) => s.category === 'tts')!
+    expect(tts.costUsd).toBeGreaterThan(0)
+    expect(tts.meta).toMatchObject({ provider: 'aura2' })
+  })
+
+  it('retries when workers ai fails early', async () => {
+    const { deps, rec } = setup()
+    deps.aura = { ai: brokenAi, speaker: 'hera' }
+    const result = await processRenderJob(deps, body, 1)
+    expect(result.action).toBe('retry')
+    expect(rec.spends).toEqual([])
+  })
+
+  it('falls back to edge-tts with the edge voice after repeated failures', async () => {
+    const { deps, containers, rec } = setup()
+    deps.voice = 'aura2-hera'
+    deps.edgeVoice = 'en-US-AriaNeural'
+    deps.aura = { ai: brokenAi, speaker: 'hera' }
+    expect(await processRenderJob(deps, body, 3)).toEqual({ action: 'ack' })
+    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    expect(sent.voice).toBe('en-US-AriaNeural')
+    expect(sent.narration).toBeUndefined()
+    expect(rec.spends.find((s) => s.category === 'tts')!.costUsd).toBe(0)
+  })
+})

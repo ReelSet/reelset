@@ -10,6 +10,7 @@ import {
   decideRenderAction,
   failureRateExceeded,
   findOrphanKeys,
+  prioritizeUpgrades,
   renderCostUsd,
   retentionCutoff,
   sourceImageUrls,
@@ -207,5 +208,35 @@ describe('upgradeBatchSize', () => {
     expect(upgradeBatchSize({ ...base, pendingNew: 4 })).toBe(2)
     expect(upgradeBatchSize({ ...base, pendingNew: 9 })).toBe(0)
     expect(upgradeBatchSize({ ...base, rendering: 3, pendingUpgrades: 3 })).toBe(0)
+  })
+})
+
+describe('prioritizeUpgrades', () => {
+  const now = new Date('2026-11-09T12:00:00Z')
+  const day = 86_400_000
+  const c = (id: string, score: number, ageDays: number, bestTemplate: number) => ({
+    id,
+    score,
+    publishedAt: new Date(now.getTime() - ageDays * day),
+    bestTemplate,
+  })
+
+  it('puts items hidden from the feed before visible ones', () => {
+    const out = prioritizeUpgrades([c('vis', 1, 0, 5), c('hid', 0.3, 6, 1)], 5, now)
+    expect(out.map((x) => x.id)).toEqual(['hid', 'vis'])
+  })
+
+  it('orders within a group by score decayed with age', () => {
+    const out = prioritizeUpgrades(
+      [c('old-hot', 1, 8, 1), c('new-meh', 0.5, 0.5, 1), c('new-hot', 0.9, 1, 1)],
+      5,
+      now,
+    )
+    expect(out.map((x) => x.id)).toEqual(['new-hot', 'new-meh', 'old-hot'])
+  })
+
+  it('treats everything as visible when the minimum is 0 and breaks ties by id', () => {
+    const out = prioritizeUpgrades([c('b', 0.5, 1, 0), c('a', 0.5, 1, 3)], 0, now)
+    expect(out.map((x) => x.id)).toEqual(['a', 'b'])
   })
 })

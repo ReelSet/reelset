@@ -5,10 +5,12 @@ import { Captions } from './Captions'
 import { SceneFrame } from './fx'
 import { Header } from './Header'
 import { artForSlot, planArt, type ArtPlan } from './lib/art'
+import { planImages, type ImagePlan } from './lib/images'
 import { toFrames, totalFrames } from './lib/timeline'
 import type { ReelProps, TimedScene } from './lib/types'
 import { CodeScene } from './scenes/Code'
 import { HookScene } from './scenes/Hook'
+import { ImageScene } from './scenes/ImageScene'
 import { ArtScene } from './scenes/ArtScene'
 import { OutroScene } from './scenes/Outro'
 import { QuoteScene } from './scenes/Quote'
@@ -21,17 +23,28 @@ function SceneBody({
   index,
   props,
   plan,
+  imagePlan,
 }: {
   scene: TimedScene
   index: number
   props: ReelProps
   plan: ArtPlan
+  imagePlan: ImagePlan
 }) {
   const { source, sourceLabel, title, cover } = props
   const art = { kind: artForSlot(plan, index), seed: plan.seed, tool: plan.tool }
   if (scene.kind === 'hook') {
     const words = props.words.filter((w) => w.start < scene.end)
-    return <HookScene text={scene.text} words={words} frames={scene.frames} {...art} />
+    return (
+      <HookScene
+        text={scene.text}
+        words={words}
+        frames={scene.frames}
+        hero={imagePlan.hero}
+        play={source === 'youtube' && imagePlan.hero?.kind === 'thumbnail'}
+        {...art}
+      />
+    )
   }
   if (scene.kind === 'outro') {
     return (
@@ -47,6 +60,8 @@ function SceneBody({
       />
     )
   }
+  const shown = imagePlan.beats.get(index)
+  if (shown) return <ImageScene image={shown} domain={props.domain} frames={scene.frames} />
   const v = scene.visual
   switch (v.type) {
     case 'title':
@@ -66,6 +81,7 @@ export function Reel(props: ReelProps) {
   const { fps } = useVideoConfig()
   const total = totalFrames(props.durationSeconds, fps)
   const plan = useMemo(() => planArt(props), [props])
+  const imagePlan = useMemo(() => planImages(props), [props])
   const scenes = toFrames(props.scenes, fps, total)
   const hookEnd = props.scenes[0]?.kind === 'hook' ? props.scenes[0].end : 0
   const captionWords = props.words.filter((w) => w.start >= hookEnd - 0.01)
@@ -80,7 +96,7 @@ export function Reel(props: ReelProps) {
           layout="none"
         >
           <SceneFrame frames={scene.frames + (i < scenes.length - 1 ? OVERLAP : 0)}>
-            <SceneBody scene={scene} index={i} props={props} plan={plan} />
+            <SceneBody scene={scene} index={i} props={props} plan={plan} imagePlan={imagePlan} />
           </SceneFrame>
         </Sequence>
       ))}

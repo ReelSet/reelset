@@ -18,9 +18,13 @@ export const FONT = 'Geist, "Helvetica Neue", Arial, sans-serif'
 export const MONO = '"Geist Mono", ui-monospace, Menlo, monospace'
 
 // App chrome covers the bottom ~18% and the right ~14% of the frame: keep content out of both.
-export const SAFE = { left: 44, right: 112, top: 56, bottom: 282 } as const
+export const SAFE = { left: 44, right: 112, top: 156, bottom: 282 } as const
 export const CONTENT_W = W - SAFE.left - SAFE.right
-export const SCENE_TOP = 140
+
+// Mobile app header overlays the top ~11% of the video: burned chrome (progress, chip, watermark) starts below 12%.
+export const TOP_SAFE = 156
+export const HEADER_H = 56
+export const SCENE_TOP = TOP_SAFE + HEADER_H + 24
 
 // Karaoke band: 58-72% of frame height, centered, 72% wide (14% margins, clear of the right rail), two lines max.
 export const CAPTION_BAND = { topPct: 0.58, bottomPct: 0.72, widthPct: 0.72 } as const

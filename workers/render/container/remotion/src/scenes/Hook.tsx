@@ -3,12 +3,14 @@ import type { ArtKind } from '../lib/art'
 import { Card } from '../Media'
 import { Rise, useSpring } from '../fx'
 import { fitText } from '../lib/text'
-import type { Word } from '../lib/types'
+import type { ReelImage, Word } from '../lib/types'
+import { PlayBadge, SourceImage } from '../SourceImage'
 import { COLOR, CONTENT_W, FONT, SAFE, SCENE_BOTTOM, SCENE_TOP } from '../theme'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 
-const CARD_H = 330
-const TEXT_GAP = 36
+const ART_H = 220
+const HERO_H = 270
+const TEXT_GAP = 28
 
 function KineticWord({ word, size }: { word: Word; size: number }) {
   const frame = useCurrentFrame()
@@ -38,6 +40,8 @@ export function HookScene({
   seed,
   tool,
   frames,
+  hero,
+  play,
 }: {
   text: string
   words: Word[]
@@ -45,12 +49,15 @@ export function HookScene({
   seed: number
   tool: string
   frames: number
+  hero?: ReelImage | null
+  play?: boolean
 }) {
+  const CARD_H = hero ? HERO_H : ART_H
   const size = fitText(
     text,
     { width: CONTENT_W, height: SCENE_BOTTOM - (SCENE_TOP + CARD_H + TEXT_GAP) },
     {
-      min: 38,
+      min: 34,
       max: 76,
       charWidth: 0.55,
       lineHeight: 1.08,
@@ -60,7 +67,14 @@ export function HookScene({
     <div style={{ position: 'absolute', left: SAFE.left, top: SCENE_TOP, width: CONTENT_W }}>
       <Rise distance={26}>
         <Card width={CONTENT_W} height={CARD_H}>
-          <Art kind={kind} w={CONTENT_W} h={CARD_H} frames={frames} seed={seed} tool={tool} />
+          {hero ? (
+            <>
+              <SourceImage image={hero} w={CONTENT_W} h={CARD_H} frames={frames} />
+              {play ? <PlayBadge /> : null}
+            </>
+          ) : (
+            <Art kind={kind} w={CONTENT_W} h={CARD_H} frames={frames} seed={seed} tool={tool} />
+          )}
         </Card>
       </Rise>
       <div

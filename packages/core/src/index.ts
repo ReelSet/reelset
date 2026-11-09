@@ -26,6 +26,14 @@ export {
   type ReelVisual,
 } from './domain/reel-script'
 export {
+  ITEM_IMAGE_KINDS,
+  MAX_ITEM_IMAGES,
+  itemImageSchema,
+  parseItemImages,
+  type ItemImage,
+  type ItemImageKind,
+} from './domain/item-image'
+export {
   SETTINGS,
   getSetting,
   parseSetting,

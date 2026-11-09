@@ -5,7 +5,7 @@ import { fitText } from '../lib/text'
 import { Card } from '../Media'
 import { COLOR, CONTENT_W, FONT, SAFE, SCENE_H, SCENE_TOP } from '../theme'
 
-const ART_H = 236
+const ART_H = 150
 
 export function TitleScene({
   title,
@@ -24,7 +24,7 @@ export function TitleScene({
 }) {
   const size = fitText(
     title,
-    { width: CONTENT_W, height: subtitle ? 190 : 240 },
+    { width: CONTENT_W, height: subtitle ? 150 : 200 },
     { min: 38, max: 68, lineHeight: 1.06 },
   )
   const line = useSpring(4, 20, 0.9)
@@ -52,7 +52,7 @@ export function TitleScene({
           width: 64 * line,
           background: COLOR.accent,
           borderRadius: 2,
-          margin: '28px 0 22px',
+          margin: '24px 0 18px',
         }}
       />
       <div

@@ -18,6 +18,10 @@ const PERMANENT: ReadonlySet<RenderErrorCode> = new Set([
   'script_invalid',
 ])
 
+export const RETRYABLE_FAILURE_CODES: RenderErrorCode[] = RENDER_ERROR_CODES.filter(
+  (code) => !PERMANENT.has(code) && code !== 'stale_container_template',
+)
+
 export function isRetryable(code: RenderErrorCode): boolean {
   return !PERMANENT.has(code)
 }

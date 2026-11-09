@@ -1,4 +1,4 @@
-export const TEMPLATE_VERSION = '5'
+export const TEMPLATE_VERSION = '6'
 export const DEFAULT_VOICE = 'en-US-AriaNeural'
 
 export const MAX_RETRIES = 3
@@ -34,3 +34,5 @@ export const UPGRADE_BATCH_SIZE = UPGRADE_IN_FLIGHT_TARGET
 export const UPGRADE_PENDING_TTL_MS = 15 * 60_000
 export const UPGRADE_SENT_SETTING_KEY = 'render_upgrade_sent'
 export const UPGRADE_CANDIDATE_LIMIT = 500
+export const UPGRADE_MAX_ATTEMPTS = 8
+export const UPGRADE_FRESHNESS_HALF_LIFE_DAYS = 2

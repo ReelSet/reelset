@@ -19,6 +19,7 @@ export type PipelinePause = z.infer<typeof pipelinePauseSchema>
 export const SETTINGS = {
   dailyReelCap: def('daily_reel_cap', z.number().int().positive(), 200),
   minItemScore: def('min_item_score', z.number().min(0).max(1), 0.35),
+  feedMinTemplate: def('feed_min_template', z.number().int().min(0), 0),
   reelRetentionDays: def('reel_retention_days', z.number().int().positive(), 30),
   pipelineDailySpendCapUsd: def('pipeline_daily_spend_cap_usd', z.number().positive(), 10),
   askDailySpendCapUsd: def('ask_daily_spend_cap_usd', z.number().positive(), 5),
@@ -68,6 +69,8 @@ export const SETTINGS = {
   papersArxivPerCategory: def('papers_arxiv_per_category', z.number().int().min(0).max(50), 10),
   papersMaxAgeDays: def('papers_max_age_days', z.number().int().min(1).max(30), 7),
   scrapeDailySpendCapUsd: def('scrape_daily_spend_cap_usd', z.number().positive(), 1),
+  ttsProvider: def('tts_provider', z.enum(['edge', 'aura2']), 'edge' as 'edge' | 'aura2'),
+  ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 
