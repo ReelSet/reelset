@@ -92,6 +92,7 @@ export type Item = {
   score: Generated<number>
   tldr: string | null
   script: unknown | null
+  images: unknown | null
   content_hash: string | null
   prompt_version: string | null
   attempts: Generated<number>
@@ -157,6 +158,7 @@ export type Render = {
   render_ms: number | null
   attempts: Generated<number>
   error: string | null
+  template_version: number | null
   created_at: Generated<Timestamp>
   started_at: Timestamp | null
   finished_at: Timestamp | null

@@ -1,7 +1,13 @@
 import { elapsedMs, errorFields, type Database, type Logger } from '@reelset/core'
 import { clampLimit, decodeCursor, encodeCursor } from './cursor'
 import { rankCandidates } from './scoring'
-import { hydrateQuery, loadCandidates, loadProfileSignals, type FeedRow } from './sql'
+import {
+  hydrateQuery,
+  loadCandidates,
+  loadFeedMinTemplate,
+  loadProfileSignals,
+  type FeedRow,
+} from './sql'
 
 export type RankedItem = {
   id: string
@@ -72,7 +78,8 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
     const profile = params.profileId
       ? await loadProfileSignals(db, params.profileId)
       : { signalCount: 0, topics: [] }
-    const candidates = await loadCandidates(db, { profileId: params.profileId, asOf })
+    const minTemplate = await loadFeedMinTemplate(db, log)
+    const candidates = await loadCandidates(db, { profileId: params.profileId, asOf, minTemplate })
     const ranked = rankCandidates(candidates, {
       asOf: new Date(asOf),
       signalCount: profile.signalCount,
@@ -84,7 +91,11 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
       offset + limit < ranked.length ? encodeCursor({ asOf, offset: offset + limit }) : null
 
     const rows = pageIds.length
-      ? await hydrateQuery(db, { profileId: params.profileId, itemIds: pageIds }).execute()
+      ? await hydrateQuery(db, {
+          profileId: params.profileId,
+          itemIds: pageIds,
+          minTemplate,
+        }).execute()
       : []
     const items = orderRows(rows, pageIds).flatMap((row) => {
       const item = toRankedItem(row)
@@ -96,6 +107,7 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
         count: items.length,
         offset,
         pool: candidates.length,
+        minTemplate,
         personalized: profile.signalCount,
         hasMore: nextCursor !== null,
         durationMs: elapsedMs(started),
@@ -117,6 +129,7 @@ export async function getFeedItem(
   const rows = await hydrateQuery(db, {
     profileId: params.profileId,
     itemIds: [params.itemId],
+    minTemplate: await loadFeedMinTemplate(db, log),
   }).execute()
   const row = rows[0]
   const item = row ? toRankedItem(row) : null

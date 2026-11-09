@@ -4,7 +4,7 @@ import { Card } from '../Media'
 import { Rise } from '../fx'
 import { CONTENT_W, SAFE, SCENE_H, SCENE_TOP } from '../theme'
 
-const CARD_H = 440
+const CARD_H = 400
 
 export function ArtScene({
   kind,

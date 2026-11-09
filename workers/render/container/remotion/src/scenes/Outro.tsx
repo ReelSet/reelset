@@ -31,17 +31,17 @@ export function OutroScene({
 }) {
   const size = fitText(
     title,
-    { width: CONTENT_W, height: 100 },
-    { min: 30, max: 46, lineHeight: 1.12 },
+    { width: CONTENT_W, height: 90 },
+    { min: 30, max: 40, lineHeight: 1.12 },
   )
   return (
     <div style={{ position: 'absolute', left: SAFE.left, top: SCENE_TOP, width: CONTENT_W }}>
       <Rise distance={26}>
-        <Card width={CONTENT_W} height={200}>
-          <Art kind={kind} w={CONTENT_W} h={200} frames={frames} seed={seed} tool={tool} />
+        <Card width={CONTENT_W} height={120}>
+          <Art kind={kind} w={CONTENT_W} h={120} frames={frames} seed={seed} tool={tool} />
         </Card>
       </Rise>
-      <Rise delay={5} style={{ marginTop: 24 }}>
+      <Rise delay={5} style={{ marginTop: 20 }}>
         <div
           style={{
             fontFamily: FONT,
@@ -51,7 +51,7 @@ export function OutroScene({
             letterSpacing: '-0.03em',
             color: COLOR.text,
             display: '-webkit-box',
-            WebkitLineClamp: 3,
+            WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}

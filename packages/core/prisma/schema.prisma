@@ -160,6 +160,7 @@ model Item {
   score           Float                      @default(0)
   tldr            String?
   script          Json?
+  images          Json?
   contentHash     String?                    @map("content_hash") @db.VarChar(64)
   promptVersion   String?                    @map("prompt_version") @db.VarChar(32)
   embedding       Unsupported("vector(768)")?
@@ -259,6 +260,7 @@ model Render {
   renderMs        Int?         @map("render_ms")
   attempts        Int          @default(0)
   error           String?
+  templateVersion Int?         @map("template_version")
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   startedAt       DateTime?    @map("started_at") @db.Timestamptz(6)
   finishedAt      DateTime?    @map("finished_at") @db.Timestamptz(6)

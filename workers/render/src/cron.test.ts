@@ -37,6 +37,7 @@ function setup(overrides: Partial<MaintenanceStore> = {}, listPage?: unknown) {
     deadLetteredSince: async () => 0,
     renderedForUpgrade: async () => [],
     existingRenderKeys: async () => new Set(),
+    feedMinTemplate: async () => 0,
     activeRenderCount: async () => 0,
     pendingNewItemCount: async () => 0,
     getUpgradeSent: async () => [],
@@ -159,6 +160,9 @@ describe('template upgrade sweep', () => {
     id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
     contentHash: `h${i}`,
     promptVersion: 'p1',
+    score: 0.5,
+    publishedAt: new Date('2026-11-09T00:00:00Z'),
+    bestTemplate: 5,
   }))
   const keyOf = (c: (typeof candidates)[number]) =>
     renderKey({
@@ -180,6 +184,16 @@ describe('template upgrade sweep', () => {
     const { deps, sent } = withUpgrade()
     expect(await upgradeTemplates(deps, silentLog)).toBe(UPGRADE_BATCH_SIZE)
     expect(sent).toEqual([candidates.slice(0, UPGRADE_BATCH_SIZE).map((c) => c.id)])
+  })
+
+  it('queues items hidden from the feed first', async () => {
+    const hidden = candidates.slice(7).map((c) => ({ ...c, bestTemplate: 1 }))
+    const { deps, sent } = withUpgrade({
+      renderedForUpgrade: async () => [...candidates.slice(0, 7), ...hidden],
+      feedMinTemplate: async () => 5,
+    })
+    await upgradeTemplates(deps, silentLog, new Date('2026-11-09T12:00:00Z'))
+    expect(sent[0]!.slice(0, 3)).toEqual(hidden.map((c) => c.id))
   })
 
   it('skips items that already have a render row for the current key', async () => {

@@ -19,6 +19,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReelContainer"] }],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "reelset-media" }],
+  "ai": { "binding": "AI" },
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "cf0f4b14f2394a58a23e8241137c45a4" }],
   "queues": {
     "producers": [{ "queue": "render-jobs", "binding": "RENDER_JOBS" }],

@@ -13,6 +13,16 @@ import {
 import { renderWithFailover, type ContainerFetcher, type RenderMetadata } from './container-client'
 import { MAX_VIDEO_BYTES, TEMPLATE_VERSION } from './constants'
 import { RenderJobError } from './errors'
+import {
+  MAX_NARRATION_SECONDS,
+  audioToBase64,
+  generateNarration,
+  narrationText,
+  shouldFallbackToEdge,
+  wordsToJson,
+  type AiLike,
+  type Narration,
+} from './tts'
 import { containerJobId, posterKeyFor, videoKeyFor } from './keys'
 import {
   classifyFailure,
@@ -39,6 +49,8 @@ export type ConsumerDeps = {
   transition: (input: TransitionInput) => Promise<void>
   spend: (input: SpendInput) => Promise<void>
   voice: string
+  edgeVoice?: string
+  aura?: { ai: AiLike; speaker: string }
   log: Logger
   now?: () => number
 }
@@ -112,7 +124,7 @@ async function runJob(
   progress.renderKey = key
   const rlog = log.child({ renderKey: key })
 
-  const existing = await deps.store.ensureRender(item.id, key)
+  const existing = await deps.store.ensureRender(item.id, key, Number(TEMPLATE_VERSION))
   const action = decideRenderAction(item.status, existing)
   rlog.info({ action: action.kind, renderStatus: existing.status }, 'render decision')
   if (action.kind === 'skip') return { action: 'ack' }
@@ -122,8 +134,9 @@ async function runJob(
   }
 
   await deps.store.markRendering(key)
-  const metadata = await renderAndUpload(deps, item, script.data, key, rlog)
-  await recordSpend(deps, metadata, key, rlog)
+  const narration = await prepareNarration(deps, script.data, deliveryAttempts, rlog)
+  const metadata = await renderAndUpload(deps, item, script.data, key, narration, rlog)
+  await recordSpend(deps, metadata, key, narration, rlog)
   await finishItem(
     deps,
     item.id,
@@ -136,11 +149,38 @@ async function runJob(
   return { action: 'ack' }
 }
 
+async function prepareNarration(
+  deps: ConsumerDeps,
+  script: ReelScript,
+  deliveryAttempts: number,
+  log: Logger,
+): Promise<Narration | null> {
+  if (!deps.aura) return null
+  try {
+    const narration = await generateNarration(
+      deps.aura.ai,
+      narrationText(script),
+      deps.aura.speaker,
+      log,
+    )
+    if (narration.audioSeconds > MAX_NARRATION_SECONDS) {
+      log.warn({ audioSeconds: narration.audioSeconds }, 'aura narration too long, using edge-tts')
+      return null
+    }
+    return narration
+  } catch (err) {
+    if (!(err instanceof RenderJobError) || !shouldFallbackToEdge(deliveryAttempts)) throw err
+    log.warn({ deliveryAttempts }, 'aura tts kept failing, falling back to edge-tts')
+    return null
+  }
+}
+
 async function renderAndUpload(
   deps: ConsumerDeps,
   item: ItemForRender,
   script: ReelScript,
   key: string,
+  narration: Narration | null,
   log: Logger,
 ): Promise<RenderMetadata> {
   const jobId = containerJobId(key)
@@ -152,10 +192,14 @@ async function renderAndUpload(
       title: item.title,
       sourceLabel: item.sourceLabel,
       imageUrls: collectImageUrls(script),
-      voice: deps.voice,
+      voice: narration ? deps.voice : (deps.edgeVoice ?? deps.voice),
+      narration: narration
+        ? { audioBase64: audioToBase64(narration.audio), words: wordsToJson(narration.words) }
+        : undefined,
       source: item.source,
       canonicalUrl: item.canonicalUrl,
       sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
+      images: item.images,
     },
     log,
   )
@@ -203,14 +247,15 @@ async function recordSpend(
   deps: ConsumerDeps,
   metadata: RenderMetadata,
   key: string,
+  narration: Narration | null,
   log: Logger,
 ): Promise<void> {
   try {
     await deps.spend({
       category: 'tts',
       units: metadata.ttsChars,
-      costUsd: 0,
-      meta: { renderKey: key },
+      costUsd: narration?.costUsd ?? 0,
+      meta: { renderKey: key, provider: narration ? 'aura2' : 'edge' },
     })
     const seconds = metadata.renderMs / 1000
     await deps.spend({

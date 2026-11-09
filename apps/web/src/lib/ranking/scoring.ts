@@ -4,6 +4,8 @@ export const FRESHNESS_WEIGHT = 0.25
 export const POPULARITY_WEIGHT = 0.15
 export const FRESHNESS_HALF_LIFE_HOURS = 48
 export const TOPIC_BOOST = 0.2
+export const STALE_AFTER_DAYS = 7
+export const STALE_HALF_LIFE_DAYS = 3
 export const EXPLORATION_EVERY = 5
 
 export type Candidate = {
@@ -28,6 +30,12 @@ export function clamp01(value: number): number {
 export function freshness(publishedAt: Date, asOf: Date): number {
   const ageHours = Math.max(0, (asOf.getTime() - publishedAt.getTime()) / 3_600_000)
   return Math.pow(0.5, ageHours / FRESHNESS_HALF_LIFE_HOURS)
+}
+
+export function stalePenalty(publishedAt: Date, asOf: Date): number {
+  const ageDays = Math.max(0, (asOf.getTime() - publishedAt.getTime()) / 86_400_000)
+  if (ageDays <= STALE_AFTER_DAYS) return 1
+  return Math.pow(0.5, (ageDays - STALE_AFTER_DAYS) / STALE_HALF_LIFE_DAYS)
 }
 
 export function isPersonalized(signalCount: number): boolean {
@@ -56,8 +64,10 @@ export function coldStartScore(c: Candidate, ctx: RankContext): number {
 }
 
 export function mainScore(c: Candidate, ctx: RankContext): number {
-  if (!isPersonalized(ctx.signalCount)) return coldStartScore(c, ctx)
-  return personalizedScore(c.similarity, freshness(c.publishedAt, ctx.asOf), c.score)
+  const base = isPersonalized(ctx.signalCount)
+    ? personalizedScore(c.similarity, freshness(c.publishedAt, ctx.asOf), c.score)
+    : coldStartScore(c, ctx)
+  return base * stalePenalty(c.publishedAt, ctx.asOf)
 }
 
 function byScoreThenId(a: { id: string; value: number }, b: { id: string; value: number }) {

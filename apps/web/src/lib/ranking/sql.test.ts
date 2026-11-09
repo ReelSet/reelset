@@ -24,12 +24,18 @@ describe('candidatesQuery', () => {
     profileId: 'p-1',
     asOf: '2026-11-09T12:00:00.000Z',
     poolSize: 400,
+    minTemplate: 5,
   }).compile(db)
 
   it('only offers visible items: rendered with a done render that has a video key', () => {
     expect(q.parameters).toContain(ItemStatus.rendered)
     expect(q.parameters).toContain(RenderStatus.done)
     expect(q.sql).toMatch(/r\.video_key is not null/)
+  })
+
+  it('hides items without a done render at or above the minimum template', () => {
+    expect(q.sql).toMatch(/coalesce\(r\.template_version, 0\) >= \$\d+/)
+    expect(q.parameters).toContain(5)
   })
 
   it('computes cosine similarity against the profile taste vector', () => {
@@ -48,6 +54,7 @@ describe('candidatesQuery', () => {
       profileId: null,
       asOf: '2026-11-09T12:00:00.000Z',
       poolSize: 5,
+      minTemplate: 0,
     }).compile(db)
     expect(anon.parameters).toContain(null)
   })
@@ -55,16 +62,24 @@ describe('candidatesQuery', () => {
 
 describe('hydrateQuery', () => {
   it('looks up the latest done render laterally and aggregates mentions', () => {
-    const q = hydrateQuery(db, { profileId: null, itemIds: ['a', 'b'] }).compile()
+    const q = hydrateQuery(db, { profileId: null, itemIds: ['a', 'b'], minTemplate: 5 }).compile()
     expect(q.sql).toMatch(/lateral/i)
     expect(q.sql).toMatch(/"render"\."video_key" is not null/)
     expect(q.sql).toMatch(/from "mention"/)
     expect(q.parameters).toEqual(expect.arrayContaining(['a', 'b', ItemStatus.rendered]))
   })
 
+  it('picks the newest template first, then the latest finish, within the minimum', () => {
+    const q = hydrateQuery(db, { profileId: null, itemIds: ['a'], minTemplate: 5 }).compile()
+    expect(q.sql).toMatch(
+      /coalesce\(render\.template_version, 0\) >= \$\d+[\s\S]*order by coalesce\(render\.template_version, 0\) desc, render\.finished_at desc nulls last, "render"\."created_at" desc limit/,
+    )
+    expect(q.parameters).toContain(5)
+  })
+
   it('checks likes for the viewer only when logged in', () => {
-    const anon = hydrateQuery(db, { profileId: null, itemIds: ['a'] }).compile()
-    const user = hydrateQuery(db, { profileId: 'p-1', itemIds: ['a'] }).compile()
+    const anon = hydrateQuery(db, { profileId: null, itemIds: ['a'], minTemplate: 0 }).compile()
+    const user = hydrateQuery(db, { profileId: 'p-1', itemIds: ['a'], minTemplate: 0 }).compile()
     expect(anon.parameters).not.toContain('p-1')
     expect(user.parameters).toContain('p-1')
   })

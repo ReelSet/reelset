@@ -8,11 +8,12 @@ import {
   type Logger,
 } from '@reelset/core'
 import { loadRetentionDays, runMaintenance } from './cron'
-import { CONTAINER_SLOTS, DEFAULT_VOICE } from './constants'
+import { CONTAINER_SLOTS } from './constants'
 import { processRenderJob } from './consumer'
 import type { Env } from './env'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import { createMaintenanceStore, createRenderStore } from './store'
+import { loadTtsConfig } from './tts-config'
 
 export { ReelContainer } from './container'
 
@@ -47,13 +48,14 @@ export default {
       max: 1,
     })
     try {
+      const tts = await loadTtsConfig(db, env, log)
       const deps = {
         store: createRenderStore(db, log),
         containers: containerSlots(env),
         media: env.MEDIA,
         transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
-        voice: env.TTS_VOICE ?? DEFAULT_VOICE,
+        ...tts,
         log,
       }
       await Promise.all(
@@ -77,19 +79,20 @@ export default {
       max: 1,
     })
     ctx.waitUntil(
-      runMaintenance({
-        store: createMaintenanceStore(db),
-        media: env.MEDIA,
-        alert: (input) => sendAlert(db, env.ALERT_WEBHOOK_URL, input, log),
-        retentionDays: () => loadRetentionDays(db, log),
-        upgrade: {
-          voice: env.TTS_VOICE ?? DEFAULT_VOICE,
-          send: async (itemIds) => {
-            await env.RENDER_JOBS.sendBatch(itemIds.map((itemId) => ({ body: { itemId } })))
+      (async () =>
+        runMaintenance({
+          store: createMaintenanceStore(db, log),
+          media: env.MEDIA,
+          alert: (input) => sendAlert(db, env.ALERT_WEBHOOK_URL, input, log),
+          retentionDays: () => loadRetentionDays(db, log),
+          upgrade: {
+            voice: (await loadTtsConfig(db, env, log)).voice,
+            send: async (itemIds) => {
+              await env.RENDER_JOBS.sendBatch(itemIds.map((itemId) => ({ body: { itemId } })))
+            },
           },
-        },
-        log,
-      }).finally(close),
+          log,
+        }))().finally(close),
     )
   },
 } satisfies ExportedHandler<Env>

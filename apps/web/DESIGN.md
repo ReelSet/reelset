@@ -35,13 +35,14 @@ Geist Sans and Geist Mono via `next/font` (swap, no layout shift). Scale: 11 (la
 
 The render lane burns karaoke captions into the frame, so the app overlay must stay out of that band. Fractions are of the visible video area (the full 9:16 frame on desktop; phones use `object-fit: cover`, which crops only the sides because phones are taller than 9:16).
 
-| Zone                 | Where                                                                                                                                                                      | Owner  |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Burned captions      | 58% to 72% of frame height from the top, centered, 72% wide (14% margins, clears the rail), 2 lines max                                                                    | render |
-| Scene content        | above 58% minus a 16px gap, and clear of the bottom 18% and right 14%                                                                                                      | render |
-| App caption          | bottom 18% (collapsed), full width minus the rail (`pr-[16%]`)                                                                                                             | web    |
-| App rail             | right 14% (`w-[14%]`, no min width, so it never exceeds 14% at any viewport width; buttons are 40px (36px short) circles capped at the rail width), anchored to the bottom | web    |
-| "Tap for sound" pill | just above the caption zone, at `bottom: 18% + 0.5rem`, left aligned; hidden when expanded                                                                                 | web    |
+| Zone                 | Where                                                                                                                                                                                             | Owner        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Burned top chrome    | progress bar, source chip and watermark start at 12% of frame height or lower (`TOP_SAFE` = 156 of 1280); the mobile app header (safe-area inset plus 36px buttons) must stay within the top ~11% | render + web |
+| Burned captions      | 58% to 72% of frame height from the top, centered, 72% wide (14% margins, clears the rail), 2 lines max                                                                                           | render       |
+| Scene content        | below the top chrome (about 18.5%) and above 58% minus a 16px gap, and clear of the bottom 18% and right 14%                                                                                      | render       |
+| App caption          | bottom 18% (collapsed), full width minus the rail (`pr-[16%]`)                                                                                                                                    | web          |
+| App rail             | right 14% (`w-[14%]`, no min width, so it never exceeds 14% at any viewport width; buttons are 40px (36px short) circles capped at the rail width), anchored to the bottom                        | web          |
+| "Tap for sound" pill | just above the caption zone, at `bottom: 18% + 0.5rem`, left aligned; hidden when expanded                                                                                                        | web          |
 
 Bottom 18% starts at 82% of frame height; the burned band ends at 72%, leaving a 10% gap, and the pill sits between at roughly 19 to 23% from the bottom (28% is the band's lower edge from the bottom).
 

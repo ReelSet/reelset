@@ -7,6 +7,7 @@ import {
   mainScore,
   personalizedScore,
   rankCandidates,
+  stalePenalty,
   type Candidate,
   type RankContext,
 } from './scoring'
@@ -133,5 +134,27 @@ describe('rankCandidates personalized', () => {
     expect(rankCandidates(candidates, warm)).toEqual(
       rankCandidates([...candidates].reverse(), warm),
     )
+  })
+})
+
+describe('stalePenalty', () => {
+  const asOf = new Date('2026-11-09T00:00:00Z')
+  const ago = (days: number) => new Date(asOf.getTime() - days * 86_400_000)
+
+  it('does not touch items up to a week old', () => {
+    expect(stalePenalty(ago(0), asOf)).toBe(1)
+    expect(stalePenalty(ago(7), asOf)).toBe(1)
+  })
+
+  it('halves the score every few days past a week', () => {
+    expect(stalePenalty(ago(10), asOf)).toBeCloseTo(0.5)
+    expect(stalePenalty(ago(13), asOf)).toBeCloseTo(0.25)
+  })
+
+  it('ranks a fresh mid-score item above a stale top-score one', () => {
+    const ctx = { asOf, signalCount: 0, profileTopics: [] }
+    const stale = { id: 's', score: 1, publishedAt: ago(10), topics: [], similarity: null }
+    const fresh = { id: 'f', score: 0.4, publishedAt: ago(1), topics: [], similarity: null }
+    expect(mainScore(fresh, ctx)).toBeGreaterThan(mainScore(stale, ctx))
   })
 })

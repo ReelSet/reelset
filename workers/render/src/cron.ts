@@ -24,6 +24,7 @@ import {
   deadLetterGrowing,
   failureRateExceeded,
   findOrphanKeys,
+  prioritizeUpgrades,
   retentionCutoff,
   stuckCutoff,
   upgradeBatchSize,
@@ -140,7 +141,12 @@ export async function upgradeTemplates(
     deps.store.getUpgradeSent(),
   ])
   const recent = sentBefore.filter((s) => now.getTime() - s.at < UPGRADE_PENDING_TTL_MS)
-  const candidates = await deps.store.renderedForUpgrade(UPGRADE_CANDIDATE_LIMIT)
+  const minTemplate = await deps.store.feedMinTemplate()
+  const candidates = prioritizeUpgrades(
+    await deps.store.renderedForUpgrade(UPGRADE_CANDIDATE_LIMIT),
+    minTemplate,
+    now,
+  )
   const keyed = await Promise.all(
     candidates.map(async (c) => ({
       id: c.id,
@@ -181,6 +187,8 @@ export async function upgradeTemplates(
       pendingNew,
       remaining: stale.length - pending.length - batch.length,
       templateVersion: TEMPLATE_VERSION,
+      feedMinTemplate: minTemplate,
+      hiddenInFeed: candidates.filter((c) => c.bestTemplate < minTemplate).length,
     },
     'template upgrade sweep',
   )

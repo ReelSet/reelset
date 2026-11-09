@@ -15,6 +15,7 @@ logging.basicConfig(
 log = logging.getLogger("app")
 
 MAX_BODY_BYTES = 256 * 1024
+MAX_RENDER_BODY_BYTES = 8 * 1024 * 1024
 PORT = int(os.environ.get("PORT", "8080"))
 ASSET_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})/(video|poster)$")
 JOB_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})$")
@@ -40,9 +41,9 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, err: RenderError) -> None:
         self._json(err.status, {"error": err.code, "message": err.message})
 
-    def _read_json(self):
+    def _read_json(self, limit: int = MAX_BODY_BYTES):
         length = self.headers.get("Content-Length", "")
-        if not length.isdigit() or int(length) > MAX_BODY_BYTES:
+        if not length.isdigit() or int(length) > limit:
             raise RenderError("invalid_input", "missing or oversized body")
         try:
             return json.loads(self.rfile.read(int(length)))
@@ -103,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, result)
 
     def _render(self):
-        req = validation.validate_render_request(self._read_json())
+        req = validation.validate_render_request(self._read_json(MAX_RENDER_BODY_BYTES))
         state, payload = jobs.begin(req.job_id)
         if state == "done":
             log.info("job=%s already rendered, returning cached metadata", req.job_id)

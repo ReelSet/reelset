@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Logger, Source } from '@reelset/core'
+import type { ItemImage, Logger, Source } from '@reelset/core'
 import { errorFields } from '@reelset/core'
 import { CONTAINER_BASE_URL, RENDER_TIMEOUT_MS, TEMPLATE_VERSION } from './constants'
 import { RenderJobError, parseErrorCode } from './errors'
@@ -16,6 +16,8 @@ export type RenderInput = {
   source: Source | null
   canonicalUrl: string
   sourceImageUrls: string[]
+  images: ItemImage[]
+  narration?: { audioBase64: string; words: { text: string; start: number; end: number }[] }
 }
 
 const metadataSchema = z.object({

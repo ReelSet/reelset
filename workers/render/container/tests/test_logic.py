@@ -52,6 +52,19 @@ class ValidationTests(unittest.TestCase):
         self.assert_invalid(lambda p: p.update(imageUrls=[5]))
         self.assert_invalid(lambda p: p.pop("title"))
 
+    def test_narration_is_optional_and_validated(self):
+        payload = good_payload()
+        self.assertIsNone(validation.validate_render_request(payload).narration_audio)
+        payload["narration"] = {"audioBase64": "AQID", "words": [{"text": "hi", "start": 0, "end": 0.4}]}
+        req = validation.validate_render_request(payload)
+        self.assertEqual(req.narration_audio, b"\x01\x02\x03")
+        self.assertEqual((req.narration_words[0].text, req.narration_words[0].end), ("hi", 0.4))
+        self.assert_invalid(lambda p: p.update(narration={"audioBase64": "!!", "words": []}))
+        self.assert_invalid(lambda p: p.update(narration={"audioBase64": "AQID", "words": []}))
+        self.assert_invalid(
+            lambda p: p.update(narration={"audioBase64": "AQID", "words": [{"text": "a", "start": 2, "end": 1}]})
+        )
+
     def test_source_fields_are_optional_and_validated(self):
         payload = good_payload()
         for key in ("source", "canonicalUrl", "sourceImageUrls"):

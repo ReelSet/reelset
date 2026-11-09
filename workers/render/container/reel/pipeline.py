@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
-from . import images, props, sources, timing, tts, video, words as words_lib
+from . import images, props, source_images, sources, timing, tts, video, words as words_lib
 from .errors import RenderError
 from .validation import RenderRequest
 
@@ -55,6 +55,39 @@ def collect_assets(
     return found
 
 
+def collect_visuals(
+    req: RenderRequest,
+    assets_dir: str,
+    downloader: Downloader = images.download_image,
+    public_downloader: Downloader = images.download_public_image,
+    page_fetcher: Callable = images.fetch_page,
+    fetch_images: Callable = source_images.collect_item_images,
+) -> dict:
+    """Source imagery for the composition: `images` (ordered, hero first) and `cover` (= hero).
+
+    Uses the item's captured images; items without any fall back to the direct source preview or
+    the page's og:image. Never raises."""
+    try:
+        found_images = fetch_images(req.images, assets_dir) if req.images else []
+    except Exception as err:
+        log.warning("source images failed: %s", err)
+        found_images = []
+    if found_images:
+        return {"images": found_images, "cover": found_images[0]["file"]}
+    found = collect_assets(req, assets_dir, downloader, public_downloader, page_fetcher)
+    if found.get("cover"):
+        entry = {"file": found["cover"], "kind": "og"}
+        try:
+            from PIL import Image
+
+            with Image.open(os.path.join(assets_dir, found["cover"])) as im:
+                entry.update(width=im.width, height=im.height)
+        except OSError:
+            pass
+        found["images"] = [entry]
+    return found
+
+
 def run_render(
     req: RenderRequest,
     job_dir: str,
@@ -70,30 +103,45 @@ def run_render(
     os.makedirs(assets_dir, exist_ok=True)
 
     with ThreadPoolExecutor(max_workers=1) as pool:
-        covers = pool.submit(collect_assets, req, assets_dir, downloader, public_downloader, page_fetcher)
+        covers = pool.submit(
+            collect_visuals, req, assets_dir, downloader, public_downloader, page_fetcher
+        )
 
         text = req.narration_text()
         rate = timing.choose_rate(len(text))
         audio_path = os.path.join(assets_dir, "narration.mp3")
-        words = synth(text, req.voice, rate, audio_path)
-        audio_seconds = video.media_seconds(audio_path)
-        if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
-            faster = timing.refit_rate(rate, audio_seconds)
-            if faster is None:
+        if req.narration_audio is not None:
+            with open(audio_path, "wb") as fh:
+                fh.write(req.narration_audio)
+            words = list(req.narration_words)
+            audio_seconds = video.media_seconds(audio_path)
+            log.info("%s using supplied narration words=%d %.1fs", log_ctx, len(words), audio_seconds)
+            if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
                 raise RenderError("too_large", f"narration is {audio_seconds:.1f}s, over the 60s cap")
-            log.warning("%s narration %.1fs at %s, retrying at %s", log_ctx, audio_seconds, rate, faster)
-            words = synth(text, req.voice, faster, audio_path)
+        else:
+            words = synth(text, req.voice, rate, audio_path)
             audio_seconds = video.media_seconds(audio_path)
             if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
-                raise RenderError(
-                    "too_large", f"narration is {audio_seconds:.1f}s at {faster}, over the 60s cap"
+                faster = timing.refit_rate(rate, audio_seconds)
+                if faster is None:
+                    raise RenderError(
+                        "too_large", f"narration is {audio_seconds:.1f}s, over the 60s cap"
+                    )
+                log.warning(
+                    "%s narration %.1fs at %s, retrying at %s", log_ctx, audio_seconds, rate, faster
                 )
+                words = synth(text, req.voice, faster, audio_path)
+                audio_seconds = video.media_seconds(audio_path)
+                if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
+                    raise RenderError(
+                        "too_large", f"narration is {audio_seconds:.1f}s at {faster}, over the 60s cap"
+                    )
         assets = covers.result()
 
     if not words:
         log.warning("%s no word timings from tts, estimating", log_ctx)
         words = timing.estimate_word_timings(text, audio_seconds)
-    else:
+    elif req.narration_audio is None:
         words = words_lib.restore_punctuation(text, words)
 
     total_seconds = timing.total_video_seconds(audio_seconds)
@@ -104,7 +152,9 @@ def run_render(
     composition = props.build_props(req, words, spans, total_seconds, assets)
     with open(os.path.join(job_dir, "props.json"), "w", encoding="utf-8") as fh:
         json.dump(composition, fh)
-    log.info("%s assets cover=%s", log_ctx, bool(assets.get("cover")))
+    log.info(
+        "%s assets cover=%s images=%d", log_ctx, bool(assets.get("cover")), len(assets.get("images", []))
+    )
 
     render(job_dir)
     raw_path = os.path.join(job_dir, "raw.mp4")

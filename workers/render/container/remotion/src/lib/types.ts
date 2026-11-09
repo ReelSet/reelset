@@ -14,6 +14,16 @@ export type Scene =
   | { kind: 'beat'; start: number; end: number; text: string; visual: Visual }
   | { kind: 'outro'; start: number; end: number; text: string }
 
+export type ImageKind = 'og' | 'thumbnail' | 'figure' | 'screenshot' | 'avatar'
+
+export type ReelImage = {
+  src: string
+  kind: ImageKind
+  width?: number
+  height?: number
+  alt?: string
+}
+
 export type ReelProps = {
   durationSeconds: number
   title: string
@@ -24,6 +34,7 @@ export type ReelProps = {
   words: Word[]
   audio: string
   cover?: string
+  images?: ReelImage[]
 }
 
 export type TimedScene = Scene & { from: number; frames: number }

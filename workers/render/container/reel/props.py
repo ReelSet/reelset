@@ -48,11 +48,21 @@ def build_props(
     }
     if assets.get("cover"):
         props["cover"] = f"job/{assets['cover']}"
+    if assets.get("images"):
+        props["images"] = [_image(i) for i in assets["images"]]
     return props
 
 
 def _round_scene(scene: dict) -> dict:
     return {**scene, "start": round(scene["start"], 3), "end": round(scene["end"], 3)}
+
+
+def _image(entry: dict) -> dict:
+    out = {"src": f"job/{entry['file']}", "kind": entry["kind"]}
+    for key in ("width", "height", "alt"):
+        if entry.get(key):
+            out[key] = entry[key]
+    return out
 
 
 def _word(w: Word) -> dict:

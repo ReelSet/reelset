@@ -5,7 +5,7 @@ import { COLOR, CONTENT_W, FONT, SAFE, SCENE_H, SCENE_TOP } from '../theme'
 export function QuoteScene({ text, attribution }: { text: string; attribution: string }) {
   const size = fitText(
     text,
-    { width: CONTENT_W - 8, height: 380 },
+    { width: CONTENT_W - 8, height: 300 },
     { min: 28, max: 46, lineHeight: 1.22 },
   )
   const bar = useSpring(2, 20, 0.9)

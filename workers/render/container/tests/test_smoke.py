@@ -1,3 +1,5 @@
+import base64
+import json
 import os
 import subprocess
 import tempfile
@@ -91,6 +93,31 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(meta["cover"], False)
         self.assertEqual(sorted(meta), sorted(["jobId","bytes","posterBytes","durationMs","ttsDurationMs","ttsChars","renderMs","cover","templateVersion"]))
         self.assertLessEqual(meta["bytes"], video.MAX_OUTPUT_BYTES)
+
+    def test_supplied_narration_skips_tts_and_keeps_its_timings(self):
+        audio = os.path.join(tempfile.mkdtemp(), "n.mp3")
+        make_silence(audio, 5)
+        with open(audio, "rb") as fh:
+            raw = fh.read()
+        tokens = validate_render_request(good_payload()).narration_text().split()
+        step = 5 / len(tokens)
+        payload = good_payload()
+        payload["narration"] = {
+            "audioBase64": base64.b64encode(raw).decode(),
+            "words": [{"text": t, "start": i * step, "end": (i + 1) * step} for i, t in enumerate(tokens)],
+        }
+        req = validate_render_request(payload)
+        job_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(job_dir, ignore_errors=True))
+
+        def synth(*_):
+            raise AssertionError("edge-tts must not run")
+
+        meta = pipeline.run_render(req, job_dir, synth=synth, **{**NO_NET, "render": fake_render(5.5)})
+        with open(os.path.join(job_dir, "props.json"), encoding="utf-8") as fh:
+            props_words = json.load(fh)["words"]
+        self.assertEqual(props_words[0]["text"], tokens[0])
+        self.assertAlmostEqual(meta["ttsDurationMs"] / 1000, 5, delta=0.3)
 
     def test_render_needs_no_external_images(self):
         def synth(text, voice, rate, audio_path):

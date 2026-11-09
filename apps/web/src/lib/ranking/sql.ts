@@ -2,9 +2,12 @@ import {
   EventName,
   ItemStatus,
   RenderStatus,
+  SETTINGS,
   fromVectorLiteral,
+  getSetting,
   toVectorLiteral,
   type Database,
+  type Logger,
 } from '@reelset/core'
 import { sql, type RawBuilder } from 'kysely'
 import { jsonArrayFrom } from 'kysely/helpers/postgres'
@@ -19,6 +22,11 @@ import type { Candidate } from './scoring'
 export const CANDIDATE_POOL_SIZE = 400
 export const MAX_TASTE_SIGNALS = 200
 
+export function loadFeedMinTemplate(db: Database, log?: Logger): Promise<number> {
+  const quiet = { warn: () => {} } as unknown as Logger
+  return getSetting(db, SETTINGS.feedMinTemplate, log ?? quiet)
+}
+
 type CandidateRow = {
   id: string
   score: number
@@ -31,8 +39,9 @@ export function candidatesQuery(params: {
   profileId: string | null
   asOf: string
   poolSize: number
+  minTemplate: number
 }): RawBuilder<CandidateRow> {
-  const { profileId, asOf, poolSize } = params
+  const { profileId, asOf, poolSize, minTemplate } = params
   return sql<CandidateRow>`
     select i.id, i.score, i.published_at, i.topics,
       case when p.taste_embedding is not null and i.embedding is not null
@@ -46,6 +55,7 @@ export function candidatesQuery(params: {
         where r.item_id = i.id
           and r.status = ${RenderStatus.done}::render_status
           and r.video_key is not null
+          and coalesce(r.template_version, 0) >= ${minTemplate}
       )
     order by i.published_at desc, i.id desc
     limit ${poolSize}`
@@ -53,7 +63,7 @@ export function candidatesQuery(params: {
 
 export async function loadCandidates(
   db: Database,
-  params: { profileId: string | null; asOf: string; poolSize?: number },
+  params: { profileId: string | null; asOf: string; minTemplate: number; poolSize?: number },
 ): Promise<Candidate[]> {
   const result = await candidatesQuery({ poolSize: CANDIDATE_POOL_SIZE, ...params }).execute(db)
   return result.rows.map((row) => ({
@@ -79,9 +89,9 @@ export async function loadProfileSignals(
 
 export function hydrateQuery(
   db: Database,
-  params: { profileId: string | null; itemIds: string[] },
+  params: { profileId: string | null; itemIds: string[]; minTemplate: number },
 ) {
-  const { profileId, itemIds } = params
+  const { profileId, itemIds, minTemplate } = params
   return db
     .selectFrom('item')
     .innerJoinLateral(
@@ -92,6 +102,8 @@ export function hydrateQuery(
           .whereRef('render.item_id', '=', 'item.id')
           .where('render.status', '=', RenderStatus.done)
           .where('render.video_key', 'is not', null)
+          .where(sql<boolean>`coalesce(render.template_version, 0) >= ${minTemplate}`)
+          .orderBy(sql`coalesce(render.template_version, 0) desc`)
           .orderBy(sql`render.finished_at desc nulls last`)
           .orderBy('render.created_at', 'desc')
           .limit(1)
