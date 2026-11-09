@@ -1,0 +1,45 @@
+node_modules/
+dist/
+.next/
+.wrangler/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+scripts/smoke/out/
+.vercel
+
+# build / tooling
+.vercel/
+.turbo/
+next-env.d.ts
+tsconfig.tsbuildinfo
+npm-debug.log*
+
+# supabase local state
+supabase/.temp/
+supabase/.branches/
+
+# agent/local state (no project settings.json exists; revisit if one is added)
+.claude/*
+!.claude/settings.json
+
+# media outputs (committed assets live under public/)
+out/
+**/out/
+*.mp4
+*.mov
+*.jpg
+*.jpeg
+!apps/web/public/**/*.jpg
+!apps/web/public/**/*.mp4

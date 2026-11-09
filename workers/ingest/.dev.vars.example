@@ -1,0 +1,4 @@
+# Local secrets for `wrangler dev`. Copy to .dev.vars (git-ignored) and fill in. Never commit values.
+GEMINI_API_KEY=
+GITHUB_TOKEN=
+ALERT_WEBHOOK_URL=

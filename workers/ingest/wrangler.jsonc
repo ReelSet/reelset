@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "reelset-ingest",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "triggers": {
+    "crons": ["0 * * * *", "*/5 * * * *"],
+  },
+  "queues": {
+    "producers": [
+      { "binding": "INGEST_ITEMS", "queue": "ingest-items" },
+      { "binding": "RENDER_JOBS", "queue": "render-jobs" },
+    ],
+    "consumers": [
+      {
+        "queue": "ingest-items",
+        "max_batch_size": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "ingest-items-dlq",
+      },
+    ],
+  },
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "cf0f4b14f2394a58a23e8241137c45a4" }],
+  "services": [{ "binding": "RENDER", "service": "reelset-render" }],
+  "vars": {
+    "GEMINI_MODEL": "gemini-2.5-flash",
+    "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",
+    "LOG_LEVEL": "info",
+  },
+}
