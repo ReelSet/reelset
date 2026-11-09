@@ -9,6 +9,7 @@ import {
   td,
   th,
 } from '@/components/admin/ui'
+import { SubmitButton } from '@/components/admin/SubmitButton'
 import { saveSettingAction } from '@/app/admin/actions'
 import { assertAdmin } from '@/server/admin/guard'
 import { currentSettings } from '@/server/admin/queries'
@@ -63,9 +64,9 @@ export default async function SettingsPage({ searchParams }: Props) {
                           className={`${input} w-32`}
                         />
                       )}
-                      <button type="submit" className={buttonPrimary}>
+                      <SubmitButton className={buttonPrimary} pendingLabel="Saving">
                         Save
-                      </button>
+                      </SubmitButton>
                     </form>
                   </td>
                   <td className={`${td} text-faint`}>{field.hint}</td>

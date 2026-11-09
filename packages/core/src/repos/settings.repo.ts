@@ -9,6 +9,13 @@ function def<T>(key: string, schema: z.ZodType<T>, fallback: T): SettingDef<T> {
   return { key, schema, default: fallback }
 }
 
+export const pipelinePauseSchema = z.object({
+  reason: z.string().max(300),
+  since: z.string(),
+  until: z.string(),
+})
+export type PipelinePause = z.infer<typeof pipelinePauseSchema>
+
 export const SETTINGS = {
   dailyReelCap: def('daily_reel_cap', z.number().int().positive(), 200),
   minItemScore: def('min_item_score', z.number().min(0).max(1), 0.35),
@@ -52,6 +59,16 @@ export const SETTINGS = {
     'https://blog.cloudflare.com/rss/',
     'https://huggingface.co/blog/feed.xml',
   ]),
+  papersHfLimit: def('papers_hf_limit', z.number().int().min(1).max(100), 50),
+  papersArxivCategories: def(
+    'papers_arxiv_categories',
+    z.array(z.string().min(2).max(20)).max(12),
+    ['cs.AI', 'cs.CL', 'cs.CV', 'cs.LG'],
+  ),
+  papersArxivPerCategory: def('papers_arxiv_per_category', z.number().int().min(0).max(50), 10),
+  papersMaxAgeDays: def('papers_max_age_days', z.number().int().min(1).max(30), 7),
+  scrapeDailySpendCapUsd: def('scrape_daily_spend_cap_usd', z.number().positive(), 1),
+  pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 
 export function parseSetting<T>(setting: SettingDef<T>, raw: unknown, log: Logger): T {

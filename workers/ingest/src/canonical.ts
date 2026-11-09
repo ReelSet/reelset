@@ -102,6 +102,17 @@ function githubKey(url: URL): { key: string; url: string } | null {
   return { key: `github:${path}`, url: `https://github.com/${path}` }
 }
 
+const ARXIV_ID =
+  /^\/(?:abs|pdf|html)\/((?:\d{4}\.\d{4,5})|(?:[a-z-]+(?:\.[A-Z]{2})?\/\d{7}))(?:v\d+)?(?:\.pdf)?\/?$/
+
+export function arxivIdFromUrl(raw: string): string | null {
+  const url = parseHttpUrl(raw)
+  if (!url) return null
+  const host = stripWww(url.hostname)
+  if (host !== 'arxiv.org' && host !== 'export.arxiv.org') return null
+  return ARXIV_ID.exec(url.pathname)?.[1] ?? null
+}
+
 export function normalizeUrl(raw: string): string | null {
   const url = parseHttpUrl(raw)
   if (!url) return null
@@ -135,6 +146,15 @@ export function canonicalizeUrl(raw: string): ItemTarget | null {
       canonicalKey: `youtube:${videoId}`,
       canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
       kind: 'video',
+    }
+  }
+
+  const arxivId = arxivIdFromUrl(raw)
+  if (arxivId) {
+    return {
+      canonicalKey: `arxiv:${arxivId}`,
+      canonicalUrl: `https://arxiv.org/abs/${arxivId}`,
+      kind: 'article',
     }
   }
 

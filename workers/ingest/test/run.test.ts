@@ -14,6 +14,10 @@ const settings = {
   youtubeMaxAgeDays: 7,
   youtubeResultsPerQuery: 10,
   newsFeeds: ['https://a.test/feed', `https://b.test/${'x'.repeat(200)}`],
+  papersHfLimit: 50,
+  papersArxivCategories: ['cs.AI'],
+  papersArxivPerCategory: 10,
+  papersMaxAgeDays: 7,
 }
 
 const mention = (over: Partial<NormalizedMention> = {}): NormalizedMention => ({
@@ -38,6 +42,7 @@ describe('registry', () => {
       'github',
       'hn',
       'news',
+      'papers',
       'reddit',
       'youtube',
     ])
@@ -58,8 +63,10 @@ describe('planTasks', () => {
       'github:trending-new',
       'youtube:search',
       'news:https://a.test/feed',
+      'papers:hf-daily',
+      'papers:arxiv',
     ])
-    expect(tasks.map((t) => t.position)).toEqual([0, 1, 2, 3, 4, 5])
+    expect(tasks.map((t) => t.position)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
   })
   it('skips scopes longer than the column and honours a source filter', () => {
     expect(planTasks(ADAPTERS, settings, ['news'], testLog)).toHaveLength(1)

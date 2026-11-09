@@ -1,3 +1,4 @@
+import { Source } from '@reelset/core'
 import Link from 'next/link'
 import { z } from 'zod'
 import { fmtDate, fmtMs, truncate } from '@/lib/admin/format'
@@ -55,7 +56,7 @@ export default async function PipelinePage({ searchParams }: Props) {
     .filter((c) => !terminal.has(c.status))
     .reduce((sum, c) => sum + c.count, 0)
   const cell = new Map(matrix.map((m) => [`${m.source}:${m.status}`, m.count]))
-  const rowTotal = new Map<string, number>()
+  const rowTotal = new Map<string, number>(Object.values(Source).map((src) => [src, 0]))
   for (const m of matrix) rowTotal.set(m.source, (rowTotal.get(m.source) ?? 0) + m.count)
   const sources = [...rowTotal.keys()].sort(
     (a, b) => (rowTotal.get(b) ?? 0) - (rowTotal.get(a) ?? 0),

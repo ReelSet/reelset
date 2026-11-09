@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { parseFlash, RETRY_STAGES, type RetryStage } from '@/lib/admin/retry'
 import { pageHref } from '@/lib/admin/pagination'
 import { discardItemAction, retryItemAction } from '@/app/admin/actions'
+import { FlashToast } from './FlashToast'
+import { SubmitButton } from './SubmitButton'
 
 export const th =
   'whitespace-nowrap border-b border-line bg-raised/40 px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-faint'
@@ -105,7 +107,10 @@ export function Chips({
 
 export function Empty({ children = 'Nothing here' }: { children?: React.ReactNode }) {
   return (
-    <p className="rounded-md border border-dashed border-line px-4 py-6 text-center text-[13px] text-faint">
+    <p
+      role="status"
+      className="rounded-md border border-dashed border-line px-4 py-8 text-center text-[13px] text-faint"
+    >
       {children}
     </p>
   )
@@ -114,18 +119,7 @@ export function Empty({ children = 'Nothing here' }: { children?: React.ReactNod
 export function Flash({ value }: { value: string | string[] | undefined }) {
   const flash = parseFlash(value)
   if (!flash) return null
-  const tone =
-    flash.kind === 'ok'
-      ? 'border-ok/30 bg-ok/5 text-ok'
-      : 'border-danger/30 bg-danger/5 text-danger'
-  return (
-    <p
-      role="status"
-      className={`animate-fade-in mb-5 rounded-md border px-3 py-2 text-[13px] ${tone}`}
-    >
-      {flash.message}
-    </p>
-  )
+  return <FlashToast kind={flash.kind} message={flash.message} />
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -204,9 +198,9 @@ export function RetryItemForm({
           </option>
         ))}
       </select>
-      <button type="submit" className={button}>
+      <SubmitButton className={button} pendingLabel="Retrying">
         Retry
-      </button>
+      </SubmitButton>
     </form>
   )
 }
@@ -216,9 +210,9 @@ export function DiscardItemForm({ itemId, returnTo }: { itemId: string; returnTo
     <form action={discardItemAction}>
       <input type="hidden" name="id" value={itemId} />
       <input type="hidden" name="returnTo" value={returnTo} />
-      <button type="submit" className={button}>
+      <SubmitButton className={button} pendingLabel="Discarding">
         Discard
-      </button>
+      </SubmitButton>
     </form>
   )
 }

@@ -34,6 +34,28 @@ export const YOUTUBE_FAILING_RUNS = 3
 export const NEWS_MAX_ENTRIES_PER_FEED = 40
 export const NEWS_BODY_CHARS = 8000
 
+export const HF_PAPERS_URL = 'https://huggingface.co/api/daily_papers'
+export const ARXIV_API_URL = 'https://export.arxiv.org/api/query'
+export const ARXIV_HOST_INTERVAL_MS = 3000
+export const PAPERS_SCOPE_HF = 'hf-daily'
+export const PAPERS_SCOPE_ARXIV = 'arxiv'
+export const PAPERS_MAX_EVIDENCE_FETCHES = 20
+export const PAPERS_INTRO_CHARS = 3500
+export const PAPERS_CONCLUSION_CHARS = 2000
+export const PAPERS_MIN_SECTION_CHARS = 600
+
+export const ARTICLE_TEXT_CHARS = 6000
+export const ARTICLE_MIN_CHARS = 400
+export const ARTICLE_TIMEOUT_MS = 15_000
+export const HN_MAX_ARTICLE_FETCHES = 10
+export const NEWS_MAX_ARTICLE_FETCHES = 10
+export const NEWS_THIN_ENTRY_CHARS = 600
+
+export const FIRECRAWL_SCRAPE_URL = 'https://api.firecrawl.dev/v2/scrape'
+export const FIRECRAWL_COST_USD = 0.005
+export const FIRECRAWL_TIMEOUT_MS = 45_000
+export const FIRECRAWL_REPEAT_DAYS = 3
+
 export const PERSIST_CHUNK = 100
 export const RUN_STUCK_AFTER_MS = 30 * 60_000
 export const INGEST_RUN_DEADLINE_MS = 10 * 60_000

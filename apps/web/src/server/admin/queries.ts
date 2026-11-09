@@ -37,9 +37,15 @@ export async function statusCounts(db: Database) {
   return Object.values(ItemStatus).map((status) => ({ status, count: counts.get(status) ?? 0 }))
 }
 
+const sourceList = sql.raw(
+  Object.values(Source)
+    .map((s) => `'${s}'`)
+    .join(', '),
+)
+
 const itemSource = sql<string>`coalesce(
   (select m.source::text from mention m where m.item_id = item.id order by m.score desc nulls last limit 1),
-  case when split_part(item.canonical_key, ':', 1) in ('hn', 'github', 'news', 'reddit', 'youtube')
+  case when split_part(item.canonical_key, ':', 1) in (${sourceList})
     then split_part(item.canonical_key, ':', 1) else 'unknown' end
 )`
 

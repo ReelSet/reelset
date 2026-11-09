@@ -20,6 +20,13 @@ export class GeminiError extends Error {
   }
 }
 
+export function isProviderUnavailable(err: unknown): boolean {
+  if (!(err instanceof GeminiError)) return false
+  if (err.message.startsWith('prompt blocked')) return false
+  const status = err.status
+  return status === undefined || status >= 500 || [401, 402, 403, 408, 429].includes(status)
+}
+
 function modelPath(model: string): string {
   return model.startsWith('models/') ? model : `models/${model}`
 }

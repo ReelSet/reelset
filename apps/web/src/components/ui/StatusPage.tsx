@@ -4,11 +4,13 @@ export function StatusPage({
   code,
   title,
   body,
+  reference,
   children,
 }: {
   code?: string
   title: string
   body: string
+  reference?: string
   children?: React.ReactNode
 }) {
   return (
@@ -23,6 +25,7 @@ export function StatusPage({
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h1>
         <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-muted">{body}</p>
         <div className="mt-6 flex items-center justify-center gap-3">{children}</div>
+        {reference && <p className="mt-5 font-mono text-[11px] text-faint">ref {reference}</p>}
       </div>
     </main>
   )

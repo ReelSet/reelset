@@ -15,6 +15,10 @@ export function makeCtx(overrides: Partial<FetchContext> = {}): FetchContext {
       youtubeMaxAgeDays: 7,
       youtubeResultsPerQuery: 10,
       newsFeeds: [],
+      papersHfLimit: 50,
+      papersArxivCategories: ['cs.AI', 'cs.CL'],
+      papersArxivPerCategory: 10,
+      papersMaxAgeDays: 7,
     },
     ...overrides,
   }

@@ -27,7 +27,8 @@ export type CitationDto = { chunkId: string; title: string; url: string; publish
 
 export type AskResponse =
   | { outcome: 'answered'; answer: string; citations: CitationDto[]; cached: boolean }
-  | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped' | 'error'; message: string }
+  | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped'; message: string }
+  | { outcome: 'error'; message: string; reason?: 'ai_unavailable' }
 
 export type AskStreamEvent =
   { type: 'delta'; text: string } | { type: 'result'; result: AskResponse }

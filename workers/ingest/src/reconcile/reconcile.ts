@@ -3,6 +3,7 @@ import {
   SETTINGS,
   StaleTransitionError,
   errorFields,
+  getPipelinePause,
   getSetting,
   recordItemEvent,
   spendTodayUsd,
@@ -26,6 +27,7 @@ import {
   interleaveBySource,
   utcDayStart,
 } from './policy'
+import { probePause } from '../pipeline/quota'
 import { primarySource, type ScoreSignal } from '../score'
 
 type BatchSender<T> = { sendBatch: (messages: { body: T }[]) => Promise<unknown> }
@@ -35,7 +37,13 @@ export type ReconcileQueues = {
   render: BatchSender<RenderJobMessage>
 }
 
+export type ReconcileOptions = {
+  probe?: () => Promise<unknown>
+  alertWebhookUrl?: string
+}
+
 export type ReconcileResult = {
+  paused: boolean
   stuckRequeued: number
   stuckFailed: number
   admitted: number
@@ -182,6 +190,10 @@ async function countAdmittedToday(db: Database, now: Date): Promise<number> {
     .where('item_event.created_at', '>=', utcDayStart(now))
     // Items that failed or had too little source text never become a reel, so they must not eat the cap.
     .where('item.status', 'not in', ['failed', 'insufficient_source'])
+    // Released or requeued items (found, not queued) are candidates again, not spent slots.
+    .where((eb) =>
+      eb.not(eb.and([eb('item.status', '=', 'found'), eb('item.queued_at', 'is', null)])),
+    )
     .executeTakeFirst()
   return Number(row?.n ?? 0)
 }
@@ -201,6 +213,10 @@ async function admittedTodayBySource(db: Database, now: Date): Promise<Map<strin
     .where(sql`item_event.meta->>'admitted'`, '=', 'true')
     .where('item_event.created_at', '>=', utcDayStart(now))
     .where('item.status', 'not in', ['failed', 'insufficient_source'])
+    // Released or requeued items (found, not queued) are candidates again, not spent slots.
+    .where((eb) =>
+      eb.not(eb.and([eb('item.status', '=', 'found'), eb('item.queued_at', 'is', null)])),
+    )
     .groupBy('source')
     .execute()
   return new Map(rows.map((r) => [r.source, Number(r.n)]))
@@ -342,9 +358,11 @@ export async function reconcile(
   queues: ReconcileQueues,
   log: Logger,
   now = new Date(),
+  options: ReconcileOptions = {},
 ): Promise<ReconcileResult> {
   const l = log.child({ mod: 'reconcile' })
   const result: ReconcileResult = {
+    paused: false,
     stuckRequeued: 0,
     stuckFailed: 0,
     admitted: 0,
@@ -363,7 +381,14 @@ export async function reconcile(
     }
   }
 
+  await step('pause', async () => {
+    await probePause(db, options.probe, options.alertWebhookUrl, l, now)
+    result.paused = (await getPipelinePause(db, l)) !== null
+    if (result.paused) l.warn('pipeline paused: skipping stuck handling, summarized and found')
+  })
+
   await step('stuck', async () => {
+    if (result.paused) return
     const stuck = await reconcileStuck(db, now, l)
     result.stuckRequeued = stuck.requeued
     result.stuckFailed = stuck.failed
@@ -375,9 +400,11 @@ export async function reconcile(
     result.enqueuedVoiced = await enqueueStage(db, queues.render, 'voiced', l)
   })
   await step('summarized', async () => {
+    if (result.paused) return
     result.enqueuedSummarized = await enqueueStage(db, queues.ingest, 'summarized', l)
   })
   await step('found', async () => {
+    if (result.paused) return
     const found = await admitFound(db, queues.ingest, now, l)
     result.admitted = found.admitted
     result.skipped = found.skipped

@@ -21,6 +21,24 @@ NOT edit them; it reports the need.
 - Admin Retry (web): `transitionItem(failed -> <stage>)` then `queued_at = NULL`.
 - Render reconciler: renders stuck in `rendering` > 20 min -> render `failed`, item `queued_at = NULL`.
 
+## LLM quota circuit breaker
+
+A provider quota/billing error (HTTP 402, or 403/429 whose body says quota, billing or RESOURCE_EXHAUSTED) is a pipeline pause, not an item failure.
+
+- `app_setting pipeline_paused` = `{ reason, since, until }` (`SETTINGS.pipelinePaused`; core `getPipelinePause`, `pausePipeline`, `clearPipelinePause`). `until` is the next probe time (15 min).
+- The ingest consumer acks the message, sets `queued_at = NULL` and leaves `status` and `attempts` untouched; while paused it releases found/summarized items the same way without calling the provider.
+- Reconcile, while paused: skips stuck handling and `found`/`summarized` enqueue (admission). Render enqueues continue. After `until` it makes one cheap embedding call; success clears the pause, a quota error extends it.
+- Alert key `llm_quota_exhausted` (deduped hourly). The admin UI may show `pipeline_paused`.
+- `scripts/maintenance/requeue-quota-failed.ts [--apply]` moves items failed with those errors back to the stage they failed in (`transitionItem`, `queued_at NULL`, `attempts 0`).
+
+## Papers source
+
+`Source` includes `papers`. Discovery in ingest: Hugging Face Daily Papers (`huggingface.co/api/daily_papers`, upvotes + comments are the score) and arXiv API listings (cs.AI/cs.CL/cs.CV/cs.LG, no score, below the admission floor until a Daily Papers mention scores them). Canonical key `arxiv:<id>` (version stripped, any arxiv abs/pdf/html URL, so HN links dedupe onto the paper), `canonical_url` `https://arxiv.org/abs/<id>`, kind `article`. Evidence: abstract + authors in the mention body, introduction and conclusion from `arxiv.org/html/<id>` in `raw.extraTexts`. Settings: `papers_hf_limit`, `papers_arxiv_categories`, `papers_arxiv_per_category`, `papers_max_age_days`. Render labels the source chip "Research".
+
+## Firecrawl fallback (scrape)
+
+Direct fetching is always tried first (papers evidence, HN and news article text). Firecrawl (`FIRECRAWL_API_KEY` ingest secret) is used only when the direct fetch errors, returns 401/403/429/451/503 or a challenge page, or yields text thinner than the threshold; 404/410 never trigger it. Each paid scrape is recorded as `recordSpend(category 'scrape', units 1, costUsd 0.005, meta { url, reason })`, capped by `scrape_daily_spend_cap_usd` (default 1), and the same URL is not scraped twice within 3 days. `scrape` is not part of the pipeline or Ask caps.
+
 ## Queues (Cloudflare)
 
 - `ingest-items`: body `{ "itemId": "<uuid>", "attempt": <int> }`. max_retries 3, DLQ `ingest-items-dlq`.
@@ -84,7 +102,7 @@ An item appears only if `item.status = 'rendered'` AND it has a `render` with `s
 
 - Settings: `getSetting(db, SETTINGS.x, log)`; keys live in `app_setting`.
 - Spend: `recordSpend(db, { category, units, costUsd }, log)` for every LLM, embedding, TTS and render call; `spendTodayUsd(db, [...])`. Pipeline uses `llm|embedding|tts|render`; Ask uses category `ask` only (meta.kind = llm|embedding), so the two caps never mix.
-- Alerts: `sendAlert(db, env.ALERT_WEBHOOK_URL, { key, message, fields }, log)`, keys in `ALERT_KEYS`. Ingest owns: no_item_rendered_3h, source_lag, youtube_search_failing, spend_cap_reached, transcript_success_low. Render owns: render_failure_rate_high (> 20% failed in the last hour), dead_letter_growing.
+- Alerts: `sendAlert(db, env.ALERT_WEBHOOK_URL, { key, message, fields }, log)`, keys in `ALERT_KEYS`. Ingest owns: no_item_rendered_3h, source_lag, youtube_search_failing, spend_cap_reached, transcript_success_low, llm_quota_exhausted. Render owns: render_failure_rate_high (> 20% failed in the last hour), dead_letter_growing.
 
 ## LLM + embeddings
 
@@ -93,6 +111,6 @@ An item appears only if `item.status = 'rendered'` AND it has a `render` with `s
 
 ## Env vars
 
-- ingest: `HYPERDRIVE` (binding), `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`, bindings `INGEST_ITEMS`, `RENDER_JOBS`, `RENDER` (service).
+- ingest: `HYPERDRIVE` (binding), `FIRECRAWL_API_KEY` (secret, optional), `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`, bindings `INGEST_ITEMS`, `RENDER_JOBS`, `RENDER` (service).
 - render: `HYPERDRIVE`, `MEDIA` (R2), `REEL_CONTAINER` (container DO), `RENDER_JOBS` (producer for template upgrades), `TTS_VOICE` (default `en-US-AriaNeural`), `ALERT_WEBHOOK_URL`, `PROXY_URLS` and `GEMINI_API_KEY` (secrets, forwarded to the container).
 - web: `DATABASE_URL` (Supabase pooler, transaction mode), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `MEDIA_PUBLIC_BASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL`, `ALERT_WEBHOOK_URL`, `ADMIN_EMAILS` (comma-separated, case-insensitive; matching verified users are promoted to admin, never demoted), `ADMIN_HOST`.

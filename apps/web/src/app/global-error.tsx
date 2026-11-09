@@ -1,6 +1,7 @@
 'use client'
 
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string }
@@ -22,7 +23,9 @@ export default function GlobalError({
       >
         <div>
           <h1 style={{ fontSize: 28, margin: 0 }}>Something broke</h1>
-          <p style={{ color: '#a1a1aa' }}>Try again in a moment.</p>
+          <p style={{ color: '#a1a1aa' }}>
+            Reelset hit an unexpected error. Try again in a moment.
+          </p>
           <button
             type="button"
             onClick={reset}
@@ -37,6 +40,11 @@ export default function GlobalError({
           >
             Try again
           </button>
+          {error.digest && (
+            <p style={{ color: '#71717a', fontSize: 11, fontFamily: 'monospace' }}>
+              ref {error.digest}
+            </p>
+          )}
         </div>
       </body>
     </html>

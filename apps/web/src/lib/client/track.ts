@@ -15,12 +15,12 @@ let listening = false
 
 function send(batch: QueuedEvent[]) {
   const body = JSON.stringify({ events: batch })
-  const blob = new Blob([body], { type: 'application/json' })
+  const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' })
   if (typeof navigator.sendBeacon === 'function' && navigator.sendBeacon('/api/events', blob))
     return
   void fetch('/api/events', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'text/plain;charset=UTF-8' },
     body,
     keepalive: true,
   }).catch(() => undefined)

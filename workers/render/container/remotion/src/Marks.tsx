@@ -58,6 +58,18 @@ export function Glyph({ source, size }: { source: Source; size: number }) {
           <path d="M10 9v6l5.2-3z" fill="#fff" />
         </svg>
       )
+    case 'papers':
+      return (
+        <svg {...common}>
+          <rect x="3" y="2.5" width="18" height="19" rx="3" fill="#b31b1b" />
+          <path
+            d="M7.5 8h9M7.5 11.5h9M7.5 15h5.5"
+            stroke="#fff"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
     default:
       return (
         <svg {...common}>

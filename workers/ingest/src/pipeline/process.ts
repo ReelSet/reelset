@@ -6,6 +6,7 @@ import {
   recordSpend,
   setItemEmbedding,
   toVectorLiteral,
+  getPipelinePause,
   transitionItem,
   type Database,
   type ItemStatus,
@@ -42,6 +43,7 @@ export type ProcessDeps = {
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
   geminiModel: string
   embeddingModel: string
+  alertWebhookUrl?: string
 }
 
 export type ProcessOutcome =
@@ -51,6 +53,7 @@ export type ProcessOutcome =
   | 'generation_failed'
   | 'skipped_stale'
   | 'skipped_missing'
+  | 'paused'
 
 type ItemRow = {
   id: string
@@ -102,6 +105,13 @@ export async function processItem(
   if (stage === 'skip') return 'skipped_stale'
   if (stage === 'enqueue_render') return enqueueRender(deps, item, log)
 
+  const pause = await getPipelinePause(deps.db, log)
+  if (pause) {
+    await releaseItem(deps.db, item.id)
+    log.info({ until: pause.until }, 'pipeline paused, item released without counting an attempt')
+    return 'paused'
+  }
+
   if (stage === 'summarize') {
     const result = await summarize(deps, item, deliveryAttempt, log)
     if (result !== 'summarized') return result
@@ -110,6 +120,15 @@ export async function processItem(
     return embedAndAdvance(deps, fresh, deliveryAttempt, log)
   }
   return embedAndAdvance(deps, item, deliveryAttempt, log)
+}
+
+export async function releaseItem(db: Database, itemId: string): Promise<void> {
+  await db
+    .updateTable('item')
+    .set({ queued_at: null })
+    .where('id', '=', itemId)
+    .where('status', 'in', ['found', 'summarized'])
+    .execute()
 }
 
 async function summarize(

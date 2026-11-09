@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { LogoMark } from '@/components/ui/Logo'
+import { Spinner } from '@/components/ui/Spinner'
+import { describeSignInError, validateEmail } from '@/lib/auth/email'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 
 type Status = 'idle' | 'sending' | 'sent' | 'error'
@@ -9,25 +11,40 @@ type Status = 'idle' | 'sending' | 'sent' | 'error'
 export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<Status>('idle')
+  const [touched, setTouched] = useState(false)
   const [message, setMessage] = useState(failed ? 'That sign-in link did not work. Try again.' : '')
+
+  const fieldError = touched ? validateEmail(email) : null
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    setStatus('sending')
-    setMessage('')
-    const supabase = createSupabaseBrowserClient()
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    })
-    if (error) {
+    setTouched(true)
+    if (status === 'sending' || validateEmail(email)) return
+    if (!navigator.onLine) {
       setStatus('error')
-      setMessage(error.message)
+      setMessage('You are offline. Reconnect to the internet, then try again.')
       return
     }
-    setStatus('sent')
+    setStatus('sending')
+    setMessage('')
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
+      })
+      if (error) {
+        setStatus('error')
+        setMessage(describeSignInError(error))
+        return
+      }
+      setStatus('sent')
+    } catch (err) {
+      setStatus('error')
+      setMessage(describeSignInError(err instanceof Error ? err : {}))
+    }
   }
 
   return (
@@ -64,27 +81,39 @@ export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
             </button>
           </div>
         ) : (
-          <form onSubmit={submit} className="mt-8 flex flex-col gap-3">
+          <form onSubmit={submit} noValidate className="mt-8 flex flex-col gap-3">
             <label htmlFor="email" className="sr-only">
               Email
             </label>
             <input
               id="email"
               type="email"
-              required
               autoComplete="email"
               inputMode="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-line bg-surface px-4 py-3 text-base outline-none transition placeholder:text-faint focus:border-line-strong focus:shadow-[0_0_0_4px_rgb(200_247_81/0.08)]"
+              onBlur={() => email && setTouched(true)}
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? 'email-error' : undefined}
+              disabled={status === 'sending'}
+              className={`rounded-md border bg-surface px-4 py-3 text-base outline-none transition placeholder:text-faint focus:shadow-[0_0_0_4px_rgb(200_247_81/0.08)] disabled:opacity-60 ${
+                fieldError ? 'border-danger/60' : 'border-line focus:border-line-strong'
+              }`}
             />
+            {fieldError && (
+              <p id="email-error" role="alert" className="-mt-1 text-sm text-danger">
+                {fieldError}
+              </p>
+            )}
             <button
               type="submit"
               disabled={status === 'sending'}
-              className="rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-fg transition active:scale-[0.98] disabled:opacity-60"
+              aria-busy={status === 'sending'}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-fg transition active:scale-[0.98] disabled:opacity-60"
             >
-              {status === 'sending' ? 'Sending...' : 'Send magic link'}
+              {status === 'sending' && <Spinner />}
+              {status === 'sending' ? 'Sending' : 'Send magic link'}
             </button>
             {message && (
               <p role="alert" className="text-sm text-danger">

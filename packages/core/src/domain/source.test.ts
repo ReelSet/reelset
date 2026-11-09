@@ -5,8 +5,8 @@ import { SOURCES, parseSource } from './source'
 const log = pino({ level: 'silent' })
 
 describe('parseSource', () => {
-  it('accepts exactly the five known sources', () => {
-    expect([...SOURCES].sort()).toEqual(['github', 'hn', 'news', 'reddit', 'youtube'])
+  it('accepts exactly the six known sources', () => {
+    expect([...SOURCES].sort()).toEqual(['github', 'hn', 'news', 'papers', 'reddit', 'youtube'])
     for (const source of SOURCES) expect(parseSource(source, log)).toBe(source)
   })
 

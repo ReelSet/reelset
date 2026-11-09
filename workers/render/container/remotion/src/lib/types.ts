@@ -1,4 +1,4 @@
-export type Source = 'hn' | 'github' | 'news' | 'reddit' | 'youtube'
+export type Source = 'hn' | 'github' | 'news' | 'reddit' | 'youtube' | 'papers'
 
 export type Word = { text: string; start: number; end: number }
 
