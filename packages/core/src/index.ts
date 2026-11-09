@@ -20,11 +20,36 @@ export {
 } from './domain/embedding'
 export {
   REEL_SCRIPT_VERSION,
+  SCREEN_NAMES,
+  SFX_NAMES,
   narrationText,
   reelScriptSchema,
+  shotSchema,
   type ReelScript,
+  type ScreenName,
+  type SfxName,
+  type Shot,
   type ReelVisual,
 } from './domain/reel-script'
+export {
+  DEFAULT_EVIDENCE_BUDGET,
+  PAPER_PARSER_VERSION,
+  findFigure,
+  findTable,
+  isNumericCell,
+  mainResultsTable,
+  paperEvidenceTexts,
+  paperFigureSchema,
+  paperTableSchema,
+  parsedPaperSchema,
+  refNumber,
+  tableToMarkdown,
+  type PaperFigure,
+  type PaperSection,
+  type PaperStats,
+  type PaperTable,
+  type ParsedPaper,
+} from './domain/parsed-paper'
 export {
   ITEM_IMAGE_KINDS,
   MAX_ITEM_IMAGES,

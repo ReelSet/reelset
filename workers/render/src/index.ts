@@ -8,9 +8,10 @@ import {
   type Logger,
 } from '@reelset/core'
 import { loadRetentionDays, runMaintenance } from './cron'
-import { CONTAINER_SLOTS } from './constants'
+import { CONTAINER_SLOTS, DEFAULT_MEDIA_BASE_URL } from './constants'
 import { processRenderJob } from './consumer'
 import type { Env } from './env'
+import { handleParsePaper } from './paper-route'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import { createMaintenanceStore, createRenderStore } from './store'
 import { loadTtsConfig } from './tts-config'
@@ -35,6 +36,14 @@ export default {
     const slot = Math.floor(Math.random() * CONTAINER_SLOTS)
     const container = getContainer(env.REEL_CONTAINER, `slot-${slot}`)
     const log = makeLogger(env).child({ route })
+    if (route === 'parse_paper') {
+      return handleParsePaper(request, {
+        media: env.MEDIA,
+        publicBase: (env.MEDIA_PUBLIC_BASE_URL ?? DEFAULT_MEDIA_BASE_URL).replace(/\/$/, ''),
+        container,
+        log,
+      })
+    }
     return route === 'transcript'
       ? handleTranscript(request, container, log)
       : handleYoutubeSearch(request, container, log)

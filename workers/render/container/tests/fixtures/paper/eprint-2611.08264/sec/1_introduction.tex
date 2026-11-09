@@ -1,0 +1,106 @@
+\section{Introduction}
+\label{sec:introduction}
+
+% Section 1: Task, applications, and challenge
+
+Feed-forward 3D Gaussian Splatting (3DGS) directly predicts a 3D
+Gaussian representation~\citep{kerbl20233d} from input images, avoiding
+the costly per-scene optimization of conventional 3DGS.
+This efficiency makes it attractive for large-scale 3D reconstruction and
+digital content creation.
+The ultimate goal is a single model that generalizes reliably across
+arbitrary scene scales, camera configurations, and target viewpoints, yet
+such broad generalization remains challenging.
+
+% Section 2: Limitation of existing normalization spaces
+A prevailing paradigm is to first predict per-pixel depth using a
+geometry foundation model~\citep{wang2025vggt,lin2025depth,team2026hy,jiang2026omnix,yu2026infinidepth},
+and then predict per-pixel Gaussian attributes based on the resulting
+geometry in its \emph{radial-distance-normalized} coordinate space.
+\emph{Radial Distance Normalization (RDNorm)} uses the mean radial
+distance of reconstructed 3D points to the reference-camera origin as a
+scene-level scale, and globally rescales the scene to canonicalize this
+statistic. However, RDNorm \textbf{does not} directly canonicalize the spacing between
+neighboring Gaussian centers, which we refer to as \emph{Gaussian
+spacing}. Since adequate surface coverage requires the Gaussian scale to match the
+local Gaussian spacing, variations in this quantity directly induce shifts
+in the corresponding learning targets.
+
+As illustrated in Fig.~\ref{fig:gsnorm}, visually similar regions can exhibit
+substantially different Gaussian spacings after RDNorm under different
+scene scales and camera configurations. Consequently, similar local
+observations may correspond to different Gaussian-scale targets across
+scenes, introducing ambiguity in scale supervision.
+A predictor biased toward smaller Gaussian scales may
+under-cover regions with large Gaussian spacing and produce holes,
+whereas one biased toward larger scales may cause excessive overlap in
+densely sampled regions and lead to over-smoothing, as shown in
+Fig.~\ref{fig:ablation}.
+This ambiguity in Gaussian-scale supervision poses a major bottleneck to
+robust feed-forward 3DGS generalization across varying scene scales and
+camera configurations.
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/method/pipeline_1.pdf}
+    \vspace{-0.2in}
+    \caption{
+        \textbf{Normalization space.}
+        (a) \emph{Radial Distance Normalization} canonicalizes a global
+        radial statistic but leaves Gaussian spacing varying across scenes
+        and camera configurations, resulting in inconsistent
+        supervision targets.
+        (b) \emph{Gaussian Spacing Normalization} canonicalizes a representative statistic of Gaussian spacing, providing a more consistent spatial reference for Gaussian prediction.
+    }
+    \vspace{-0.2in}
+    \label{fig:gsnorm}
+\end{figure}
+
+
+% Section 3: Our insight
+To address this issue, we introduce \textbf{SplatAnything}, a
+feed-forward 3DGS framework equipped with \emph{Gaussian Spacing
+Normalization (GSNorm)}. The key idea of GSNorm is to derive the
+scene-level normalization factor from a representative statistic of
+Gaussian spacing, rather than from a global radial statistic. Under the
+per-pixel Gaussian prediction paradigm, where each valid image pixel
+corresponds to a Gaussian center, perspective projection relates Gaussian
+spacing to scene depth and camera intrinsics. Based on this relation,
+GSNorm computes Gaussian spacing over all valid observations and uses its
+median as a robust scene-level normalization factor. The reconstructed
+geometry is then rescaled accordingly, canonicalizing the representative
+Gaussian spacing across scenes. This provides a more consistent spatial reference for Gaussian-scale prediction, alleviating ambiguity in supervision caused by variations in
+scene scale and camera configuration and thereby improving generalization
+across diverse scenes and viewpoints.
+
+% Section 4: Our evaluation
+To rigorously assess SplatAnything and prior methods, we further
+introduce a cross-dataset benchmark for in-the-wild evaluation.
+Unlike conventional protocols~\citep{wang2026tttlrm,xu2025depthsplat,
+xu2025resplat,ye2026yonosplat,ren2026tokengs}, which often focus on
+training-related domains and interpolated target views, our benchmark
+covers diverse datasets, scene scales, image resolutions, and camera
+configurations, while explicitly varying input-view sparsity and
+emphasizing challenging extrapolated viewpoints. Extensive experiments show that SplatAnything
+achieves state-of-the-art performance, with particularly strong gains under large scene and viewpoint shifts.
+
+In summary, our contributions are:
+
+\vspace{-0.05in}
+
+\begin{itemize}
+    \item
+    We identify ambiguity in Gaussian-scale supervision across varying
+    scene scales and camera configurations induced by RDNorm. To address
+    this issue, we propose \emph{Gaussian Spacing Normalization (GSNorm)},
+    which canonicalizes a robust scene-level statistic of Gaussian spacing
+    to provide a more consistent spatial reference for Gaussian prediction.
+
+    \item
+    We establish a systematic cross-dataset evaluation benchmark for
+    feed-forward 3DGS, spanning diverse scene categories, image
+    resolutions, camera configurations, input-view sparsity levels, and
+    challenging extrapolated viewpoints. This benchmark enables a
+    controlled evaluation of cross-scene and cross-view generalization.
+\end{itemize}

@@ -10,9 +10,11 @@ import {
   H,
   HEADER_H,
   SAFE,
-  SCENE_BOTTOM,
-  SCENE_H,
-  SCENE_TOP,
+  CONTENT_TOP,
+  LOW_BOTTOM,
+  LOW_TOP,
+  ZONE_BOTTOM,
+  ZONE_H,
   TOP_SAFE,
   W,
 } from '../theme'
@@ -35,10 +37,12 @@ describe('caption band layout', () => {
     expect(CAPTION_FONT * CAPTION_LINE_HEIGHT * CAPTION_MAX_LINES).toBeLessThanOrEqual(CAPTION_H)
   })
 
-  it('keeps scene content above the band', () => {
-    expect(SCENE_TOP + SCENE_H).toBe(SCENE_BOTTOM)
-    expect(SCENE_BOTTOM).toBeLessThan(CAPTION_TOP)
-    expect(SCENE_H).toBeGreaterThan(450)
+  it('keeps primary content above the band and a strip below it', () => {
+    expect(CONTENT_TOP + ZONE_H).toBe(ZONE_BOTTOM)
+    expect(ZONE_BOTTOM).toBeLessThan(CAPTION_TOP)
+    expect(LOW_TOP).toBeGreaterThan(CAPTION_TOP + CAPTION_H)
+    expect(LOW_BOTTOM).toBeLessThanOrEqual(H * 0.82 + 1)
+    expect(ZONE_H).toBeGreaterThan(650)
   })
 })
 
@@ -48,11 +52,12 @@ describe('top chrome layout', () => {
     expect(SAFE.top).toBe(TOP_SAFE)
   })
 
-  it('leaves scenes between the chrome and the caption band without overlap', () => {
-    const chromeBottom = TOP_SAFE + HEADER_H
-    expect(SCENE_TOP).toBeGreaterThanOrEqual(chromeBottom)
-    expect(SCENE_BOTTOM).toBeLessThan(CAPTION_TOP)
-    expect(chromeBottom).toBeLessThan(CAPTION_TOP)
-    expect(SCENE_H).toBeGreaterThanOrEqual(450)
+  it('puts content below the chrome and above the caption band', () => {
+    expect(CONTENT_TOP).toBeGreaterThanOrEqual(TOP_SAFE + HEADER_H)
+    expect(TOP_SAFE + HEADER_H).toBeLessThan(CAPTION_TOP)
+  })
+
+  it('is 1080x1920', () => {
+    expect([W, H]).toEqual([1080, 1920])
   })
 })

@@ -7,10 +7,14 @@ import {
   setItemEmbedding,
   toVectorLiteral,
   getPipelinePause,
+  paperEvidenceTexts,
+  parseItemImages,
   transitionItem,
   type Database,
+  type ItemImage,
   type ItemStatus,
   type Logger,
+  type ParsedPaper,
 } from '@reelset/core'
 import { EMBED_BATCH_SIZE } from '../config'
 import type { RenderJobMessage } from '../env'
@@ -31,6 +35,10 @@ import {
   youtubeIdFromKey,
 } from './decide'
 import { captureItemImages } from '../images'
+import { pdfMarkdownEvidence } from '../arxiv-html'
+import { arxivIdFromKey, type PaperClient } from '../paper-client'
+import type { ScrapeFallback } from '../types'
+import { paperAssetsPrompt, resolvePaperShots } from './paper-shots'
 import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
@@ -41,6 +49,8 @@ export type ProcessDeps = {
   llm: LlmClient
   embedder: Embedder
   transcripts: TranscriptClient
+  papers?: PaperClient
+  scrape?: ScrapeFallback
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
   geminiModel: string
   embeddingModel: string
@@ -140,13 +150,15 @@ async function storeImages(
   item: ItemRow,
   mentions: readonly { url: string }[],
   log: Logger,
-): Promise<void> {
+  paper: ParsedPaper | null,
+): Promise<ItemImage[]> {
   try {
     const images = await captureItemImages(
       {
         canonicalKey: item.canonical_key,
         canonicalUrl: item.canonical_url,
         mentionUrls: mentions.map((m) => m.url),
+        paper,
       },
       { log, githubToken: deps.githubToken },
     )
@@ -156,9 +168,17 @@ async function storeImages(
       .where('id', '=', item.id)
       .where('images', 'is', null)
       .execute()
+    return images
   } catch (err) {
     log.warn(errorFields(err), 'image capture failed, continuing without images')
+    return []
   }
+}
+
+function paperTexts(paper: ParsedPaper | null, source: string): string[] | null {
+  if (!paper || source !== 'papers') return null
+  const texts = paperEvidenceTexts(paper)
+  return texts.length > 0 ? texts : null
 }
 
 async function summarize(
@@ -178,7 +198,23 @@ async function summarize(
     .execute()
   if (mentions.length === 0) throw new Error('item has no mentions')
 
-  if (item.images == null) await storeImages(deps, item, mentions, log)
+  const arxivId = arxivIdFromKey(item.canonical_key)
+  const paper = arxivId && deps.papers ? await deps.papers.parse(arxivId) : null
+  let pdfTexts: string[] | null = null
+  if (
+    !paper &&
+    arxivId &&
+    deps.scrape &&
+    mentions.every((m) => parseExtraTexts(m.raw).length === 0)
+  ) {
+    const markdown = await deps.scrape.scrape(`https://arxiv.org/pdf/${arxivId}`, 'paper_pdf')
+    pdfTexts = markdown ? pdfMarkdownEvidence(markdown) : null
+    log.info({ arxivId, chunks: pdfTexts?.length ?? 0 }, 'paper pdf fallback via firecrawl')
+  }
+  const images =
+    item.images == null
+      ? await storeImages(deps, item, mentions, log, paper)
+      : parseItemImages(item.images)
 
   let transcript: string | null = null
   const videoId = youtubeIdFromKey(item.canonical_key)
@@ -215,7 +251,10 @@ async function summarize(
       source: m.source,
       title: m.title,
       body: m.body,
-      extraTexts: parseExtraTexts(m.raw),
+      extraTexts:
+        paperTexts(paper, m.source) ??
+        (m.source === 'papers' ? pdfTexts : null) ??
+        parseExtraTexts(m.raw),
     })),
     transcript,
   )
@@ -286,6 +325,7 @@ async function summarize(
         canonicalUrl: item.canonical_url,
         chunks: promptChunks,
         imageUrls,
+        paperAssets: paper ? paperAssetsPrompt(paper, images) : undefined,
         rejection,
       }),
     })
@@ -309,7 +349,7 @@ async function summarize(
       'llm call done',
     )
 
-    const parsed = parseModelOutput(result.text, promptChunkIds)
+    const parsed = parseModelOutput(result.text, promptChunkIds, sourceText)
     if (!parsed.ok) {
       rejection = parsed.reason
       log.warn({ attempt, reason: rejection }, 'model output rejected (parse)')
@@ -342,6 +382,15 @@ async function summarize(
       log,
     )
     return 'generation_failed'
+  }
+
+  const shotStats = resolvePaperShots(
+    accepted.script as unknown as { beats?: unknown },
+    paper,
+    images,
+  )
+  if (shotStats.tables + shotStats.equations + shotStats.figures + shotStats.dropped > 0) {
+    log.info(shotStats, 'paper shots resolved')
   }
 
   const hash = await contentHash([item.title, accepted.tldr, JSON.stringify(accepted.script)])

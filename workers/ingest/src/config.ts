@@ -40,6 +40,7 @@ export const ARXIV_HOST_INTERVAL_MS = 3000
 export const PAPERS_SCOPE_HF = 'hf-daily'
 export const PAPERS_SCOPE_ARXIV = 'arxiv'
 export const PAPERS_MAX_EVIDENCE_FETCHES = 20
+export const PAPER_PARSE_TIMEOUT_MS = 115_000
 export const PAPERS_INTRO_CHARS = 3500
 export const PAPERS_CONCLUSION_CHARS = 2000
 export const PAPERS_MIN_SECTION_CHARS = 600

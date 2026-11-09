@@ -7,6 +7,7 @@ import {
   generateNarration,
   parseSpokenWords,
   selectProvider,
+  shortenScript,
   shouldFallbackToEdge,
   type AiLike,
   type SpokenWord,
@@ -205,5 +206,43 @@ describe('parseSpokenWords', () => {
       },
     })
     expect(parsed).toEqual([{ word: 'a', start: 0, end: 1 }])
+  })
+})
+
+describe('shortenScript', () => {
+  const base = {
+    version: 1 as const,
+    hook: 'Hook line.',
+    beats: [
+      {
+        text: 'One a b c. Two d e f. Three g h i.',
+        visual: { type: 'title' as const, title: 'A' },
+        shots: [
+          { at: 'one', show: 'KeyPoint' as const },
+          { at: 'three', show: 'KeyPoint' as const },
+        ],
+      },
+      { text: 'Solo sentence only.', visual: { type: 'title' as const, title: 'B' } },
+    ],
+    outro: 'Outro line.',
+    claims: [],
+  }
+
+  it('drops trailing sentences from the longest beat, keeping hook, outro and one sentence per beat', () => {
+    const out = shortenScript(base, 0.7)!
+    expect(out.hook).toBe(base.hook)
+    expect(out.outro).toBe(base.outro)
+    expect(out.beats[1]!.text).toBe('Solo sentence only.')
+    expect(out.beats[0]!.text.startsWith('One a b c.')).toBe(true)
+    expect(out.beats[0]!.text).not.toContain('Three')
+  })
+
+  it('removes shots whose cue word was cut', () => {
+    const out = shortenScript(base, 0.7)!
+    expect(out.beats[0]!.shots?.map((s) => s.at)).toEqual(['one'])
+  })
+
+  it('returns null when every beat is a single sentence', () => {
+    expect(shortenScript({ ...base, beats: [base.beats[1]!, base.beats[1]!] }, 0.5)).toBeNull()
   })
 })

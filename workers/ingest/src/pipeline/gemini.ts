@@ -2,6 +2,13 @@ import { EMBEDDING_DIMENSIONS, reelScriptSchema, type Logger } from '@reelset/co
 import { z } from 'zod'
 import { MAX_TLDR_CHARS } from '../config'
 import { fetchJson } from '../http'
+import {
+  MAX_NARRATION_WORDS,
+  clipHeadline,
+  narrationWordCount,
+  numberValues,
+  repairShots,
+} from './shots'
 import { asQuotaError } from './quota'
 import type { GeneratedContent } from './safety'
 
@@ -17,8 +24,8 @@ export class GeminiError extends Error {
 export type LlmUsage = { inputTokens: number; outputTokens: number }
 export type LlmResult = { text: string; usage: LlmUsage }
 
-// USD per 1M tokens. Estimates for spend tracking, not billing.
-const PRICE_PER_M = { input: 0.3, output: 2.5, embedding: 0.15 }
+// USD per 1M tokens for gemini-3.1-flash-lite. Estimates for spend tracking, not billing.
+const PRICE_PER_M = { input: 0.25, output: 1.5, embedding: 0.15 }
 
 export function llmCostUsd(usage: LlmUsage): number {
   return (
@@ -165,7 +172,11 @@ export function dropUnknownChunkIds(claims: unknown[], allowed: ReadonlySet<stri
   return kept
 }
 
-export function repairModelOutput(json: unknown, allowedChunkIds?: ReadonlySet<string>): unknown {
+export function repairModelOutput(
+  json: unknown,
+  allowedChunkIds?: ReadonlySet<string>,
+  facts = '',
+): unknown {
   if (!isObj(json)) return json
   clip(json, 'tldr', MAX_TLDR_CHARS)
   if (Array.isArray(json.topics)) {
@@ -179,6 +190,10 @@ export function repairModelOutput(json: unknown, allowedChunkIds?: ReadonlySet<s
   if (!isObj(script)) return json
   clip(script, 'hook', 120)
   clip(script, 'outro', 120)
+  const headline = clipHeadline(script.headline)
+  if (headline) script.headline = headline
+  else delete script.headline
+  const factNumbers = numberValues(facts)
   if (Array.isArray(script.claims)) {
     for (const claim of script.claims) if (isObj(claim)) clip(claim, 'text', 220)
     if (allowedChunkIds) script.claims = dropUnknownChunkIds(script.claims, allowedChunkIds)
@@ -189,6 +204,7 @@ export function repairModelOutput(json: unknown, allowedChunkIds?: ReadonlySet<s
     for (const beat of beats) {
       if (!isObj(beat)) continue
       clip(beat, 'text', 220)
+      repairShots(beat, factNumbers)
       const v = beat.visual
       if (!isObj(v)) continue
       if (v.type === 'title') {
@@ -218,6 +234,7 @@ export type ParsedOutput = { ok: true; value: GeneratedContent } | { ok: false; 
 export function parseModelOutput(
   text: string,
   allowedChunkIds?: ReadonlySet<string>,
+  facts = '',
 ): ParsedOutput {
   const stripped = text
     .trim()
@@ -229,13 +246,20 @@ export function parseModelOutput(
   } catch {
     return { ok: false, reason: 'response was not valid JSON' }
   }
-  const parsed = outputSchema.safeParse(repairModelOutput(json, allowedChunkIds))
+  const parsed = outputSchema.safeParse(repairModelOutput(json, allowedChunkIds, facts))
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 5)
       .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('; ')
     return { ok: false, reason: `JSON did not match the required schema: ${issues}` }
+  }
+  const words = narrationWordCount(parsed.data.script)
+  if (words > MAX_NARRATION_WORDS) {
+    return {
+      ok: false,
+      reason: `narration is ${words} words, over ${MAX_NARRATION_WORDS}; write 110 to 125 words total`,
+    }
   }
   const topics = [...new Set(parsed.data.topics.map((t) => t.toLowerCase()))]
   return { ok: true, value: { ...parsed.data, topics } }

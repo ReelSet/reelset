@@ -6,7 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
-from . import images, props, source_images, sources, timing, tts, video, words as words_lib
+from . import images, mix, props, source_images, sources, timing, tts, video, words as words_lib
+from .cues import resolve_shots
 from .errors import RenderError
 from .validation import RenderRequest
 
@@ -149,7 +150,12 @@ def run_render(
     spans[-1] = (spans[-1][0], total_seconds)
 
     assets["audio"] = "narration.mp3"
-    composition = props.build_props(req, words, spans, total_seconds, assets)
+    shots = resolve_shots(req.beats, words, spans)
+    dropped = sum(len(b.shots) for b in req.beats) - len(shots)
+    if dropped:
+        log.warning("%s dropped %d shots with unresolved cues", log_ctx, dropped)
+    sfx = mix.plan_sfx(spans, shots, bool(req.headline))
+    composition = props.build_props(req, words, spans, total_seconds, assets, shots, sfx)
     with open(os.path.join(job_dir, "props.json"), "w", encoding="utf-8") as fh:
         json.dump(composition, fh)
     log.info(
@@ -159,7 +165,16 @@ def run_render(
     render(job_dir)
     raw_path = os.path.join(job_dir, "raw.mp4")
     out_path = os.path.join(job_dir, "video.mp4")
-    video.run_ffmpeg(video.build_faststart_cmd(raw_path, out_path), job_dir)
+    mixed = None
+    try:
+        timeline = mix.load_timeline_shots(job_dir)
+        cues = mix.plan_sfx(spans, [], bool(req.headline), timeline) if timeline else sfx
+        mixed = mix.mix_and_mux(
+            job_dir, audio_path, raw_path, out_path, cues, total_seconds, req.job_id
+        )
+    except (RenderError, OSError, KeyError, ValueError) as err:
+        log.warning("%s mix failed, plain remux: %s", log_ctx, err)
+        video.run_ffmpeg(video.build_faststart_cmd(raw_path, out_path), job_dir)
     os.remove(raw_path)
     poster_path = os.path.join(job_dir, "poster.jpg")
     video.run_ffmpeg(
@@ -178,6 +193,7 @@ def run_render(
         "renderMs": render_ms,
         "cover": bool(assets.get("cover")),
         "templateVersion": TEMPLATE_VERSION,
+        "mix": mixed,
     }
     log.info("%s render ok %s", log_ctx, meta)
     return meta

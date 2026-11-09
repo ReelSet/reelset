@@ -53,3 +53,38 @@ describe('reelScriptSchema', () => {
     )
   })
 })
+
+describe('reelScriptSchema beat sheet', () => {
+  it('accepts a headline and shots and stays backward compatible', () => {
+    const withShots: ReelScript = {
+      ...valid,
+      headline: 'Postgres finally fixes bloat',
+      beats: valid.beats.map((b, i) =>
+        i === 0
+          ? {
+              ...b,
+              shots: [
+                { at: 'REPACK', show: 'StatSlam', props: { value: '10', label: 'x' }, sfx: 'tick' },
+                { at: 'tables#1', show: 'Terminal' },
+              ],
+            }
+          : b,
+      ),
+    }
+    expect(reelScriptSchema.parse(withShots)).toEqual(withShots)
+    expect(reelScriptSchema.safeParse(valid).success).toBe(true)
+  })
+
+  it('rejects unknown screens and sfx', () => {
+    const shot = (extra: object) => ({
+      ...valid,
+      beats: [
+        { ...valid.beats[0]!, shots: [{ at: 'x', show: 'Terminal', ...extra }] },
+        valid.beats[1]!,
+      ],
+    })
+    expect(reelScriptSchema.safeParse(shot({})).success).toBe(true)
+    expect(reelScriptSchema.safeParse(shot({ show: 'Nope' })).success).toBe(false)
+    expect(reelScriptSchema.safeParse(shot({ sfx: 'boom' })).success).toBe(false)
+  })
+})

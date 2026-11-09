@@ -142,7 +142,7 @@ describe('llm client and costs', () => {
     ).rejects.toThrow(/HTTP 503/)
   })
   it('estimates costs', () => {
-    expect(llmCostUsd({ inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBeCloseTo(2.8)
+    expect(llmCostUsd({ inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBeCloseTo(1.75)
     expect(embeddingCostUsd(1_000_000)).toBeCloseTo(0.15)
   })
 })

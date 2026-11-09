@@ -64,6 +64,7 @@ export function postToMention(post: RedditPost, scope: string): NormalizedMentio
     numComments: post.num_comments ?? null,
     publishedAt: new Date(post.created_utc * 1000),
     extraTexts: [],
+    facts: { subreddit: post.subreddit ?? scope },
   }
 }
 

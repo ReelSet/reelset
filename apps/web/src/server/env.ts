@@ -13,7 +13,7 @@ export type GeminiConfig = { apiKey: string; model: string; embeddingModel: stri
 export function geminiConfig(): GeminiConfig {
   return {
     apiKey: requireEnv('GEMINI_API_KEY'),
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
     embeddingModel: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
   }
 }

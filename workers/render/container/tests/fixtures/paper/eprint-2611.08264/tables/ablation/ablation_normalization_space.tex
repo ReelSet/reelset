@@ -1,0 +1,62 @@
+% Ablation study on the choice of normalization space.
+% Replace ``--'' with the corresponding experimental results.
+\vspace{-0.04in}
+\begin{table*}[t]
+    \centering
+    \caption{Normalization-space ablation across different numbers of input views.}
+    \vspace{0.02in}
+    \label{tab:ablation_normalization_space}
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.05}
+    \small
+\makebox[\textwidth][c]{%
+\resizebox{\textwidth}{!}{%
+    \begin{tabular}{lcccccccccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Norm. Space}}
+        & \multicolumn{2}{c}{\textbf{Num. Views=1}}
+        & \multicolumn{2}{c}{\textbf{Num. Views=4}}
+        & \multicolumn{2}{c}{\textbf{Num. Views=8}}
+        & \multicolumn{2}{c}{\textbf{Num. Views=16}}
+        & \multicolumn{2}{c}{\textbf{Num. Views=32}}
+        & \multicolumn{2}{c}{\textbf{Num. Views=64}} \\
+        \cmidrule(lr){2-3}
+        \cmidrule(lr){4-5}
+        \cmidrule(lr){6-7}
+        \cmidrule(lr){8-9}
+        \cmidrule(lr){10-11}
+        \cmidrule(lr){12-13}
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$ \\
+        \midrule
+        Radial Distance Norm.
+        & 0.308 & 0.394
+        & 0.223 & 0.278
+        & 0.223 & 0.272
+        & 0.218 & 0.268
+        & 0.225 & 0.277
+        & 0.224 & 0.250 \\
+        Radial Distance Norm + Scale Calibration.
+        & 0.323 & 0.400
+        & 0.249 & 0.309
+        & 0.252 & 0.308
+        & 0.245 & 0.300
+        & 0.253 & 0.305
+        & 0.234 & 0.265 \\
+        \textbf{Gaussian Spacing Norm. (Ours)}
+        & \textbf{0.294} & \textbf{0.367}
+        & \textbf{0.198} & \textbf{0.245}
+        & \textbf{0.196} & \textbf{0.237}
+        & \textbf{0.190} & \textbf{0.232}
+        & \textbf{0.197} & \textbf{0.241}
+        & \textbf{0.217} & \textbf{0.229} \\
+        \bottomrule
+    \end{tabular}%
+}%
+}
+\end{table*}
+% \vspace{-0.2in}

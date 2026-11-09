@@ -1,0 +1,22 @@
+[
+  {
+    "file": "bed0.m4a",
+    "bpm": 96,
+    "bars": 24
+  },
+  {
+    "file": "bed1.m4a",
+    "bpm": 100,
+    "bars": 24
+  },
+  {
+    "file": "bed2.m4a",
+    "bpm": 104,
+    "bars": 24
+  },
+  {
+    "file": "bed3.m4a",
+    "bpm": 108,
+    "bars": 24
+  }
+]

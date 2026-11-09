@@ -82,6 +82,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, transcript.fetch_transcript(video_id))
             if self.path == "/youtube/search":
                 return self._youtube_search()
+            if self.path == "/parse/paper":
+                return self._parse_paper()
             if self.path == "/render":
                 return self._render()
             return self._json(404, {"error": "not_found"})
@@ -102,6 +104,15 @@ class Handler(BaseHTTPRequestHandler):
             log.error("youtube search failed: %s", err)
             return self._json(502, {"status": "error", "reason": str(err)})
         self._json(200, result)
+
+    def _parse_paper(self):
+        from reel.paper import service as paper_service
+
+        body = self._read_json()
+        arxiv_id = body.get("arxivId") if isinstance(body, dict) else None
+        if not isinstance(arxiv_id, str) or not paper_service.valid_id(arxiv_id):
+            raise RenderError("invalid_input", "arxivId must be an arXiv id")
+        self._json(200, paper_service.parse_paper(arxiv_id))
 
     def _render(self):
         req = validation.validate_render_request(self._read_json(MAX_RENDER_BODY_BYTES))

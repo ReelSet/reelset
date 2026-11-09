@@ -5,6 +5,7 @@ import {
   type ItemImage,
   type ItemImageKind,
   type Logger,
+  type ParsedPaper,
 } from '@reelset/core'
 import { USER_AGENT } from './config'
 import { decodeEntities } from './html'
@@ -187,6 +188,23 @@ export function extractArxivFigures(html: string, baseUrl: string): ItemImage[] 
   return out
 }
 
+/** Figures from a parsed paper as item images: original-resolution ones first when there are enough. */
+export function paperFigureImages(paper: ParsedPaper, max = 5): ItemImage[] {
+  const usable = paper.figures.filter((f) => f.url.startsWith('https://') && f.url.length <= 2048)
+  const hires = usable.filter((f) => f.hires)
+  return (hires.length >= 2 ? hires : usable)
+    .slice(0, max)
+    .map((f) =>
+      image(
+        f.url,
+        'figure',
+        f.width ?? undefined,
+        f.height ?? undefined,
+        clip([f.label, f.caption].filter(Boolean).join(': '), 300),
+      ),
+    )
+}
+
 /** Images referenced in a README (markdown or inline HTML), absolute raw URLs, badges skipped. */
 export function extractReadmeImages(readme: string, owner: string, repo: string): ItemImage[] {
   const base = `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/`
@@ -293,6 +311,7 @@ export type CaptureInput = {
   canonicalKey: string
   canonicalUrl: string
   mentionUrls: string[]
+  paper?: ParsedPaper | null
 }
 
 type Deps = { fetchers?: ImageFetchers; log: Logger; githubToken?: string }
@@ -375,15 +394,19 @@ export async function captureItemImages(input: CaptureInput, deps: Deps): Promis
       },
       [],
     )
-    const figures = await safe(
-      log,
-      'arxiv html',
-      async () => {
-        const page = await f.page(`https://arxiv.org/html/${id}`)
-        return page ? extractArxivFigures(page.text, page.url).slice(0, 4) : []
-      },
-      [],
-    )
+    const parsedFigures = input.paper ? paperFigureImages(input.paper) : []
+    const figures =
+      parsedFigures.length > 0
+        ? parsedFigures
+        : await safe(
+            log,
+            'arxiv html',
+            async () => {
+              const page = await f.page(`https://arxiv.org/html/${id}`)
+              return page ? extractArxivFigures(page.text, page.url).slice(0, 4) : []
+            },
+            [],
+          )
     out = mergeImages([hf, figures])
   } else if (key.startsWith('reddit:')) {
     const id = key.slice('reddit:'.length)

@@ -1,0 +1,25 @@
+
+\section{Conclusion}
+
+\label{sec:conclusion}
+We identified a key limitation of existing methods: \emph{Radial Distance
+Normalization (RDNorm)} does not directly normalize Gaussian spacing,
+leading to ambiguity in Gaussian-scale supervision across scene scales and
+camera configurations. To address this issue, we introduced
+\textbf{SplatAnything} with \textit{Gaussian Spacing Normalization (GSNorm)},
+which derives a scene-level normalization factor from a representative
+statistic of Gaussian spacing and provides a more consistent spatial
+reference for Gaussian prediction. We further established a systematic
+cross-dataset benchmark covering different input sparsity levels and
+challenging extrapolated viewpoints. Experiments demonstrate that
+SplatAnything achieves the strongest performance across most evaluation
+settings, highlighting the effectiveness of GSNorm and marking a
+substantial step toward feed-forward 3DGS.
+
+\paragraph{Limitations and Future Work.}
+SplatAnything relies on geometric priors from a geometry foundation model
+and may degrade when reliable geometry cannot be recovered from extremely
+sparse or challenging inputs. It also primarily reconstructs regions
+visible in the input views, which can leave holes in unobserved areas.
+Future work will explore more robust geometry estimation and generative
+priors for completing unobserved regions.

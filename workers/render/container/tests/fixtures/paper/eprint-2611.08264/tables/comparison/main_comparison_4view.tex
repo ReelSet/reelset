@@ -1,0 +1,149 @@
+% Comparison across seven benchmark datasets.
+% Requires \usepackage{graphicx}, which is already loaded in the main file.
+\centering
+\caption{Quantitative comparison across seven benchmark datasets using \textbf{4 input views}. The top-3 results are highlighted as \colorbox{rankfirst}{first}, \colorbox{ranksecond}{second}, and \colorbox{rankthird}{third}.}
+
+\label{tab:main_comparison_4view}
+\setlength{\tabcolsep}{1pt}
+\renewcommand{\arraystretch}{1.2}
+\small
+    \makebox[\textwidth][c]{%
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{clcccccccccccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Input}}
+        & \multirow{2}{*}{\textbf{Method}}
+        & \multicolumn{2}{c}{\textbf{ScanNet}}
+        & \multicolumn{2}{c}{\textbf{NRGBD}}
+        & \multicolumn{2}{c}{\textbf{DL3DV}}
+        & \multicolumn{2}{c}{\textbf{Tanks \& Temples}}
+        & \multicolumn{2}{c}{\textbf{Mip-NeRF 360}}
+        & \multicolumn{2}{c}{\textbf{ETH3D}}
+        & \multicolumn{2}{c}{\textbf{DTU}} \\
+        \cmidrule(lr){3-4}
+        \cmidrule(lr){5-6}
+        \cmidrule(lr){7-8}
+        \cmidrule(lr){9-10}
+        \cmidrule(lr){11-12}
+        \cmidrule(lr){13-14}
+        \cmidrule(lr){15-16}
+        & & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$
+        & DISTS$\downarrow$ & LPIPS$\downarrow$ \\
+        \midrule
+        \multirow{6}{*}{\rotatebox[origin=c]{90}{w/o Pose}}
+        & AnySplat
+        & 0.289 & 0.467
+        & 0.249 & 0.377
+        & 0.350 & 0.319
+        & 0.624 & 0.777
+        & 0.575 & 0.825
+        & 0.296 & 0.173
+        & 0.491 & 0.819 \\
+        & YoNoSplat
+        & 0.253 & \third{0.231}
+        & 0.272 & \third{0.216}
+        & 0.366 & \third{0.213}
+        & \third{0.427} & \second{0.340}
+        & 0.398 & \third{0.573}
+        & 0.325 & \second{0.036}
+        & 0.484 & 0.753 \\
+        & DA3-GS
+        & 0.291 & 0.322
+        & \third{0.243} & 0.219
+        & \third{0.320} & 0.222
+        & 0.441 & 0.417
+        & \third{0.388} & 0.582
+        & \third{0.249} & 0.090
+        & \third{0.386} & \third{0.662} \\
+        & Mirror2-GS
+        & \second{0.188} & \second{0.218}
+        & \second{0.234} & 0.229
+        & \second{0.238} & \second{0.177}
+        & \second{0.292} & \third{0.348}
+        & \second{0.263} & \second{0.525}
+        & \second{0.214} & 0.080
+        & \second{0.328} & \second{0.645} \\
+        & QuerySplat
+        & \third{0.241} & 0.237
+        & 0.258 & \second{0.206}
+        & 0.349 & 0.285
+        & 0.438 & 0.396
+        & 0.427 & 0.652
+        & 0.296 & \first{0.031}
+        & 0.438 & 0.716 \\
+        & \textbf{Ours}
+        & \first{0.185} & \first{0.212}
+        & \first{0.199} & \first{0.185}
+        & \first{0.221} & \first{0.150}
+        & \first{0.240} & \first{0.301}
+        & \first{0.226} & \first{0.472}
+        & \first{0.151} & \third{0.047}
+        & \first{0.229} & \first{0.526} \\
+        \midrule
+        \multirow{7}{*}{\rotatebox[origin=c]{90}{w/ Pose}}
+        & DepthSplat
+        & 0.406 & 0.326
+        & 0.393 & 0.278
+        & 0.369 & 0.188
+        & 0.521 & 0.378
+        & 0.642 & 0.695
+        & 0.523 & 0.084
+        & 0.402 & 0.682 \\
+        & TokenGS
+        & 0.408 & 0.287
+        & 0.352 & 0.279
+        & 0.375 & 0.202
+        & 0.534 & 0.354
+        & 0.516 & 0.708
+        & 0.516 & \third{0.049}
+        & 0.651 & 0.871 \\
+        & tttLRM
+        & 0.354 & 0.378
+        & 0.402 & 0.421
+        & 0.351 & 0.223
+        & \third{0.406} & \third{0.336}
+        & 0.404 & 0.590
+        & 0.250 & 0.066
+        & 0.463 & 0.713 \\
+        & ReSplat
+        & \third{0.256} & \third{0.224}
+        & \third{0.249} & \second{0.184}
+        & \third{0.268} & \first{0.140}
+        & 0.447 & \second{0.296}
+        & 0.402 & \third{0.578}
+        & \third{0.219} & \first{0.028}
+        & 0.522 & 0.773 \\
+        & DA3-GS (Pose Cond.)
+        & 0.285 & 0.314
+        & 0.253 & 0.237
+        & 0.306 & 0.217
+        & 0.447 & 0.402
+        & \third{0.381} & 0.585
+        & 0.245 & 0.093
+        & \third{0.380} & \third{0.677} \\
+        & Mirror2-GS (Pose Cond.)
+        & \second{0.188} & \second{0.219}
+        & \second{0.227} & \third{0.209}
+        & \second{0.232} & \third{0.170}
+        & \second{0.289} & 0.344
+        & \second{0.257} & \second{0.504}
+        & \second{0.213} & 0.069
+        & \second{0.321} & \second{0.587} \\
+        & \textbf{Ours (Pose Cond.)}
+        & \first{0.185} & \first{0.210}
+        & \first{0.189} & \first{0.161}
+        & \first{0.216} & \second{0.142}
+        & \first{0.238} & \first{0.291}
+        & \first{0.217} & \first{0.448}
+        & \first{0.134} & \second{0.031}
+        & \first{0.209} & \first{0.432} \\
+        \bottomrule
+    \end{tabular}%
+    }%
+    }
+\vspace{-0.15in}

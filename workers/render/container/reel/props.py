@@ -25,15 +25,19 @@ def build_props(
     spans: list,
     total_seconds: float,
     assets: dict,
+    shots: list | None = None,
+    sfx: list | None = None,
 ) -> dict:
     """Composition props. `assets` maps role -> file name inside the job's assets dir: cover
     (optional source card) and audio. All visuals are drawn by the composition."""
     scenes = [{"kind": "hook", "start": spans[0][0], "end": spans[0][1], "text": req.hook}]
     for beat, (start, end) in zip(req.beats, spans[1:-1]):
         visual = {"type": "image"} if beat.visual["type"] == "image" else dict(beat.visual)
-        scenes.append(
-            {"kind": "beat", "start": start, "end": end, "text": beat.text, "visual": visual}
-        )
+        scene = {"kind": "beat", "start": start, "end": end, "text": beat.text, "visual": visual}
+        in_beat = [s for s in shots or [] if start - 1e-6 <= s["t"] < end]
+        if in_beat:
+            scene["shots"] = in_beat
+        scenes.append(scene)
     scenes.append({"kind": "outro", "start": spans[-1][0], "end": spans[-1][1], "text": req.outro})
 
     props = {
@@ -46,6 +50,12 @@ def build_props(
         "words": [_word(w) for w in words],
         "audio": f"job/{assets['audio']}",
     }
+    if req.headline:
+        props["headline"] = req.headline
+    if sfx:
+        props["sfx"] = sfx
+    if req.facts:
+        props["facts"] = req.facts
     if assets.get("cover"):
         props["cover"] = f"job/{assets['cover']}"
     if assets.get("images"):

@@ -1,0 +1,24 @@
+% \vspace{-0.12in}
+\section{Related Work}
+\label{sec:related-work}
+% \vspace{-0.08in}
+\paragraph{Geometry foundation models.}
+Recent feed-forward geometry foundation models~\citep{wang2024dust3r,wang2025vggt,lin2025depth,liu2025worldmirror,jiang2026omnix} directly recover depth, point maps, and camera poses from RGB observations, providing strong geometric priors across diverse scenes.
+These models typically employ radial distance normalization to keep reconstructed geometry within a numerically stable range. While effective for geometry prediction, such normalization does not ensure consistent \emph{Gaussian spacing} across scenes, cameras, and image resolutions. This becomes critical when the normalized geometry is reused for per-pixel Gaussian prediction, since Gaussian scales are defined in the same 3D coordinate system.
+% \vspace{-0.08in}
+\paragraph{Feed-forward 3D Gaussian Splatting.}
+Feed-forward 3DGS methods directly infer Gaussian representations from image observations, often by first estimating per-pixel depth and then predicting Gaussian attributes. pixelSplat~\citep{charatan2024pixelsplat} reconstructs 3D Gaussians from image pairs by learning a 3D probability distribution over Gaussian centers. DepthSplat~\citep{xu2025depthsplat} combines monocular depth priors with multi-view matching, while ReSplat~\citep{xu2025resplat} further refines predicted Gaussians through rendering-based optimization. However, limited geometric accuracy can become a bottleneck under large viewpoint extrapolation.
+More recent methods~\citep{jiang2025anysplat,lin2025depth,team2026hy,
+anonymous2027infinisplatv2} leverage strong geometry foundation models
+to initialize Gaussian centers and predict the remaining attributes.
+Although this substantially improves reconstruction quality, these
+methods still inherit the radial-distance-normalized space of their
+geometry backbones, in which Gaussian spacing can vary substantially
+across scene scales and camera configurations, leading to ambiguity in
+Gaussian-scale supervision. Such supervision ambiguity makes it difficult
+to learn a single Gaussian predictor that generalizes reliably across
+diverse input settings.
+Other approaches~\citep{an2025c3g,li2026querysplat} do not rely on
+explicit geometric priors. While they can achieve strong rendering
+quality at interpolated viewpoints, the learned Gaussian geometry can
+become less reliable under large viewpoint extrapolation.

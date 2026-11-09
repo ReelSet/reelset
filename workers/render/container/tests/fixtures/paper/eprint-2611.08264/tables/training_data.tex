@@ -1,0 +1,35 @@
+\vspace{-0.15in}
+\begin{table*}[h]
+    \centering
+    \caption{
+        Details of the training datasets used by SplatAnything.
+    }
+    \vspace{0.1in}
+    \label{tab:training_data}
+    \setlength{\tabcolsep}{9pt}
+    \renewcommand{\arraystretch}{1.0}
+    \begin{tabular}{@{}llcc@{}}
+        \toprule
+        \textbf{Data Type} & \textbf{Dataset} & \textbf{\# Scenes} & \textbf{Resolution ($H \times W$)} \\
+        \midrule
+        \multirow{7}{*}{Synthetic}
+        & HyperSim~\citep{roberts2021hypersim}     & 364 & 768$\times$1024 \\
+        & UnrealStereo4K~\citep{tosi2021smd}     & 18 & 1080$\times$1920 \\
+        & OmniObject3D~\citep{wu2023omniobject3d} & 5914 & 800$\times$800 \\
+        & Rawmantic3D~\citep{rawmantic2026data}    & 30 & 1080$\times$1920 \\
+        & OmniWorld~\citep{zhou2025omniworld}     & 10464 & 720$\times$1280 \\
+        & GTA-SfM~\citep{wang2020flow}      & 200 & 480$\times$640 \\
+        & MatrixCity~\citep{li2023matrixcity}   & 8 & 1080$\times$1920 \\
+        & TartanGround~\citep{patel2025tartanground} & 635 & 640$\times$640 \\
+        \midrule
+        \multirow{7}{*}{Real-world}
+        & ScanNet++~\citep{yeshwanth2023scannet++}   & 936 & 696$\times$1035 \\
+        & Matterport3D~\citep{chang2017matterport3d}  & 90 & 1024$\times$1280 \\
+        & ARKitScenes~\citep{baruch2021arkitscenes} & 2501 & 480$\times$640 \\
+        & Taskonomy~\citep{zamir2018taskonomy}   & 537 & 512$\times$512 \\
+        & MapFree~\citep{arnold2022map}     & 460 & 720$\times$540 \\
+        & BlendedMVS~\citep{yao2020blendedmvs}  & 502 & 384$\times$504 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+\vspace{-0.15in}

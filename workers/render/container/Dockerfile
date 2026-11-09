@@ -2,10 +2,10 @@ FROM node:22-bookworm-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 DEBIAN_FRONTEND=noninteractive
 
-# python: tts, transcripts, youtube search, orchestration. ffmpeg: remux + poster. The rest: chrome-headless-shell.
+# python: tts, transcripts, youtube search, orchestration. ffmpeg: remux + poster. ghostscript: EPS paper figures. The rest: chrome-headless-shell.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 python3-venv ffmpeg fonts-dejavu-core fontconfig ca-certificates \
+        python3 python3-venv ffmpeg ghostscript fonts-dejavu-core fontconfig ca-certificates \
         libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 libxrandr2 libxkbcommon-dev \
         libxfixes3 libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2 \
     && rm -rf /var/lib/apt/lists/* \
@@ -26,6 +26,7 @@ RUN cd remotion && node bundle.mjs && chown -R reel:reel /app/remotion/build /ap
 
 COPY app.py .
 COPY reel ./reel
+COPY audio ./audio
 
 USER reel
 ENV PORT=8080 TMPDIR=/tmp

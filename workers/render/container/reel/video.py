@@ -9,7 +9,7 @@ log = logging.getLogger("reel.video")
 
 MAX_OUTPUT_BYTES = 25 * 1024 * 1024
 FFMPEG_TIMEOUT_SECONDS = 120
-REMOTION_TIMEOUT_SECONDS = int(os.environ.get("REMOTION_TIMEOUT_SECONDS", "420"))
+REMOTION_TIMEOUT_SECONDS = int(os.environ.get("REMOTION_TIMEOUT_SECONDS", "780"))
 REMOTION_SCRIPT = os.environ.get(
     "REMOTION_SCRIPT", os.path.join(os.path.dirname(__file__), "..", "remotion", "render.mjs")
 )

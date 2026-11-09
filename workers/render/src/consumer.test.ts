@@ -89,6 +89,34 @@ describe('processRenderJob', () => {
     expect(rec.spends[1]?.costUsd).toBeGreaterThan(0)
   })
 
+  it('forwards facts, headline and shots to the container', async () => {
+    const script = {
+      ...(makeItem().script as object),
+      headline: 'Stars are exploding',
+      beats: [
+        {
+          text: 'Beat one.',
+          visual: { type: 'title', title: 'One' },
+          shots: [{ at: 'beat', show: 'StatSlam', props: { value: '1,200', label: 'stars' } }],
+        },
+        { text: 'Beat two.', visual: { type: 'title', title: 'Two' } },
+      ],
+    }
+    const facts = { repo: { owner: 'acme', name: 'widget', stars: 1200, forks: 40 } }
+    const store = new FakeStore(makeItem({ script, facts }))
+    const { deps, containers } = setup({ store })
+
+    await processRenderJob(deps, body, 1)
+
+    const sent = containers[0]!.requests[0]!.body as {
+      script: { headline: string; beats: { shots?: { show: string }[] }[] }
+      facts: unknown
+    }
+    expect(sent.facts).toEqual(facts)
+    expect(sent.script.headline).toBe('Stars are exploding')
+    expect(sent.script.beats[0]!.shots?.[0]?.show).toBe('StatSlam')
+  })
+
   it('does not call the container for a duplicate delivery of an already done render', async () => {
     const store = new FakeStore()
     const key = await keyFor()
@@ -396,6 +424,82 @@ describe('aura-2 narration', () => {
     const tts = rec.spends.find((s) => s.category === 'tts')!
     expect(tts.costUsd).toBeGreaterThan(0)
     expect(tts.meta).toMatchObject({ provider: 'aura2' })
+  })
+
+  const longScript = {
+    version: 1,
+    hook: 'Hook line.',
+    beats: [
+      {
+        text: 'First point here. Second point follows. Third point ends.',
+        visual: { type: 'title', title: 'One' },
+        shots: [{ at: 'third', show: 'KeyPoint' }],
+      },
+      { text: 'Beat two is short.', visual: { type: 'title', title: 'Two' } },
+    ],
+    outro: 'Outro line.',
+    claims: [],
+  }
+  const novaEnding = (end: number) => ({
+    results: { channels: [{ alternatives: [{ words: [{ word: 'hook', start: 0, end }] }] }] },
+  })
+
+  function sequencedAi(ends: number[]) {
+    let novaCalls = 0
+    return {
+      async run(model: string): Promise<unknown> {
+        if (model.includes('aura')) return new Uint8Array([1, 2, 3])
+        return novaEnding(ends[Math.min(novaCalls++, ends.length - 1)]!)
+      },
+      get novaCalls() {
+        return novaCalls
+      },
+    }
+  }
+
+  it('re-synthesizes once from a shortened script when aura runs past 58s', async () => {
+    const { deps, containers, rec } = setup({
+      store: new FakeStore(makeItem({ script: longScript })),
+    })
+    deps.voice = 'aura2-hera'
+    const ai = sequencedAi([66, 52])
+    deps.aura = { ai, speaker: 'hera' }
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    expect(ai.novaCalls).toBe(2)
+    expect(sent.narration).toBeDefined()
+    expect(sent.voice).toBe('aura2-hera')
+    expect(sent.script.beats[0].text).not.toContain('Third point')
+    expect(sent.script.beats[0].shots).toEqual([])
+    const tts = rec.spends.find((s) => s.category === 'tts')!
+    expect(tts.meta).toMatchObject({ provider: 'aura2' })
+    expect(tts.costUsd).toBeGreaterThan(0)
+  })
+
+  it('falls back to edge-tts when the shortened narration is still over the cap', async () => {
+    const { deps, containers } = setup({
+      store: new FakeStore(makeItem({ script: longScript })),
+    })
+    deps.voice = 'aura2-hera'
+    deps.edgeVoice = 'en-US-AriaNeural'
+    const ai = sequencedAi([70, 64])
+    deps.aura = { ai, speaker: 'hera' }
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    expect(ai.novaCalls).toBe(2)
+    expect(sent.narration).toBeUndefined()
+    expect(sent.voice).toBe('en-US-AriaNeural')
+    expect(sent.script.beats[0].text).toContain('Third point')
+  })
+
+  it('goes straight to edge-tts when nothing can be shortened', async () => {
+    const { deps, containers } = setup()
+    deps.edgeVoice = 'en-US-AriaNeural'
+    const ai = sequencedAi([70])
+    deps.aura = { ai, speaker: 'hera' }
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    expect(ai.novaCalls).toBe(1)
+    expect((containers[0]!.requests[0]!.body as Record<string, any>).narration).toBeUndefined()
   })
 
   it('retries when workers ai fails early', async () => {

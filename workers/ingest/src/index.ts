@@ -12,6 +12,7 @@ import { handleMessage } from './pipeline/consumer'
 import { createEmbedder, createLlmClient } from './pipeline/gemini'
 import type { ProcessDeps } from './pipeline/process'
 import { createTranscriptClient } from './pipeline/transcript'
+import { createPaperClient } from './paper-client'
 import { runAlerts } from './reconcile/alerts'
 import { reconcile } from './reconcile/reconcile'
 import { isAuthorized, runSelfcheck } from './selfcheck'
@@ -124,6 +125,10 @@ export default {
           log,
         ),
         transcripts: createTranscriptClient(env.RENDER, log),
+        papers: createPaperClient(env.RENDER, log),
+        scrape: env.FIRECRAWL_API_KEY
+          ? createFirecrawlFallback({ apiKey: env.FIRECRAWL_API_KEY, db, log })
+          : undefined,
         renderQueue: env.RENDER_JOBS,
         geminiModel: env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
