@@ -13,6 +13,7 @@ import {
   silentLog,
 } from './testing'
 import { posterKeyFor, videoKeyFor } from './keys'
+import type { AiLike } from './tts'
 
 async function keyFor(voice = 'en-US-AriaNeural') {
   return renderKey({
@@ -394,17 +395,29 @@ describe('processRenderJob', () => {
   })
 })
 
+function speakingAi(ends: number[] = [1]) {
+  let spoken = ''
+  let novaCalls = 0
+  return {
+    async run(model: string, input: Record<string, unknown>): Promise<unknown> {
+      if (model.includes('aura')) {
+        spoken = String(input.text)
+        return new Uint8Array([1, 2, 3])
+      }
+      const end = ends[Math.min(novaCalls++, ends.length - 1)]!
+      const tokens = spoken.split(/\s+/).filter(Boolean)
+      const step = end / tokens.length
+      const words = tokens.map((word, i) => ({ word, start: i * step, end: (i + 1) * step }))
+      return { results: { channels: [{ alternatives: [{ words }] }] } }
+    },
+    get novaCalls() {
+      return novaCalls
+    },
+  }
+}
+
 describe('aura-2 narration', () => {
-  const nova = {
-    results: {
-      channels: [{ alternatives: [{ words: [{ word: 'hook', start: 0, end: 1 }] }] }],
-    },
-  }
-  const okAi = {
-    async run(model: string) {
-      return model.includes('aura') ? new Uint8Array([1, 2, 3]) : nova
-    },
-  }
+  const okAi = speakingAi()
   const brokenAi = {
     async run(): Promise<unknown> {
       throw new Error('down')
@@ -440,29 +453,12 @@ describe('aura-2 narration', () => {
     outro: 'Outro line.',
     claims: [],
   }
-  const novaEnding = (end: number) => ({
-    results: { channels: [{ alternatives: [{ words: [{ word: 'hook', start: 0, end }] }] }] },
-  })
-
-  function sequencedAi(ends: number[]) {
-    let novaCalls = 0
-    return {
-      async run(model: string): Promise<unknown> {
-        if (model.includes('aura')) return new Uint8Array([1, 2, 3])
-        return novaEnding(ends[Math.min(novaCalls++, ends.length - 1)]!)
-      },
-      get novaCalls() {
-        return novaCalls
-      },
-    }
-  }
-
   it('re-synthesizes once from a shortened script when aura runs past 58s', async () => {
     const { deps, containers, rec } = setup({
       store: new FakeStore(makeItem({ script: longScript })),
     })
     deps.voice = 'aura2-hera'
-    const ai = sequencedAi([66, 52])
+    const ai = speakingAi([66, 52])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     const sent = containers[0]!.requests[0]!.body as Record<string, any>
@@ -482,7 +478,7 @@ describe('aura-2 narration', () => {
     })
     deps.voice = 'aura2-hera'
     deps.edgeVoice = 'en-US-AriaNeural'
-    const ai = sequencedAi([70, 64])
+    const ai = speakingAi([70, 64])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     const sent = containers[0]!.requests[0]!.body as Record<string, any>
@@ -495,31 +491,106 @@ describe('aura-2 narration', () => {
   it('goes straight to edge-tts when nothing can be shortened', async () => {
     const { deps, containers } = setup()
     deps.edgeVoice = 'en-US-AriaNeural'
-    const ai = sequencedAi([70])
+    const ai = speakingAi([70])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(ai.novaCalls).toBe(1)
     expect((containers[0]!.requests[0]!.body as Record<string, any>).narration).toBeUndefined()
   })
 
-  it('retries when workers ai fails early', async () => {
-    const { deps, rec } = setup()
-    deps.aura = { ai: brokenAi, speaker: 'hera' }
-    const result = await processRenderJob(deps, body, 1)
-    expect(result.action).toBe('retry')
-    expect(rec.spends).toEqual([])
-  })
+  describe('kokoro fallback', () => {
+    const renderBody = (ttsProvider: string) => ({
+      jobId: 'x',
+      bytes: 1000,
+      posterBytes: 50,
+      durationMs: 30_000,
+      ttsDurationMs: 29_000,
+      ttsChars: 400,
+      ttsProvider,
+      renderMs: 20_000,
+      cover: true,
+      templateVersion: TEMPLATE_VERSION,
+    })
+    const withKokoro = (provider: string, ai: unknown) => {
+      const containers = [new FakeContainer({ renderBody: renderBody(provider) })]
+      const ctx = setup({ containers })
+      ctx.deps.voice = 'aura2-hera'
+      ctx.deps.edgeVoice = 'en-US-AriaNeural'
+      ctx.deps.fallbackEngine = 'kokoro'
+      ctx.deps.aura = { ai: ai as AiLike, speaker: 'hera' }
+      return ctx
+    }
+    const sentBody = (c: FakeContainer) => c.requests[0]!.body as Record<string, any>
 
-  it('falls back to edge-tts with the edge voice after repeated failures', async () => {
-    const { deps, containers, rec } = setup()
-    deps.voice = 'aura2-hera'
-    deps.edgeVoice = 'en-US-AriaNeural'
-    deps.aura = { ai: brokenAi, speaker: 'hera' }
-    expect(await processRenderJob(deps, body, 3)).toEqual({ action: 'ack' })
-    const sent = containers[0]!.requests[0]!.body as Record<string, any>
-    expect(sent.voice).toBe('en-US-AriaNeural')
-    expect(sent.narration).toBeUndefined()
-    expect(rec.spends.find((s) => s.category === 'tts')!.costUsd).toBe(0)
+    it('keeps aura as primary and asks for no container engine', async () => {
+      const { deps, containers } = withKokoro('supplied', okAi)
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(sentBody(containers[0]!).narration).toBeDefined()
+      expect(sentBody(containers[0]!).ttsEngine).toBeUndefined()
+    })
+
+    it('goes to kokoro on the first delivery when aura fails', async () => {
+      const { deps, containers, rec } = withKokoro('kokoro', brokenAi)
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      const sent = sentBody(containers[0]!)
+      expect(sent.narration).toBeUndefined()
+      expect(sent.ttsEngine).toBe('kokoro')
+      expect(sent.voice).toBe('en-US-AriaNeural')
+      expect(rec.spends.find((s) => s.category === 'tts')).toMatchObject({
+        costUsd: 0,
+        meta: { provider: 'kokoro' },
+      })
+    })
+
+    it('goes to kokoro when nova fails after aura succeeded', async () => {
+      const novaDown = {
+        async run(model: string): Promise<unknown> {
+          if (model.includes('aura')) return new Uint8Array([1, 2, 3])
+          throw new Error('nova down')
+        },
+      }
+      const { deps, containers, rec } = withKokoro('kokoro', novaDown)
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(sentBody(containers[0]!).narration).toBeUndefined()
+      expect(sentBody(containers[0]!).ttsEngine).toBe('kokoro')
+      expect(rec.spends.find((s) => s.category === 'tts')!.meta).toMatchObject({
+        provider: 'kokoro',
+      })
+    })
+
+    it('goes to kokoro when the alignment is unusable', async () => {
+      const noWords = {
+        async run(model: string): Promise<unknown> {
+          return model.includes('aura')
+            ? new Uint8Array([1, 2, 3])
+            : { results: { channels: [{ alternatives: [{ words: [] }] }] } }
+        },
+      }
+      const { deps, containers } = withKokoro('kokoro', noWords)
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(sentBody(containers[0]!).narration).toBeUndefined()
+      expect(sentBody(containers[0]!).ttsEngine).toBe('kokoro')
+    })
+
+    it('records edge when kokoro itself failed inside the container', async () => {
+      const { deps, rec } = withKokoro('edge', brokenAi)
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(rec.spends.find((s) => s.category === 'tts')!.meta).toMatchObject({ provider: 'edge' })
+    })
+
+    it('asks for kokoro straight away when aura is not configured', async () => {
+      const containers = [new FakeContainer({ renderBody: renderBody('kokoro') })]
+      const { deps } = setup({ containers })
+      deps.fallbackEngine = 'kokoro'
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(sentBody(containers[0]!).ttsEngine).toBe('kokoro')
+    })
+
+    it('defaults to edge when nothing selects an engine', async () => {
+      const { deps, containers } = setup()
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(sentBody(containers[0]!).ttsEngine).toBe('edge')
+    })
   })
 
   describe('stock b-roll and demo', () => {

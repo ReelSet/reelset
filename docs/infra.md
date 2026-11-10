@@ -43,6 +43,14 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 - Secrets: `GEMINI_API_KEY` (embeddings, image vetting, and scripts while `LLM_PROVIDER=gemini`), `CLAUDE_API_KEY` (scripts when `LLM_PROVIDER=anthropic`), `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
 - Fill `HYPERDRIVE` id in both `wrangler.jsonc` files, then `wrangler deploy` ingest + render
 
+## Narration engines (render container)
+
+Chain: Aura-2 + Nova-3 (Workers AI, `tts_provider=aura2`) -> Kokoro in the container -> edge-tts. Any Aura failure falls back on the same delivery. Settings: `tts_provider` accepts `edge` (default), `aura2`, `kokoro` (no database change; it is a JSON value in `app_setting`).
+
+- Kokoro files are baked into the image at build: `ADD --checksum=sha256:...` of `kokoro-v1.0.int8.onnx` (114 MB, sha256 `ae315a79...ee9c`) and `voices-v1.0.bin` (28 MB, `bca610b8...bf7d`) from `github.com/thewh1teagle/kokoro-onnx` release `model-files-v1.1` into `/opt/kokoro` (`KOKORO_MODEL_DIR`). The build needs outbound access to GitHub; a hash mismatch fails the build. Python deps (`kokoro-onnx`, `onnxruntime`, `numpy`, `espeakng-loader`, `phonemizer`) are pinned in `container/requirements.txt`; wheels exist for linux x86_64 (manylinux_2_28) and aarch64.
+- Local smoke (v8 paper script, ttsEngine kokoro, Docker Desktop arm64, 2 CPUs): image 3.24 GB vs 2.95 GB for v18 (venv layer +26 MB, model layers +142 MB); model load 2.3 s once per process; synthesis 27 s wall for 57.4 s of audio (two passes: 1.15 then 1.25 to fit under 58 s); container RSS about 1 GB during the render. Not measured on the Cloudflare x86_64 `standard-3` instance.
+- Rollback: set `tts_provider` to `edge` (the worker then sends `ttsEngine: edge` and Kokoro never runs). A missing or unloadable model only makes Kokoro raise, and edge-tts takes over for that render.
+
 ## Switching the script LLM to Claude Haiku 5.5
 
 The committed default stays `LLM_PROVIDER=gemini` (its credits are depleted: HTTP 402 pauses the pipeline). Switching production is a manual call:

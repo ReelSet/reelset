@@ -19,9 +19,9 @@ import {
   generateNarration,
   narrationText,
   shortenScript,
-  shouldFallbackToEdge,
   wordsToJson,
   type AiLike,
+  type FallbackEngine,
   type Narration,
 } from './tts'
 import type { BrollPick } from './pexels'
@@ -52,6 +52,7 @@ export type ConsumerDeps = {
   spend: (input: SpendInput) => Promise<void>
   voice: string
   edgeVoice?: string
+  fallbackEngine?: FallbackEngine
   aura?: { ai: AiLike; speaker: string }
   /** Stock clips for the reel; optional, failures never fail a render. */
   broll?: (script: ReelScript, item: ItemForRender) => Promise<BrollPick[]>
@@ -126,7 +127,7 @@ async function runJob(
     voice: deps.voice,
   })
   progress.renderKey = key
-  const rlog = log.child({ renderKey: key })
+  const rlog = log.child({ renderKey: key, jobId: containerJobId(key) })
 
   const existing = await deps.store.ensureRender(item.id, key, Number(TEMPLATE_VERSION))
   const action = decideRenderAction(item.status, existing)
@@ -138,13 +139,9 @@ async function runJob(
   }
 
   await deps.store.markRendering(key)
-  const { narration, script: renderScript } = await prepareNarration(
-    deps,
-    script.data,
-    deliveryAttempts,
-    rlog,
-  )
+  const { narration, script: renderScript } = await prepareNarration(deps, script.data, rlog)
   const metadata = await renderAndUpload(deps, item, renderScript, key, narration, rlog)
+  logNarrationProvider(deps, metadata, narration, rlog)
   await recordSpend(deps, metadata, key, narration, rlog)
   await finishItem(
     deps,
@@ -168,43 +165,47 @@ function combine(first: Narration, second: Narration): Narration {
   }
 }
 
-/** Aura narration over the cap is re-synthesized once from a shortened script, then falls back to edge-tts. */
+function logFallback(deps: ConsumerDeps, reason: string, log: Logger, extra: object = {}): void {
+  const to = deps.fallbackEngine ?? 'edge'
+  log.warn({ from: 'aura2', to, reason, ...extra }, 'aura tts unusable, falling back')
+}
+
+async function generateAura(
+  aura: NonNullable<ConsumerDeps['aura']>,
+  script: ReelScript,
+  log: Logger,
+): Promise<Narration> {
+  log.info({ provider: 'aura2', speaker: aura.speaker }, 'tts provider attempt')
+  return generateNarration(aura.ai, narrationText(script), aura.speaker, log)
+}
+
+/** Aura over the cap is re-synthesized once from a shortened script; any Aura failure hands off to the container's kokoro then edge chain. */
 async function prepareNarration(
   deps: ConsumerDeps,
   script: ReelScript,
-  deliveryAttempts: number,
   log: Logger,
 ): Promise<Prepared> {
-  if (!deps.aura) return { narration: null, script }
+  const aura = deps.aura
+  if (!aura) {
+    log.info({ provider: deps.fallbackEngine ?? 'edge' }, 'tts provider attempt')
+    return { narration: null, script }
+  }
   try {
-    const first = await generateNarration(
-      deps.aura.ai,
-      narrationText(script),
-      deps.aura.speaker,
-      log,
-    )
+    const first = await generateAura(aura, script, log)
     if (first.audioSeconds <= MAX_NARRATION_SECONDS) return { narration: first, script }
     const shorter = shortenScript(script, (MAX_NARRATION_SECONDS - 3) / first.audioSeconds)
     if (shorter) {
       log.warn({ audioSeconds: first.audioSeconds }, 'aura narration too long, retrying shorter')
-      const second = await generateNarration(
-        deps.aura.ai,
-        narrationText(shorter),
-        deps.aura.speaker,
-        log,
-      )
+      const second = await generateAura(aura, shorter, log)
       if (second.audioSeconds <= MAX_NARRATION_SECONDS) {
         return { narration: combine(first, second), script: shorter }
       }
-      log.warn({ audioSeconds: second.audioSeconds }, 'shortened aura narration still too long')
     }
-    log.warn({ audioSeconds: first.audioSeconds }, 'aura narration too long, using edge-tts')
-    return { narration: null, script }
+    logFallback(deps, 'over_cap', log, { audioSeconds: first.audioSeconds })
   } catch (err) {
-    if (!(err instanceof RenderJobError) || !shouldFallbackToEdge(deliveryAttempts)) throw err
-    log.warn({ deliveryAttempts }, 'aura tts kept failing, falling back to edge-tts')
-    return { narration: null, script }
+    logFallback(deps, 'aura_failed', log, errorFields(err))
   }
+  return { narration: null, script }
 }
 
 async function renderAndUpload(
@@ -226,6 +227,7 @@ async function renderAndUpload(
       sourceLabel: item.sourceLabel,
       imageUrls: collectImageUrls(script),
       voice: narration ? deps.voice : (deps.edgeVoice ?? deps.voice),
+      ttsEngine: narration ? undefined : (deps.fallbackEngine ?? 'edge'),
       narration: narration
         ? { audioBase64: audioToBase64(narration.audio), words: wordsToJson(narration.words) }
         : undefined,
@@ -295,6 +297,23 @@ async function fetchBroll(
   }
 }
 
+function logNarrationProvider(
+  deps: ConsumerDeps,
+  metadata: RenderMetadata,
+  narration: Narration | null,
+  log: Logger,
+): void {
+  const provider = narration ? 'aura2' : containerProvider(metadata)
+  log.info({ provider }, 'narration provider used')
+  if (!narration && deps.fallbackEngine === 'kokoro' && provider === 'edge') {
+    log.warn({ from: 'kokoro', to: 'edge' }, 'kokoro failed in the container, edge-tts used')
+  }
+}
+
+function containerProvider(metadata: RenderMetadata): 'kokoro' | 'edge' {
+  return metadata.ttsProvider === 'kokoro' ? 'kokoro' : 'edge'
+}
+
 async function recordSpend(
   deps: ConsumerDeps,
   metadata: RenderMetadata,
@@ -307,7 +326,7 @@ async function recordSpend(
       category: 'tts',
       units: metadata.ttsChars,
       costUsd: narration?.costUsd ?? 0,
-      meta: { renderKey: key, provider: narration ? 'aura2' : 'edge' },
+      meta: { renderKey: key, provider: narration ? 'aura2' : containerProvider(metadata) },
     })
     const seconds = metadata.renderMs / 1000
     await deps.spend({

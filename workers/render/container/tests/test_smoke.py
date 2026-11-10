@@ -91,7 +91,7 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(job_dir, "raw.mp4")))
         self.assertEqual(meta["ttsChars"], len(req.narration_text()))
         self.assertEqual(meta["cover"], False)
-        self.assertEqual(sorted(meta), sorted(["jobId","bytes","posterBytes","durationMs","ttsDurationMs","ttsChars","renderMs","cover","templateVersion","mix","credits"]))
+        self.assertEqual(sorted(meta), sorted(["jobId","bytes","posterBytes","durationMs","ttsDurationMs","ttsChars","ttsProvider","renderMs","cover","templateVersion","mix","credits"]))
         self.assertLessEqual(meta["bytes"], video.MAX_OUTPUT_BYTES)
 
     def test_supplied_narration_skips_tts_and_keeps_its_timings(self):

@@ -67,6 +67,7 @@ class RenderRequest:
     images: list = field(default_factory=list)
     narration_audio: bytes | None = None
     narration_words: list = field(default_factory=list)
+    tts_engine: str = "edge"
     headline: str = ""
     facts: dict = field(default_factory=dict)
     broll: list = field(default_factory=list)
@@ -245,6 +246,10 @@ def validate_render_request(payload) -> RenderRequest:
     if not isinstance(voice, str) or not VOICE_RE.match(voice):
         _bad("voice is invalid")
 
+    tts_engine = payload.get("ttsEngine", "edge")
+    if tts_engine not in ("edge", "kokoro"):
+        _bad("ttsEngine must be edge or kokoro")
+
     script = payload.get("script")
     if not isinstance(script, dict):
         _bad("script must be an object")
@@ -299,6 +304,7 @@ def validate_render_request(payload) -> RenderRequest:
         images=_validate_images(payload.get("images")),
         narration_audio=narration_audio,
         narration_words=narration_words,
+        tts_engine=tts_engine,
         headline=" ".join(_text(script, "headline", 80, required=False).split()[:MAX_HEADLINE_WORDS]),
         facts=_validate_facts(payload.get("facts")),
         broll=_validate_broll(payload.get("broll")),

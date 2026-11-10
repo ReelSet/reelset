@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
-from . import images, media, mix, props, source_images, sources, timing, tts, video, words as words_lib
+from . import images, media, mix, narrator, props, source_images, sources, timing, video, words as words_lib
 from .cues import resolve_shots
 from .errors import RenderError
 from .validation import RenderRequest
@@ -100,7 +100,7 @@ def _safe(fn: Callable, *args):
 def run_render(
     req: RenderRequest,
     job_dir: str,
-    synth: Callable = tts.synthesize,
+    synth: Callable | None = None,
     downloader: Downloader = images.download_image,
     public_downloader: Downloader = images.download_public_image,
     page_fetcher: Callable = images.fetch_page,
@@ -110,6 +110,8 @@ def run_render(
 ) -> dict:
     started = time.monotonic()
     log_ctx = f"job={req.job_id}"
+    synth = synth or narrator.Narrator(req.tts_engine)
+    provider = "supplied"
     assets_dir = os.path.join(job_dir, "assets")
     os.makedirs(assets_dir, exist_ok=True)
 
@@ -149,6 +151,8 @@ def run_render(
                     raise RenderError(
                         "too_large", f"narration is {audio_seconds:.1f}s at {faster}, over the 60s cap"
                     )
+        if req.narration_audio is None:
+            provider = narrator.provider_of(synth)
         assets = covers.result()
         if broll_job is not None:
             assets["broll"] = broll_job.result() or []
@@ -158,7 +162,7 @@ def run_render(
     if not words:
         log.warning("%s no word timings from tts, estimating", log_ctx)
         words = timing.estimate_word_timings(text, audio_seconds)
-    elif req.narration_audio is None:
+    elif req.narration_audio is None and provider != "kokoro":
         words = words_lib.restore_punctuation(text, words)
 
     total_seconds = timing.total_video_seconds(audio_seconds)
@@ -207,6 +211,7 @@ def run_render(
         "durationMs": int(video.media_seconds(out_path) * 1000),
         "ttsDurationMs": int(audio_seconds * 1000),
         "ttsChars": len(text),
+        "ttsProvider": provider,
         "renderMs": render_ms,
         "cover": bool(assets.get("cover")),
         "templateVersion": TEMPLATE_VERSION,

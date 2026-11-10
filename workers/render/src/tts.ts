@@ -7,7 +7,7 @@ export const AURA_USD_PER_CHAR = 0.03 / 1000
 export const NOVA_USD_PER_SECOND = 0.0052 / 60
 export const AURA_CHUNK_CHARS = 1500
 export const AURA_AI_ATTEMPTS = 2
-export const AURA_FALLBACK_AFTER_DELIVERIES = 3
+export const KOKORO_VOICE = 'af_heart'
 export const MAX_NARRATION_SECONDS = 58
 export const AURA_SPEAKERS = [
   'amalthea',
@@ -56,7 +56,8 @@ const errorFields = (err: unknown) => ({
   err: err instanceof Error ? { name: err.name, message: err.message } : String(err),
 })
 
-export type TtsProvider = 'edge' | 'aura2'
+export type TtsProvider = 'edge' | 'aura2' | 'kokoro'
+export type FallbackEngine = 'kokoro' | 'edge'
 export type TimedWord = { text: string; start: number; end: number }
 export type SpokenWord = { word: string; start: number; end: number }
 export type AiLike = { run(model: string, input: Record<string, unknown>): Promise<unknown> }
@@ -77,15 +78,18 @@ export function narrationText(script: ReelScript): string {
 
 /** The render-key voice: switching provider or speaker changes it, so reels re-render. */
 export function effectiveVoice(provider: TtsProvider, speaker: string, edgeVoice: string): string {
-  return provider === 'aura2' ? `aura2-${speaker}` : edgeVoice
+  if (provider === 'aura2') return `aura2-${speaker}`
+  return provider === 'kokoro' ? `kokoro-${KOKORO_VOICE}` : edgeVoice
 }
 
+/** Aura needs the AI binding; without it the chain starts at Kokoro. */
 export function selectProvider(provider: TtsProvider, ai: AiLike | undefined): TtsProvider {
-  return provider === 'aura2' && ai ? 'aura2' : 'edge'
+  return provider === 'aura2' && !ai ? 'kokoro' : provider
 }
 
-export function shouldFallbackToEdge(deliveryAttempts: number): boolean {
-  return deliveryAttempts >= AURA_FALLBACK_AFTER_DELIVERIES
+/** Engine the container tries first when the worker supplies no narration; edge-tts is always last. */
+export function fallbackEngineFor(provider: TtsProvider): FallbackEngine {
+  return provider === 'edge' ? 'edge' : 'kokoro'
 }
 
 export function chunkText(text: string, maxChars = AURA_CHUNK_CHARS): string[] {
@@ -316,7 +320,7 @@ export async function synthesizeSpeech(
   return { audio, spoken, audioSeconds: spoken.at(-1)?.end ?? 0 }
 }
 
-/** Generates narration audio with word timings via Workers AI; any AI failure is a retryable error. */
+/** Generates narration audio with word timings via Workers AI; any failure, including unusable alignment, throws tts_unavailable. */
 export async function generateNarration(
   ai: AiLike,
   text: string,
@@ -333,10 +337,8 @@ export async function generateNarration(
   if (generated.audio.length === 0) throw new RenderJobError('tts_unavailable', 'empty aura audio')
   const aligned = alignWords(text, generated.spoken, generated.audioSeconds)
   if (aligned.method === 'proportional') {
-    log.warn(
-      { speaker, words: generated.spoken.length },
-      'word alignment failed, using proportional timing',
-    )
+    log.warn({ speaker, words: generated.spoken.length }, 'aura-2 word alignment too poor')
+    throw new RenderJobError('tts_unavailable', 'aura word alignment too poor')
   }
   const chars = text.length
   const audioSeconds = generated.audioSeconds
