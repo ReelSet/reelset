@@ -8,6 +8,7 @@ import { ChevronIcon, HomeIcon, SearchIcon, SparkleIcon, UserIcon } from '@/comp
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LogoMark, Wordmark } from '@/components/ui/Logo'
+import { SocialLinks } from '@/components/ui/SocialLinks'
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { ReelSkeleton } from './ReelSkeleton'
@@ -280,14 +281,17 @@ export function FeedClient() {
             </SideLink>
           </nav>
         </div>
-        <ul className="flex flex-col gap-2 text-xs text-faint">
-          {Object.entries(SOURCES).map(([key, s]) => (
-            <li key={key} className="flex items-center gap-2">
-              <SourceDot source={key} />
-              {s.label}
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-6">
+          <ul className="flex flex-col gap-2 text-xs text-faint">
+            {Object.entries(SOURCES).map(([key, s]) => (
+              <li key={key} className="flex items-center gap-2">
+                <SourceDot source={key} />
+                {s.label}
+              </li>
+            ))}
+          </ul>
+          <SocialLinks />
+        </div>
       </aside>
 
       <div className="relative h-dvh w-full overflow-hidden bg-black lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)]">

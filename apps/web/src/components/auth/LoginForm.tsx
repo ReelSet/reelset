@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { LogoMark } from '@/components/ui/Logo'
+import { SocialLinks } from '@/components/ui/SocialLinks'
 import { Spinner } from '@/components/ui/Spinner'
 import { describeSignInError, validateEmail } from '@/lib/auth/email'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -125,6 +126,7 @@ export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
         <a href="/" className="mt-8 inline-block text-sm text-faint transition hover:text-fg">
           Back to the feed
         </a>
+        <SocialLinks className="mt-10" />
       </div>
     </main>
   )
