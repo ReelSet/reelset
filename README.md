@@ -11,7 +11,7 @@ Try it at [reelset.app](https://reelset.app) · follow on [Instagram](https://ww
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/reel-reddit.webp" alt="Reel of a Reddit thread with upvote and comment counts" width="24%">
+  <img src="docs/screenshots/reel-planner.webp" alt="Reel of a YouTube coding-model review with its view count" width="24%">
   <img src="docs/screenshots/reel-youtube.webp" alt="Reel of a YouTube video about weight-space programming with its view count" width="24%">
   <img src="docs/screenshots/reel-ollama.webp" alt="Reel about running a free local AI model with Ollama" width="24%">
   <img src="docs/screenshots/ask.webp" alt="Ask page: ask what developers are building, answers cite the feed" width="24%">
