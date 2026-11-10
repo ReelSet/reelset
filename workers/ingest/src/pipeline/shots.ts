@@ -1,5 +1,12 @@
 import { SCREEN_NAMES, SFX_NAMES } from '@reelset/core'
 import { groundLabel, type Ledger } from './stat-labels'
+import {
+  findQuantities,
+  isCompleteCodeLine,
+  isQuantityValue,
+  keyPointText,
+  quantityValue,
+} from './text-rules'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -114,10 +121,74 @@ function groundShotLabels(props: Obj, show: string, text: string, ledger: Ledger
   return true
 }
 
+export type RepairContext = { sourceText?: string; claims?: readonly string[] }
+
+/** "12 times" / "12x" -> "12×". */
+export const displayValue = (raw: string): string =>
+  raw
+    .trim()
+    .replace(/^(\S*\d)\s?(?:x|X|times)$/, '$1×')
+    .replace(/\s+/g, ' ')
+
+const sentenceWith = (text: string, cue: string): string => {
+  const word = norm(cue.split('#')[0] ?? '')
+  return (
+    text.split(/(?<=[.!?])\s+/).find((s) => s.split(/\s+/).some((w) => norm(w) === word)) ?? text
+  )
+}
+
+/**
+ * Key point text must be a complete idea (text-rules `validKeyPoint`); an invalid one is replaced by
+ * a short claim or a noun chunk of the cue's sentence, else the shot is dropped.
+ */
+function repairKeyPoint(props: Obj, text: string, cue: string, ctx: RepairContext): boolean {
+  if (typeof props.text !== 'string' || props.quote) return true
+  const fixed = keyPointText({
+    given: props.text,
+    claims: ctx.claims,
+    text: sentenceWith(text, cue),
+    context: text,
+  })
+  if (!fixed) return false
+  props.text = fixed
+  return true
+}
+
+/** A stat value is one real quantity; a number the beat says only as a name or version (RTX 5090, PyTorch 2.15) is not. */
+function repairStatValue(props: Obj, text: string): boolean {
+  if (typeof props.value !== 'string') return false
+  const value = displayValue(props.value)
+  if (!isQuantityValue(value)) return false
+  const v = quantityValue(value)
+  const digits = /\d[\d,]*(?:\.\d+)?/.exec(value)?.[0] ?? ''
+  if (digits && text.includes(digits) && !findQuantities(text).some((q) => q.value === v))
+    return false
+  props.value = value
+  return true
+}
+
+const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+/** Each code line is widened to the full source line that contains it; every line must then be complete. */
+export function completeCodeLines(code: string, sourceText = ''): string | null {
+  const source = sourceText
+    .split('\n')
+    .map(squash)
+    .filter((l) => l.length <= 160)
+  const lines = code
+    .split('\n')
+    .map(squash)
+    .filter(Boolean)
+    .map((l) => source.find((s) => s.length > l.length && s.includes(l)) ?? l)
+  if (lines.length === 0 || !lines.every(isCompleteCodeLine)) return null
+  return lines.join('\n')
+}
+
 export function repairShots(
   beat: Obj,
   facts: ReadonlySet<number>,
   ledger: Ledger = new Map(),
+  ctx: RepairContext = {},
 ): void {
   if (!Array.isArray(beat.shots)) {
     delete beat.shots
@@ -147,6 +218,17 @@ export function repairShots(
       }
       if (dropped > 0 && Object.keys(props).length === 0) continue
       if (raw.show === 'StatSlam' && !('value' in props)) continue
+      if (raw.show === 'StatSlam' && !repairStatValue(props, text)) continue
+      if (raw.show === 'KeyPoint' && !repairKeyPoint(props, text, cue, ctx)) continue
+      if (raw.show === 'CodeBlock' && typeof props.code === 'string') {
+        const code = completeCodeLines(props.code, ctx.sourceText)
+        if (!code) continue
+        props.code = code
+      }
+      if (raw.show === 'Terminal' && Array.isArray(props.lines)) {
+        const lines = props.lines.filter((l): l is string => typeof l === 'string')
+        if (lines.length > 0 && !lines.every((l) => completeCodeLines(l, ctx.sourceText))) continue
+      }
       if (!groundShotLabels(props, raw.show, text, ledger)) continue
       if (Object.keys(props).length > 0) shot.props = props
     }

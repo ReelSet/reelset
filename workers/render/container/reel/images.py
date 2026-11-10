@@ -1,6 +1,8 @@
+import http.client
 import ipaddress
 import logging
 import socket
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlparse
@@ -74,30 +76,51 @@ def default_opener(check=is_allowed_image_url):
     return urllib.request.build_opener(_redirect_handler(check))
 
 
-def _fetch(url: str, check, opener, accept_prefix: str, limit: int):
+RETRY_BACKOFF_SECONDS = (1.0, 2.0)
+
+
+def _transient(err: BaseException) -> bool:
+    """Worth another try: truncated bodies, timeouts, dropped connections, 429 and 5xx."""
+    if isinstance(err, urllib.error.HTTPError):
+        return err.code == 429 or err.code >= 500
+    if isinstance(err, urllib.error.URLError):
+        return isinstance(err.reason, (TimeoutError, socket.timeout, ConnectionError))
+    transient = (http.client.IncompleteRead, http.client.RemoteDisconnected, TimeoutError, socket.timeout, ConnectionError)
+    return isinstance(err, transient)
+
+
+def _fetch(url: str, check, opener, accept_prefix: str, limit: int, attempts: int = 1, sleep=time.sleep):
     if not check(url):
         log.warning("url rejected host=%s", urlparse(url).hostname)
         return None
     opener = opener or default_opener(check)
-    request = urllib.request.Request(url, headers={"User-Agent": "reelset-render/2"})
-    try:
-        with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
-            content_type = (response.headers.get("Content-Type") or "").lower()
-            if not content_type.startswith(accept_prefix):
-                log.warning("fetch rejected content_type=%s", content_type)
-                return None
-            declared = response.headers.get("Content-Length")
-            if declared and declared.isdigit() and int(declared) > limit:
-                log.warning("fetch rejected declared_bytes=%s", declared)
-                return None
-            data = response.read(limit + 1)
-    except (urllib.error.URLError, TimeoutError, OSError) as err:
-        log.warning("fetch failed host=%s err=%s", urlparse(url).hostname, err)
-        return None
-    if len(data) > limit:
-        log.warning("fetch rejected: over %d bytes", limit)
-        return None
-    return data
+    host = urlparse(url).hostname
+    for attempt in range(1, attempts + 1):
+        request = urllib.request.Request(url, headers={"User-Agent": "reelset-render/2"})
+        try:
+            with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+                content_type = (response.headers.get("Content-Type") or "").lower()
+                if not content_type.startswith(accept_prefix):
+                    log.warning("fetch rejected content_type=%s", content_type)
+                    return None
+                declared = response.headers.get("Content-Length")
+                if declared and declared.isdigit() and int(declared) > limit:
+                    log.warning("fetch rejected declared_bytes=%s", declared)
+                    return None
+                data = response.read(limit + 1)
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as err:
+            if attempt < attempts and _transient(err):
+                wait = RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)]
+                log.warning("fetch retry host=%s attempt=%d err=%s", host, attempt, type(err).__name__)
+                sleep(wait)
+                continue
+            log.warning("fetch failed host=%s attempts=%d err=%s", host, attempt, err)
+            return None
+        if len(data) > limit:
+            log.warning("fetch rejected: over %d bytes", limit)
+            return None
+        return data
+    return None
 
 
 def download_image(

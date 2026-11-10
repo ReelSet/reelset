@@ -113,7 +113,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
       if (!item) return null
       const mentions = await db
         .selectFrom('mention')
-        .select(['source', 'url', 'title', 'author', 'score', 'num_comments', 'raw'])
+        .select(['source', 'url', 'title', 'author', 'score', 'num_comments', 'raw', 'body'])
         .where('item_id', '=', itemId)
         .orderBy(sql`score desc nulls last`)
         .limit(12)
@@ -141,6 +141,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
             score: m.score,
             numComments: m.num_comments,
             raw: m.raw,
+            body: m.body,
           })),
           item.canonical_url,
         ),

@@ -56,6 +56,8 @@ def build_props(
         props["sfx"] = sfx
     if req.facts:
         props["facts"] = req.facts
+    if req.claims:
+        props["claims"] = req.claims
     if assets.get("cover"):
         props["cover"] = f"job/{assets['cover']}"
     if assets.get("images"):

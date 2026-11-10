@@ -339,7 +339,7 @@ export function ReelCard(props: Props) {
             <span aria-hidden>·</span>
             <span className="truncate">{host(item.canonicalUrl)}</span>
           </p>
-          <h2 className="pointer-events-auto text-[15px] font-semibold leading-snug text-white">
+          <h2 className="pointer-events-auto text-[15px] font-semibold leading-snug text-white [overflow-wrap:anywhere]">
             <button
               type="button"
               aria-expanded={expanded}
@@ -403,7 +403,7 @@ export function ReelCard(props: Props) {
         </button>
       )}
 
-      <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2 short:bottom-[max(0.75rem,env(safe-area-inset-bottom))] short:gap-0.5">
+      <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2 short:bottom-[max(0.75rem,env(safe-area-inset-bottom))] short:gap-0.5 cropped:bottom-[max(0.5rem,env(safe-area-inset-bottom))] cropped:gap-0 cropped:[&>button]:min-h-10">
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}

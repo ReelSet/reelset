@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildSession, fitSessionFont, outputFor, revealSession, sessionFont, sessionLineCount } from './terminal'
+import {
+  buildSession,
+  fitSessionFont,
+  outputFor,
+  revealSession,
+  sessionFont,
+  sessionLineCount,
+} from './terminal'
 
 describe('outputFor', () => {
   it('derives the clone directory and prints only generic progress', () => {
@@ -8,7 +15,9 @@ describe('outputFor', () => {
       'Receiving objects: 100%, done.',
       'Resolving deltas: 100%, done.',
     ])
-    expect(outputFor('git clone git@github.com:acme/widget.git mydir')[0]).toBe("Cloning into 'mydir'...")
+    expect(outputFor('git clone git@github.com:acme/widget.git mydir')[0]).toBe(
+      "Cloning into 'mydir'...",
+    )
   })
 
   it('never invents versions, counts or listings', () => {
@@ -72,7 +81,9 @@ describe('sessionFont', () => {
 describe('fitSessionFont', () => {
   it('shrinks when long lines wrap', () => {
     const short = [{ cmd: 'ls', out: ['a'] }]
-    const long = [{ cmd: 'git clone https://github.com/heydamir/unslop.git', out: ['x'.repeat(80)] }]
+    const long = [
+      { cmd: 'git clone https://github.com/heydamir/unslop.git', out: ['x'.repeat(80)] },
+    ]
     expect(fitSessionFont(long, 960, 400)).toBeLessThan(fitSessionFont(short, 960, 400))
   })
 })

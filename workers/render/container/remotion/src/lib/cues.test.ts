@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { cueTime, parseCue } from './cues'
 import { wordsFrom } from './fixtures'
 
-const words = wordsFrom('Never run this scan before bed. Never ever skip it, because scanning matters.')
+const words = wordsFrom(
+  'Never run this scan before bed. Never ever skip it, because scanning matters.',
+)
 
 describe('parseCue', () => {
   it('reads word and occurrence', () => {

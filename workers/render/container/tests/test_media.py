@@ -163,3 +163,158 @@ class PropsMediaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DemoStartTests(unittest.TestCase):
+    def test_parses_scene_change_times(self):
+        stderr = "[Parsed_showinfo_1] n:0 pts:15 pts_time:0.5 \n[Parsed_showinfo_1] n:1 pts:96 pts_time:3.2 pos:1"
+        self.assertEqual(media.parse_scene_times(stderr), [0.5, 3.2])
+
+    def test_skips_the_title_card(self):
+        self.assertEqual(media.pick_demo_start([0.4, 2.6, 5.0], 12.0), 2.6)
+
+    def test_falls_back_to_a_quarter_in_without_a_cut(self):
+        self.assertEqual(media.pick_demo_start([], 12.0), 3.0)
+        self.assertEqual(media.pick_demo_start([0.3], 8.0), 2.0)
+
+    def test_leaves_enough_clip_and_handles_unknown_length(self):
+        self.assertEqual(media.pick_demo_start([9.5], 10.0), 8.0)
+        self.assertEqual(media.pick_demo_start([1.5], 2.0), 1.0)
+        self.assertEqual(media.pick_demo_start([3.0], 0.0), 0.0)
+
+    def test_demo_is_cut_from_the_first_scene(self):
+        cmds = []
+
+        def run(cmd):
+            cmds.append(cmd)
+            open(cmd[-1], "wb").write(b"mp4")
+
+        with tempfile.TemporaryDirectory() as d:
+            media.collect_demo(
+                {"url": "https://github.com/a/b/raw/main/demo.mp4", "kind": "mp4", "repo": "a/b"}, d,
+                lambda u, p: open(p, "wb").write(b"mp4") or True, run,
+                lambda p: {"seconds": 8.0, "width": 1280, "height": 720},
+                cuts=lambda p: [0.2, 1.8], duration=lambda p: 20.0, detail=lambda p: [],
+            )
+        self.assertEqual(cmds[0][cmds[0].index("-ss") + 1], "1.80")
+
+
+class DemoWindowTests(unittest.TestCase):
+    # Detail samples of the fizgig README video (2 fps): a title card, then slides joined by fades to blank.
+    FIZGIG = [(t / 2, v) for t, v in enumerate(
+        [0.9, 3.4, 3.5, 3.9, 4.0, 4.0, 4.1, 4.2, 4.3, 4.5, 4.7, 4.7, 4.6, 4.6, 4.6, 4.6, 4.6, 4.5, 2.0, 0.0,
+         2.1, 2.6, 3.4, 4.0, 4.5, 4.5, 4.5, 4.5, 4.3, 4.3, 4.1, 3.9, 3.8, 3.8, 3.8, 4.0, 4.2, 4.4, 4.6, 4.6,
+         4.6, 4.6, 3.4, 0.0, 0.6, 2.9, 3.4, 4.3, 4.8, 4.9, 4.9, 5.6, 5.8, 5.8, 5.8, 5.8, 5.5, 2.1, 0.0, 3.3,
+         6.4, 6.5, 6.5, 6.7, 6.9, 6.9, 7.0, 7.0, 7.0, 7.0, 7.1, 7.1, 6.3, 1.8, 0.0, 4.5, 9.7, 9.8, 10.0, 10.2,
+         10.5, 10.8, 10.5, 10.2, 9.8, 9.8, 9.6, 6.1, 0.0, 0.9, 6.1, 6.5, 6.6, 7.7, 7.7, 7.8, 7.9, 8.7, 9.5,
+         9.7, 9.8, 10.1, 10.5, 10.6, 8.5, 2.2, 0.0, 3.7])]
+
+    def test_parses_detail_samples(self):
+        stderr = "frame:0    pts:0       pts_time:0\nlavfi.signalstats.YAVG=0.9\nframe:1    pts:15  pts_time:0.5\nlavfi.signalstats.YAVG=3.4\n"
+        self.assertEqual(media.parse_detail(stderr), [(0.0, 0.9), (0.5, 3.4)])
+
+    def test_picks_a_full_slide_not_the_title_card_or_a_fade(self):
+        start, seconds = media.pick_demo_window(self.FIZGIG)
+        blanks = [t for t, v in self.FIZGIG if v < 1.0]
+        self.assertGreaterEqual(start, 30.0)
+        self.assertGreaterEqual(seconds, 3.0)
+        self.assertLessEqual(seconds, media.MAX_DEMO_SECONDS)
+        self.assertFalse(any(start <= t <= start + seconds for t in blanks))
+
+    def test_no_signal_means_the_scene_rule_decides(self):
+        self.assertIsNone(media.pick_demo_window([]))
+        self.assertIsNone(media.pick_demo_window([(0, 0.0), (0.5, 0.0), (1, 0.0), (1.5, 0.0)]))
+
+    def test_collect_demo_cuts_the_picked_window(self):
+        cmds = []
+
+        def run(cmd):
+            cmds.append(cmd)
+            open(cmd[-1], "wb").write(b"mp4")
+
+        with tempfile.TemporaryDirectory() as d:
+            media.collect_demo(
+                {"url": "https://github.com/a/b/raw/main/demo.mp4", "kind": "mp4", "repo": "a/b"}, d,
+                lambda u, p: open(p, "wb").write(b"mp4") or True, run,
+                lambda p: {"seconds": 6.0, "width": 1280, "height": 720},
+                cuts=lambda p: [], duration=lambda p: 81.0, detail=lambda p: self.FIZGIG,
+            )
+        start = float(cmds[0][cmds[0].index("-ss") + 1])
+        seconds = float(cmds[0][cmds[0].index("-t") + 1])
+        self.assertGreaterEqual(start, 30.0)
+        self.assertLessEqual(seconds, media.MAX_DEMO_SECONDS)
+
+
+class _Resp:
+    def __init__(self, body: bytes, fail: Exception | None = None):
+        self.body, self.fail = body, fail
+        self.headers = {"Content-Type": "video/mp4", "Content-Length": str(len(body))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self, n):
+        if self.fail:
+            raise self.fail
+        return self.body
+
+
+class _Opener:
+    def __init__(self, plan):
+        self.plan, self.calls = list(plan), 0
+
+    def open(self, request, timeout=None):
+        self.calls += 1
+        step = self.plan.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+class DownloadRetryTests(unittest.TestCase):
+    URL = "https://videos.pexels.com/x.mp4"
+
+    def fetch(self, plan):
+        import http.client
+
+        opener = _Opener(plan)
+        sleeps = []
+        with tempfile.TemporaryDirectory() as d:
+            dest = os.path.join(d, "x")
+            ok = media._download(self.URL, dest, lambda u: True, 1000, opener=opener, sleep=sleeps.append)
+        return ok, opener.calls, sleeps, http.client
+
+    def test_retries_incomplete_reads_and_timeouts_then_succeeds(self):
+        import http.client
+
+        ok, calls, sleeps, _ = self.fetch([
+            _Resp(b"", http.client.IncompleteRead(b"x", 10)), TimeoutError("slow"), _Resp(b"video"),
+        ])
+        self.assertTrue(ok)
+        self.assertEqual(calls, 3)
+        self.assertEqual(sleeps, [1.0, 2.0])
+
+    def test_gives_up_after_three_tries(self):
+        ok, calls, _, _ = self.fetch([TimeoutError("a"), TimeoutError("b"), TimeoutError("c")])
+        self.assertFalse(ok)
+        self.assertEqual(calls, 3)
+
+    def test_does_not_retry_a_404(self):
+        import urllib.error
+
+        ok, calls, _, _ = self.fetch([urllib.error.HTTPError(self.URL, 404, "nf", {}, None)])
+        self.assertFalse(ok)
+        self.assertEqual(calls, 1)
+
+
+class ClaimsAndFactsTests(unittest.TestCase):
+    def test_claims_and_reddit_text_reach_the_props(self):
+        payload = good_payload()
+        payload["script"] = {**payload["script"], "claims": [{"text": " A  claim. ", "chunkIds": []}, 3, {"text": ""}]}
+        payload["facts"] = {"reddit": {"text": "Post body", "upvotes": 4, "bogus": 1}}
+        r = validation.validate_render_request(payload)
+        self.assertEqual(r.claims, ["A claim."])
+        self.assertEqual(r.facts["reddit"], {"text": "Post body", "upvotes": 4})

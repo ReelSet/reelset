@@ -1,78 +1,169 @@
-import { interpolate, useCurrentFrame } from 'remotion'
+import { Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
 import { Pop, Rise, easeOut } from '../fx'
 import { keyPhraseIn } from '../lib/extract'
 import { captionFor, focusOrigin } from '../lib/images'
 import { clipWords, plainText } from '../lib/table'
-import { fitText } from '../lib/text'
+import { fitText, fitWindow } from '../lib/text'
+import { typeset } from '../lib/typeset'
 import { SourceChip } from '../Marks'
 import { COLOR, CONTENT_TOP, CONTENT_W, H, LOW_TOP, MONO, SAFE, W, ZONE_BOTTOM } from '../theme'
 import { Chip, Page, Photo, Sweep, imageAt, prop, type ScreenProps } from './ui'
 
 export function PaperPage({ frames, ctx, props, topPad }: ScreenProps) {
   const paper = ctx.facts.paper
-  const abstract = paper?.abstract ?? prop<string>(props, 'summary', ctx.hook)
+  const variant = prop<string>(props, 'variant', 'title')
+  const abstract = plainText(paper?.abstract ?? prop<string>(props, 'summary', ctx.hook))
   const label = paper?.abstract ? 'Abstract' : 'Summary'
-  const body =
-    abstract.length > 250 ? `${abstract.slice(0, 247).replace(/\s+\S*$/, '')}...` : abstract
-  const phrase = prop<string>(props, 'phrase', '') || keyPhraseIn(body, 2, 4)
+  const phrase = prop<string>(props, 'phrase', '') || keyPhraseIn(abstract, 2, 4) || ''
   const id = /arxiv\.org\/(?:abs|pdf)\/([^\s?]+)/.exec(ctx.domain)?.[1] ?? ''
-  const size = fitText(
-    ctx.title,
-    { width: CONTENT_W, height: 330 },
-    { min: 50, max: 76, charWidth: 0.56, lineHeight: 1.12 },
+  const chips = (
+    <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
+      <Chip size={32} bg={COLOR.arxiv} color="#fff">
+        arXiv{id ? `:${id}` : ''}
+      </Chip>
+      {paper?.upvotes !== undefined ? <Chip size={32}>{paper.upvotes} upvotes</Chip> : null}
+    </div>
   )
-  return (
-    <Page frames={frames} tint={COLOR.arxiv} topPad={topPad}>
-      <Rise>
-        <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
-          <Chip size={32} bg={COLOR.arxiv} color="#fff">
-            arXiv{id ? `:${id}` : ''}
-          </Chip>
-          {paper?.upvotes !== undefined ? <Chip size={32}>{paper.upvotes} upvotes</Chip> : null}
+  const smallTitle = (
+    <div
+      style={{
+        fontSize: 38,
+        fontWeight: 700,
+        lineHeight: 1.2,
+        marginTop: 24,
+        color: COLOR.muted,
+        maxHeight: 140,
+        overflow: 'hidden',
+      }}
+    >
+      {typeset(ctx.title)}
+    </div>
+  )
+  if (variant === 'abstract') {
+    const { body, size } = fitWindow(
+      abstract,
+      phrase,
+      { width: CONTENT_W, height: ZONE_BOTTOM - CONTENT_TOP - topPad - 360 },
+      { min: 40, max: 58, charWidth: 0.52, lineHeight: 1.3 },
+    )
+    return (
+      <Page frames={frames} tint={COLOR.arxiv} topPad={topPad}>
+        {chips}
+        {smallTitle}
+        <div style={{ height: 3, background: COLOR.line, margin: '30px 0 26px' }} />
+        <div
+          style={{
+            fontSize: 30,
+            fontWeight: 800,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: COLOR.muted,
+          }}
+        >
+          {label}
         </div>
         <div
           style={{
             fontSize: size,
-            fontWeight: 800,
-            lineHeight: 1.12,
-            letterSpacing: '-0.03em',
-            marginTop: 30,
+            lineHeight: 1.3,
+            marginTop: 18,
+            fontWeight: 500,
+            color: '#e4e4e7',
           }}
         >
-          {ctx.title}
+          <Sweep text={body} phrase={phrase} frames={frames} delay={4} />
+        </div>
+      </Page>
+    )
+  }
+  const figure = variant === 'figure' ? imageAt(ctx, props) : undefined
+  if (figure) {
+    const top = CONTENT_TOP + topPad + 250
+    const h = ZONE_BOTTOM - top - 10
+    return (
+      <Page frames={frames} tint={COLOR.arxiv} topPad={topPad} bleed>
+        <div
+          style={{
+            position: 'absolute',
+            left: SAFE.left,
+            right: SAFE.right,
+            top: CONTENT_TOP + topPad,
+          }}
+        >
+          {chips}
+          {smallTitle}
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            left: 30,
+            right: 30,
+            top,
+            height: h,
+            background: '#fafafa',
+            borderRadius: 24,
+            overflow: 'hidden',
+            boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
+          }}
+        >
+          <Photo
+            image={figure}
+            frames={frames}
+            x={0}
+            y={0}
+            w={W - 60}
+            h={h}
+            backdrop={false}
+            maxUp={1.4}
+            zoomTo={1.06}
+            keepInFrame
+          />
+        </div>
+        <div style={{ position: 'absolute', left: SAFE.left, top: top + 24 }}>
+          <Pop delay={6}>
+            <Chip size={34} bg={COLOR.arxiv} color="#fff">
+              {captionFor(figure, 'Figure')}
+            </Chip>
+          </Pop>
+        </div>
+      </Page>
+    )
+  }
+  const size = fitText(
+    ctx.title,
+    { width: CONTENT_W, height: 520 },
+    { min: 56, max: 92, charWidth: 0.56, lineHeight: 1.1 },
+  )
+  return (
+    <Page frames={frames} tint={COLOR.arxiv} topPad={topPad}>
+      <Rise>
+        {chips}
+        <div
+          style={{
+            fontSize: size,
+            fontWeight: 800,
+            lineHeight: 1.1,
+            letterSpacing: '-0.03em',
+            marginTop: 34,
+          }}
+        >
+          {typeset(ctx.title)}
         </div>
         {paper?.authors?.length ? (
-          <div style={{ fontSize: 36, color: COLOR.muted, marginTop: 24, fontWeight: 500 }}>
+          <div
+            style={{
+              fontSize: 38,
+              color: COLOR.muted,
+              marginTop: 30,
+              fontWeight: 500,
+              lineHeight: 1.3,
+            }}
+          >
             {paper.authors.slice(0, 4).join(', ')}
             {paper.authors.length > 4 ? ' et al.' : ''}
           </div>
         ) : null}
       </Rise>
-      <div style={{ height: 3, background: COLOR.line, margin: '36px 0 30px' }} />
-      <div
-        style={{
-          fontSize: 32,
-          fontWeight: 800,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: COLOR.muted,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 42,
-          lineHeight: 1.32,
-          marginTop: 20,
-          fontWeight: 500,
-          color: '#d4d4d8',
-          maxHeight: 400,
-          overflow: 'hidden',
-        }}
-      >
-        <Sweep text={body} phrase={phrase} frames={frames} />
-      </div>
     </Page>
   )
 }
@@ -91,6 +182,68 @@ export function FigureZoom({ frames, ctx, props, topPad }: ScreenProps) {
   if (!img) return <Page frames={frames} topPad={topPad} />
   const alt = plainText(img.alt ?? '').replace(/^\s*fig(?:ure|\.)?\s*\d+[a-z]?\s*[:.\-]?\s*/i, '')
   const top = CONTENT_TOP + topPad + 8
+  const iw = img.width ?? 1280
+  const ih = img.height ?? 720
+  const wide = iw / ih >= 1.5
+  if (wide) {
+    const cardTop = top + 92
+    const room = ZONE_BOTTOM - cardTop - 10
+    const scale = Math.min(1.2, Math.max(W / iw, room / ih))
+    const dw = iw * scale
+    const dh = Math.min(room, ih * scale)
+    const travel = Math.max(0, dw - W)
+    const x = variant % 2 === 0 ? -travel * p : -travel * (1 - p)
+    return (
+      <Page frames={frames} bleed topPad={topPad}>
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: cardTop,
+            width: W,
+            height: dh,
+            overflow: 'hidden',
+            background: '#fafafa',
+            boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
+          }}
+        >
+          <Img
+            src={staticFile(img.src)}
+            style={{
+              position: 'absolute',
+              left: travel > 0 ? x : (W - dw) / 2,
+              top: (dh - ih * scale) / 2,
+              width: dw,
+              height: ih * scale,
+            }}
+          />
+        </div>
+        <div style={{ position: 'absolute', left: SAFE.left, top }}>
+          <Pop>
+            <Chip size={40} bg={COLOR.accent} color={COLOR.accentInk}>
+              {captionFor(img, ctx.domain)}
+            </Chip>
+          </Pop>
+        </div>
+        {alt ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: SAFE.left,
+              right: SAFE.right,
+              top: LOW_TOP + 30,
+              fontSize: 36,
+              lineHeight: 1.3,
+              color: '#e4e4e7',
+              fontWeight: 500,
+            }}
+          >
+            {clipWords(alt, 150)}
+          </div>
+        ) : null}
+      </Page>
+    )
+  }
   return (
     <Page frames={frames} bleed topPad={topPad}>
       <Photo
@@ -155,7 +308,7 @@ export function ArticleHeadline({ frames, ctx, props, topPad }: ScreenProps) {
   const top = CONTENT_TOP + topPad + 8
   return (
     <Page frames={frames} bleed topPad={topPad}>
-      {img ? <Photo image={img} frames={frames} y={0} h={H} maxUp={0.01} /> : null}
+      {img ? <Photo image={img} frames={frames} y={0} h={H} backdropOnly /> : null}
       <div
         style={{
           position: 'absolute',
@@ -214,7 +367,7 @@ export function ImageFull({ frames, ctx, props, topPad }: ScreenProps) {
     <Page frames={frames} bleed topPad={topPad}>
       {padded ? (
         <>
-          <Photo image={img} frames={frames} maxUp={0.01} />
+          <Photo image={img} frames={frames} backdropOnly />
           <Photo
             image={img}
             frames={frames}

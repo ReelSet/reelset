@@ -1,7 +1,13 @@
-// Mirror of workers/render/container/remotion/src/lib/labels.ts: a big number's label must come from
-// the words next to that number in the narration, and a label is never reused for another number.
+// Mirror of workers/render/container/remotion/src/lib/labels.ts (everything from `const NUM`; a test
+// keeps the two identical): a big number's label is what the sentence says that number is, and a
+// label is never reused for another number.
+import { findQuantities, numberLabel, withMeasure } from './text-rules'
+
 const sentences = (text: string): string[] =>
-  (text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [text]).map((s) => s.trim()).filter(Boolean)
+  text
+    .split(/(?<=[.!?]["')\]]*)\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
 
 const NUM = /\d[\d,]*(?:\.\d+)?/g
 const STOP = new Set(
@@ -16,7 +22,7 @@ export type Mention = { value: number; start: number; end: number }
 
 /** Numeric value of a displayed stat ("52.8%", "$1.2M", "12k", "3x"), or null. */
 export function valueOf(raw: string): number | null {
-  const m = /(\d[\d,]*(?:\.\d+)?)\s?([kKmMbB]|billion|million|thousand)?/.exec(raw)
+  const m = /(\d[\d,]*(?:\.\d+)?)\s?([kKmMbB]\b|billion|million|thousand)?/.exec(raw)
   if (!m?.[1]) return null
   const base = Number(m[1].replace(/,/g, ''))
   if (!Number.isFinite(base)) return null
@@ -82,7 +88,11 @@ function windowWords(text: string, at: Mention): Set<string> {
 }
 
 export function labelIsNear(label: string, text: string, at: Mention): boolean {
-  const words = label.split(/\s+/).filter(isContent).map(norm)
+  const head = label.split(' · ')[0] ?? ''
+  const words = head
+    .split(/\s+/)
+    .filter((w) => isContent(w) && !/^(?:memory|vram)$/i.test(w))
+    .map(norm)
   if (words.length === 0) return false
   const near = windowWords(text, at)
   return words.every((w) => near.has(w))
@@ -92,8 +102,12 @@ function clean(w: string): string {
   return w.replace(/^[("'\[]+|[)"'\],.;:!?]+$/g, '')
 }
 
-/** Up to three content words that follow the number, else the ones that precede it. */
+/** What the sentence says the number is (text-rules `numberLabel`), else the nearest content words. */
 export function contextLabel(sentence: string, at: Mention, max = 3): string {
+  return numberLabel(sentence, at, max) || nearWords(sentence, at, max)
+}
+
+function nearWords(sentence: string, at: Mention, max: number): string {
   const toks = tokens(sentence)
   const after = toks.filter((t) => t.start >= at.end)
   const out: string[] = []
@@ -124,22 +138,34 @@ const keyOf = (label: string) => label.toLowerCase().replace(/\s+/g, ' ').trim()
 /**
  * Label for `value` given the narration `text` it is spoken in.
  * - kept when its words sit within a few words of that number in the text;
- * - otherwise replaced by the words next to the number;
+ * - otherwise replaced by what the sentence says the number is;
  * - a label already used for a different number in this reel is replaced the same way, then dropped.
- * A number that is not in the text (item facts) keeps its label unless it collides.
+ * A number that is not in the narration is looked up in `corpus` (claims, facts) the same way; with
+ * a corpus given, a number found in neither is not grounded. Without one it keeps its label.
  */
-export function groundLabel(value: string, label: string, text: string, ledger: Ledger): Grounded {
+export function groundLabel(
+  value: string,
+  label: string,
+  text: string,
+  ledger: Ledger,
+  corpus: readonly string[] = [],
+): Grounded {
   const v = valueOf(value)
-  const found = v === null ? [] : mentions(text).filter((m) => m.value === v)
+  const sources = [text, ...corpus]
+  const where = v === null ? undefined : sources.find((s) => mentions(s).some((m) => m.value === v))
   const candidates: { label: string; grounded: boolean }[] = []
-  if (found.length === 0) {
+  if (!where) {
+    if (corpus.length > 0 && v !== null) return { label: '', grounded: false }
     candidates.push({ label: label.trim(), grounded: true })
   } else {
-    if (found.some((m) => labelIsNear(label, text, m)))
+    const found = mentions(where).filter((m) => m.value === v)
+    if (found.some((m) => labelIsNear(label, where, m)))
       candidates.push({ label: label.trim(), grounded: true })
-    const sent = sentences(text).find((s) => mentions(s).some((m) => m.value === v)) ?? text
+    const sent = sentences(where).find((s) => mentions(s).some((m) => m.value === v)) ?? where
     const at = mentions(sent).find((m) => m.value === v)
-    if (at) candidates.push({ label: contextLabel(sent, at), grounded: true })
+    const unit = findQuantities(value)[0]?.unit ?? ''
+    if (at)
+      candidates.push({ label: withMeasure(contextLabel(sent, at), unit, text), grounded: true })
   }
   for (const c of candidates) {
     const k = keyOf(c.label)

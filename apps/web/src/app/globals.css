@@ -138,6 +138,8 @@ body {
   padding-top: max(0.75rem, env(safe-area-inset-top));
 }
 @custom-variant short (@media (max-height: 760px));
+/* Reel frame narrower than 9:16: object-cover crops the sides, so burned captions reach the rail. */
+@custom-variant cropped (@container (max-aspect-ratio: 9/16));
 
 @utility no-scrollbar {
   scrollbar-width: none;

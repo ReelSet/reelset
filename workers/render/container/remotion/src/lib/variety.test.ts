@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { assignBroll } from './broll'
 import { sampleReel } from './fixtures'
-import { capFor, imageIndex, newState, pickShot, varietyKey } from './planner'
+import { capFor, identityOf, imageIndex, newState, pickShot, varietyKey } from './planner'
 import { resolveShots, totalFrames, withDemoOffsets } from './timeline'
 import type { BrollClip, ReelProps, Scene, TimedShot } from './types'
 
@@ -34,18 +34,22 @@ describe('planner variety', () => {
     expect(shots.filter((s) => s.show === 'EndCard')).toHaveLength(1)
   })
 
-  it('shows the same image at most twice', () => {
+  it('shows the same image at most twice (a figure three times, each a different crop)', () => {
     const img = new Set(['ImageFull', 'FigureZoom', 'YouTubePlayer', 'ArticleHeadline'])
     const uses = count(
       shots.filter((s) => img.has(s.show)),
       (s) => String(imageIndex(s.props)),
     )
-    for (const n of uses.values()) expect(n).toBeLessThanOrEqual(2)
+    for (const [i, n] of uses)
+      expect(n).toBeLessThanOrEqual(images[Number(i)]!.kind === 'figure' ? 3 : 2)
   })
 
-  it('never repeats a screen back to back', () => {
+  it('never shows the same look twice in a row (only key points of another layout may follow each other)', () => {
     shots.forEach((s, i) => {
-      if (i > 0) expect(s.show).not.toBe(shots[i - 1]!.show)
+      const prev = shots[i - 1]
+      if (!prev || s.show === 'RepoDemo') return
+      if (s.show !== 'KeyPoint') expect(s.show).not.toBe(prev.show)
+      expect(identityOf(s.show, s.props)).not.toBe(identityOf(prev.show, prev.props))
     })
   })
 
@@ -74,10 +78,10 @@ describe('pickShot caps', () => {
   const ctx = (p: ReelProps) => ({ props: p, fps: FPS })
   const chunk = { start: 8, end: 10 }
 
-  it('skips a screen that already has two uses while alternatives exist', () => {
+  it('skips a source card whose looks are all used while alternatives exist', () => {
     const p = sampleReel({ source: 'papers', images: [] })
     const state = newState()
-    state.uses.PaperPage = 2
+    state.sourceUsed.PaperPage = ['title', 'abstract']
     const pick = pickShot(ctx(p), p.scenes[1]!, 1, chunk, false, false, 8, state)
     expect(pick.show).not.toBe('PaperPage')
   })

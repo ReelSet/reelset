@@ -143,6 +143,35 @@ describe('toRankedItem / orderRows', () => {
     })
   })
 
+  it('carries render credits into the item, null when absent', () => {
+    expect(toRankedItem(row)?.credits).toBeNull()
+    const credited = {
+      ...row,
+      credits: [
+        {
+          kind: 'stock',
+          provider: 'pexels',
+          creator: 'Ann',
+          url: 'https://www.pexels.com/video/1/',
+        },
+      ],
+    } as unknown as FeedRow
+    expect(toRankedItem(credited)?.credits).toEqual({
+      stock: [{ creator: 'Ann', url: 'https://www.pexels.com/video/1/' }],
+      demo: null,
+    })
+  })
+
+  it('selects credits from the latest done render', () => {
+    const sqlText = hydrateQuery(db, {
+      profileId: null,
+      itemIds: ['i1'],
+      minTemplate: 0,
+    }).compile().sql
+    expect(sqlText).toContain('"render"."credits"')
+    expect(sqlText).toContain('"r"."credits"')
+  })
+
   it('drops a row without a video key', () => {
     expect(toRankedItem({ ...row, video_key: null } as FeedRow)).toBeNull()
   })

@@ -1,3 +1,4 @@
+import { sameNumber } from './text-rules'
 import type { ScreenName } from './types'
 
 export type TableView = {
@@ -10,6 +11,8 @@ export type TableView = {
   best: Set<string>
   value: string
   label: string
+  /** The highlighted cell; null for a plain table (no number said over it). */
+  mark: { row: number; col: number } | null
 }
 
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
@@ -17,7 +20,7 @@ const num = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback
 
 /** Label for the highlighted number: its row name and column header, both read from the table. */
-const cellLabel = (row: string | undefined, header: string | undefined): string =>
+export const cellLabel = (row: string | undefined, header: string | undefined): string =>
   [row, header].filter((p): p is string => Boolean(p && p.trim())).join(' · ')
 
 /** Shot props -> a table view, or null when there is nothing renderable (never throws). */
@@ -42,8 +45,9 @@ export function readTable(props: Record<string, unknown>): TableView | null {
     hi,
     col,
     best,
-    value: str(props.value) || rows[hi]![col] || '',
-    label: str(props.label) || cellLabel(rows[hi]?.[0], headers[col]),
+    value: props.plain ? '' : str(props.value) || rows[hi]![col] || '',
+    label: props.plain ? '' : str(props.label) || cellLabel(rows[hi]?.[0], headers[col]),
+    mark: props.plain ? null : { row: hi, col },
   }
 }
 
@@ -62,8 +66,8 @@ export function rowHeight(available: number, rows: number, header = 96, chrome =
 
 /** Long reads: how long a paper screen needs on screen before the next cut. Seconds. */
 export const HOLDS: Partial<Record<ScreenName, { gap: number; max: number; keep: number }>> = {
-  TableScreen: { gap: 2.6, max: 5.4, keep: 3.8 },
-  EquationScreen: { gap: 2.2, max: 4.8, keep: 3.6 },
+  TableScreen: { gap: 2.6, max: 4.0, keep: 3.6 },
+  EquationScreen: { gap: 2.2, max: 4.0, keep: 3.4 },
 }
 
 export const holdFor = (show: ScreenName) => HOLDS[show]
@@ -93,4 +97,37 @@ export function clipWords(s: string, n: number): string {
   const cut = s.slice(0, n - 1)
   const at = cut.lastIndexOf(' ')
   return `${(at > n * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`
+}
+
+const wordsOf = (s: string) =>
+  new Set(
+    s
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w.length > 2),
+  )
+
+/**
+ * The cell that holds a narrated number ("80.9" finds 80.93), preferring a column whose header
+ * shares a word with the narrated label, then the highlighted row. Null when the table lacks it.
+ */
+export function matchCell(
+  view: Pick<TableView, 'headers' | 'rows' | 'hi'>,
+  narrated: string,
+  label = '',
+): { row: number; col: number } | null {
+  const want = wordsOf(label)
+  const hits: { row: number; col: number; score: number }[] = []
+  view.rows.forEach((cells, r) =>
+    cells.forEach((cell, c) => {
+      if (c === 0 || !sameNumber(narrated, cell)) return
+      const header = wordsOf(view.headers[c] ?? '')
+      const shared = [...header].some((w) =>
+        [...want].some((x) => x.startsWith(w) || w.startsWith(x)),
+      )
+      hits.push({ row: r, col: c, score: (shared ? 2 : 0) + (r === view.hi ? 1 : 0) })
+    }),
+  )
+  const best = hits.sort((a, b) => b.score - a.score || a.row - b.row)[0]
+  return best ? { row: best.row, col: best.col } : null
 }

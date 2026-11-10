@@ -92,7 +92,7 @@ export function TableScreen({ frames, props, topPad }: ScreenProps) {
                   fontWeight: 800,
                   letterSpacing: '0.04em',
                   textTransform: 'uppercase',
-                  color: c === table.col ? COLOR.accent : COLOR.muted,
+                  color: c === table.mark?.col ? COLOR.accent : COLOR.muted,
                 }}
               >
                 {clip(h, 22)}
@@ -100,7 +100,7 @@ export function TableScreen({ frames, props, topPad }: ScreenProps) {
             ))}
           </div>
           {table.rows.map((row, r) => {
-            const isHi = r === table.hi
+            const isHi = r === table.mark?.row
             return (
               <Pop key={r} delay={4 + r * 3}>
                 <div
@@ -128,7 +128,7 @@ export function TableScreen({ frames, props, topPad }: ScreenProps) {
                   ) : null}
                   {row.map((cell, c) => {
                     const isBest = table.best.has(`${r}:${c}`)
-                    const isKey = isHi && c === table.col
+                    const isKey = isHi && c === table.mark?.col
                     const text = isKey && stat ? shown : cell
                     return (
                       <div

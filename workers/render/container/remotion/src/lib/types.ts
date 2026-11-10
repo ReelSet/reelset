@@ -85,7 +85,15 @@ export type ItemFacts = {
     topics?: string[]
   }
   hn?: { points?: number; comments?: number; author?: string; topComment?: string }
-  reddit?: { subreddit?: string; upvotes?: number; comments?: number; author?: string }
+  reddit?: {
+    subreddit?: string
+    upvotes?: number
+    comments?: number
+    author?: string
+    /** Post body excerpt (selftext) or the top comment, shown as a quote card. */
+    text?: string
+    topComment?: string
+  }
   youtube?: { channel?: string; views?: number; duration?: string }
   paper?: { authors?: string[]; abstract?: string; upvotes?: number }
   article?: { site?: string; author?: string }
@@ -99,6 +107,8 @@ export type BrollClip = {
   height?: number
   /** Narration scene index the clip was chosen for. */
   beat?: number
+  /** Seconds into the clip to start (a second use of a clip starts later). */
+  at?: number
   creator?: string
   creatorUrl?: string
   pageUrl?: string
@@ -114,6 +124,8 @@ export type ReelProps = {
   words: Word[]
   audio: string
   headline?: string
+  /** The script's sourced claims (text only), used to word key points and ground stat labels. */
+  claims?: string[]
   facts?: ItemFacts
   cover?: string
   images?: ReelImage[]

@@ -3,7 +3,16 @@ import { snapHeadlineEnd } from './timeline'
 import { TRANSITIONS, overlapFrames, pickTransitions } from './transitions'
 import type { ScreenName } from './types'
 
-const shows: ScreenName[] = ['RepoPage', 'KeyPoint', 'StatSlam', 'Terminal', 'ImageFull', 'KeyPoint', 'HNThread', 'EndCard']
+const shows: ScreenName[] = [
+  'RepoPage',
+  'KeyPoint',
+  'StatSlam',
+  'Terminal',
+  'ImageFull',
+  'KeyPoint',
+  'HNThread',
+  'EndCard',
+]
 
 describe('pickTransitions', () => {
   it('is deterministic and leaves the first shot untouched', () => {
@@ -17,7 +26,9 @@ describe('pickTransitions', () => {
     const t = pickTransitions(long)
     for (let i = 2; i < t.length; i++) expect(t[i]).not.toBe(t[i - 1])
     expect(new Set(t.slice(1)).size).toBeGreaterThanOrEqual(3)
-    expect(t.slice(1).every((x) => (TRANSITIONS as readonly string[]).includes(x as string))).toBe(true)
+    expect(t.slice(1).every((x) => (TRANSITIONS as readonly string[]).includes(x as string))).toBe(
+      true,
+    )
   })
 
   it('keeps the flash to a minority of cuts', () => {

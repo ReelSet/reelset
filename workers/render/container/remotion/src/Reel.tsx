@@ -12,14 +12,34 @@ import {
   toFrames,
   totalFrames,
 } from './lib/timeline'
+import { PUNCH_SCALE, punchOrigin } from './lib/punch'
 import { overlapFrames, pickTransitions } from './lib/transitions'
+import { displayTitle, styleOf } from './lib/typeset'
 import type { ReelProps } from './lib/types'
 import { SCREENS } from './screens'
 import { BackdropContext, type ReelCtx } from './screens/ui'
 import { COLOR, H, HEADLINE_PAD, W } from './theme'
 
-const clipFor = (clips: ReelProps['broll'], shotProps: Record<string, unknown>) =>
-  clips && typeof shotProps.bg === 'number' ? (clips[shotProps.bg] ?? null) : null
+/** Second half of a held shot: the same screen, `lead` frames in, pushed in (see `pacePunches`). */
+const punchOf = (p: Record<string, unknown>): { lead: number; frames: number } | null => {
+  const v = p.punch as { lead?: unknown; frames?: unknown } | undefined
+  return v && typeof v.lead === 'number' && typeof v.frames === 'number'
+    ? { lead: v.lead, frames: v.frames }
+    : null
+}
+
+const originFor = (shot: { show: string; props: Record<string, unknown> }): string =>
+  punchOrigin(
+    shot.show === 'KeyPoint' &&
+      typeof shot.props.text === 'string' &&
+      styleOf(shot.props.text) === 2,
+  )
+
+const clipFor = (clips: ReelProps['broll'], shotProps: Record<string, unknown>) => {
+  const clip = clips && typeof shotProps.bg === 'number' ? clips[shotProps.bg] : undefined
+  if (!clip) return null
+  return typeof shotProps.bgAt === 'number' ? { ...clip, at: shotProps.bgAt } : clip
+}
 
 function Finish() {
   return (
@@ -56,7 +76,7 @@ export function Reel(props: ReelProps) {
   const scenes = useMemo(() => toFrames(props.scenes, fps, total), [props, fps, total])
   const ctx: ReelCtx = useMemo(
     () => ({
-      title: props.title,
+      title: displayTitle(props.title),
       source: props.source,
       sourceLabel: props.sourceLabel,
       domain: props.domain,
@@ -69,12 +89,25 @@ export function Reel(props: ReelProps) {
   )
   const headline = headlineOf(props)
   const headlineFrames = Math.round(snapHeadlineEnd(headlineEnd(props), plan, fps) * fps)
-  const transitions = useMemo(() => pickTransitions(plan.map((s) => s.show)), [plan])
+  const transitions = useMemo(
+    () => pickTransitions(plan.map((s) => s.show)).map((t, i) => (plan[i]?.props.punch ? null : t)),
+    [plan],
+  )
   return (
     <AbsoluteFill style={{ background: COLOR.bg, width: W, height: H }}>
       {plan.map((shot, i) => {
         const Screen = SCREENS[shot.show]
-        const topPad = shot.from < headlineFrames ? HEADLINE_PAD : 0
+        const punch = punchOf(shot.props)
+        const startedAt = punch ? shot.from - punch.lead : shot.from
+        const topPad = startedAt < headlineFrames ? HEADLINE_PAD : 0
+        const screen = (
+          <Screen
+            frames={punch ? punch.frames : shot.frames}
+            ctx={ctx}
+            props={shot.props}
+            topPad={topPad}
+          />
+        )
         return (
           <Sequence
             key={i}
@@ -84,7 +117,20 @@ export function Reel(props: ReelProps) {
           >
             <Transition kind={transitions[i] ?? null}>
               <BackdropContext.Provider value={clipFor(props.broll, shot.props)}>
-                <Screen frames={shot.frames} ctx={ctx} props={shot.props} topPad={topPad} />
+                {punch ? (
+                  <AbsoluteFill
+                    style={{
+                      transform: `scale(${PUNCH_SCALE})`,
+                      transformOrigin: originFor(shot),
+                    }}
+                  >
+                    <Sequence from={-punch.lead} layout="none">
+                      {screen}
+                    </Sequence>
+                  </AbsoluteFill>
+                ) : (
+                  screen
+                )}
               </BackdropContext.Provider>
             </Transition>
           </Sequence>

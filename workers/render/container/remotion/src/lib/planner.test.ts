@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sampleReel } from './fixtures'
-import { chunkSpan, MAX_HOLD_S } from './planner'
+import { chunkSpan, identityOf, MAX_HOLD_S } from './planner'
 import { resolveShots, totalFrames, headlineEnd, headlineOf } from './timeline'
 import type { BrollClip, ReelProps } from './types'
 
@@ -55,10 +55,13 @@ describe('planner', () => {
     expect(avg).toBeLessThan(2.5)
   })
 
-  it('never repeats a screen back to back', () => {
+  it('never shows the same look twice in a row (only key points of another layout may follow each other)', () => {
     const { shots } = run(rich())
     shots.forEach((s, i) => {
-      if (i > 0) expect(s.show).not.toBe(shots[i - 1]!.show)
+      const prev = shots[i - 1]
+      if (!prev || s.show === 'RepoDemo' || s.props.punch) return
+      if (s.show !== 'KeyPoint') expect(s.show).not.toBe(prev.show)
+      expect(identityOf(s.show, s.props)).not.toBe(identityOf(prev.show, prev.props))
     })
   })
 

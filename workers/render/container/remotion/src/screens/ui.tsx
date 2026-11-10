@@ -47,6 +47,7 @@ export function Backdrop({ clip }: { clip: BrollClip }) {
       <AbsoluteFill style={{ opacity: BG_OPACITY }}>
         <OffthreadVideo
           src={staticFile(clip.src)}
+          startFrom={Math.round((clip.at ?? 0) * 30)}
           muted
           style={{
             width: '100%',
@@ -221,6 +222,7 @@ export function Photo({
   backdrop = true,
   pan = 0,
   keepInFrame = true,
+  backdropOnly = false,
 }: {
   image: ReelImage
   frames: number
@@ -236,6 +238,8 @@ export function Photo({
   pan?: number
   /** Contained images never zoom or pan past the frame edge, so no part of them is cut off. */
   keepInFrame?: boolean
+  /** Only the blurred, darkened fill (a backdrop behind other content), no sharp copy. */
+  backdropOnly?: boolean
 }) {
   const frame = useCurrentFrame()
   const p = easeOut(Math.min(1, frame / Math.max(1, frames)))
@@ -276,22 +280,24 @@ export function Photo({
           }}
         />
       ) : null}
-      <div
-        style={{
-          position: 'absolute',
-          left: (w - dw) / 2 + Math.max(-panLimit, Math.min(panLimit, pan * (p - 0.5))),
-          top: (h - dh) / 2,
-          width: dw,
-          height: dh,
-          transform: `scale(${1 + (zoom - 1) * p})`,
-          transformOrigin: cover.mode !== 'cover' && keepInFrame ? '50% 50%' : origin,
-          borderRadius: radius,
-          overflow: 'hidden',
-          boxShadow: cover.mode === 'cover' ? undefined : '0 30px 80px rgba(0,0,0,0.55)',
-        }}
-      >
-        <Img src={src} style={{ width: '100%', height: '100%', display: 'block' }} />
-      </div>
+      {backdropOnly ? null : (
+        <div
+          style={{
+            position: 'absolute',
+            left: (w - dw) / 2 + Math.max(-panLimit, Math.min(panLimit, pan * (p - 0.5))),
+            top: (h - dh) / 2,
+            width: dw,
+            height: dh,
+            transform: `scale(${1 + (zoom - 1) * p})`,
+            transformOrigin: cover.mode !== 'cover' && keepInFrame ? '50% 50%' : origin,
+            borderRadius: radius,
+            overflow: 'hidden',
+            boxShadow: cover.mode === 'cover' ? undefined : '0 30px 80px rgba(0,0,0,0.55)',
+          }}
+        >
+          <Img src={src} style={{ width: '100%', height: '100%', display: 'block' }} />
+        </div>
+      )}
     </div>
   )
 }
@@ -301,12 +307,15 @@ export function imageAt(ctx: ReelCtx, props: Record<string, unknown>): ReelImage
   return ctx.images[idx] ?? ctx.images[0]
 }
 
+/**
+ * Highlights `phrase` inside `text` with a marker stroke that draws in under the words. The text
+ * itself never changes colour, so no frame shows half a word hidden by the highlight.
+ */
 export function Sweep({
   text,
   phrase,
   frames,
   color = COLOR.accent,
-  ink = COLOR.accentInk,
   delay = 10,
 }: {
   text: string
@@ -320,7 +329,7 @@ export function Sweep({
   const at = phrase ? text.toLowerCase().indexOf(phrase.toLowerCase()) : -1
   if (!phrase || at < 0) return <>{text}</>
   const p = easeOut(
-    interpolate(frame, [delay, Math.max(delay + 1, frames * 0.55)], [0, 1], {
+    interpolate(frame, [delay, Math.max(delay + 1, frames * 0.45)], [0, 1], {
       extrapolateLeft: 'clamp',
       extrapolateRight: 'clamp',
     }),
@@ -330,13 +339,11 @@ export function Sweep({
       {text.slice(0, at)}
       <span
         style={{
-          backgroundImage: `linear-gradient(${color}, ${color})`,
+          color: COLOR.text,
+          backgroundImage: `linear-gradient(${color}66, ${color}66)`,
           backgroundRepeat: 'no-repeat',
-          backgroundSize: `${p * 100}% 100%`,
-          color: p > 0.5 ? ink : 'inherit',
-          borderRadius: 8,
-          padding: '0 6px',
-          margin: '0 -6px',
+          backgroundPosition: '0 88%',
+          backgroundSize: `${p * 100}% 38%`,
           boxDecorationBreak: 'clone',
           WebkitBoxDecorationBreak: 'clone',
         }}

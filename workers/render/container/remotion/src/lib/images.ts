@@ -83,3 +83,44 @@ export function focusOrigin(image: ReelImage | undefined, fallback: string): str
   const pct = (n: number) => Math.round(Math.min(0.9, Math.max(0.1, n)) * 100)
   return `${pct(f.x)}% ${pct(f.y)}%`
 }
+
+export type DemoBox = {
+  left: number
+  top: number
+  width: number
+  height: number
+  fullBleed: boolean
+}
+
+/** Side margin of a landscape demo: the whole clip stays visible, with room for a gentle push-in. */
+export const DEMO_MARGIN = 24
+
+/**
+ * Where the README demo plays: portrait clips go full-bleed; landscape and square clips are shown
+ * whole (never cropped: README UIs have text at the edges), as wide as the frame allows, centred in
+ * the zone between the top chrome and the captions so no caption ever sits on the clip.
+ */
+export function demoBox(
+  iw: number,
+  ih: number,
+  contentTop: number,
+  w = 1080,
+  h = 1920,
+  zoneBottom = Math.round(h * 0.58) - 24,
+): DemoBox {
+  if (ih > iw * 1.1) return { left: 0, top: 0, width: w, height: h, fullBleed: true }
+  const zone = Math.max(1, zoneBottom - contentTop)
+  let width = w - 2 * DEMO_MARGIN
+  let height = Math.round((width * ih) / iw)
+  if (height > zone) {
+    height = zone
+    width = Math.round((height * iw) / ih)
+  }
+  return {
+    left: Math.round((w - width) / 2),
+    top: contentTop + Math.round((zone - height) / 2),
+    width,
+    height,
+    fullBleed: false,
+  }
+}

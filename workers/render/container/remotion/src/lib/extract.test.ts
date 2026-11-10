@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { findNumbers, headlineFrom, keyPhraseIn, salientPhrase, shellLines, versusPair } from './extract'
+import {
+  findNumbers,
+  headlineFrom,
+  keyPhraseIn,
+  salientPhrase,
+  shellLines,
+  versusPair,
+} from './extract'
 
 describe('findNumbers', () => {
   it('finds numbers with units and counts next to nouns', () => {
     expect(findNumbers('Anthropic shipped 23 releases this month')[0]?.raw).toBe('23')
-    expect(findNumbers('Anthropic shipped 23 releases this month')[0]?.label).toBe('releases this month')
+    expect(findNumbers('Anthropic shipped 23 releases this month')[0]?.label).toBe(
+      'releases this month',
+    )
     expect(findNumbers('about 95% of memory is idle')[0]?.raw).toBe('95%')
     expect(findNumbers('gains of up to +6.1% on coding')[0]?.raw).toContain('6.1%')
     expect(findNumbers('uses ~250 GB of memory')[0]?.raw).toBe('~250 GB')
@@ -18,10 +27,12 @@ describe('findNumbers', () => {
 
 describe('headlineFrom', () => {
   it('takes the first sentence in at most 7 words with no dangling stopword', () => {
-    expect(headlineFrom('Did you miss the latest Claude Code updates? Anthropic shipped 23 releases.')).toBe(
-      'Did you miss the latest Claude Code',
+    expect(
+      headlineFrom('Did you miss the latest Claude Code updates? Anthropic shipped 23 releases.'),
+    ).toBe('Did you miss the latest Claude Code')
+    expect(headlineFrom('Want faster 3D reconstruction? Feed-forward is efficient')).toBe(
+      'Want faster 3D reconstruction?',
     )
-    expect(headlineFrom('Want faster 3D reconstruction? Feed-forward is efficient')).toBe('Want faster 3D reconstruction?')
   })
   it('never returns empty for a short hook', () => {
     expect(headlineFrom('Meet unslop')).toBe('Meet unslop')

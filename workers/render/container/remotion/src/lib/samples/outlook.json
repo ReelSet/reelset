@@ -1,0 +1,278 @@
+{
+  "durationSeconds": 49.388,
+  "title": "Outlook.com Is Quietly Rejecting Email from Domains Without DMARC",
+  "source": "hn",
+  "sourceLabel": "Hacker News",
+  "domain": "mailroute.net",
+  "scenes": [
+    {
+      "kind": "hook",
+      "start": 0.0,
+      "end": 4.8,
+      "text": "Outlook.com is quietly rejecting emails from domains without DMARC records."
+    },
+    {
+      "kind": "beat",
+      "start": 4.8,
+      "end": 19.785,
+      "text": "Since November 5, 2026, Microsoft's consumer mail service has been rejecting emails. This affects mail to outlook.com, hotmail.com, live.com, or msn.com addresses if your domain lacks DMARC.",
+      "visual": { "type": "stat", "label": "Emails Rejected Since", "value": "Nov 5, 2026" },
+      "shots": [
+        {
+          "at": "addresses",
+          "show": "KeyPoint",
+          "props": { "text": "Affects @outlook.com, @hotmail.com, @live.com, @msn.com" },
+          "t": 17.305
+        }
+      ]
+    },
+    {
+      "kind": "beat",
+      "start": 19.785,
+      "end": 26.985,
+      "text": "This change was unannounced, causing problems for many. Developers and companies are now scrambling to mitigate bounced emails.",
+      "visual": { "type": "quote", "text": "Nobody announced it.", "attribution": "mailroute.net" },
+      "shots": [
+        {
+          "at": "unannounced",
+          "show": "KeyPoint",
+          "props": { "text": "No Official Announcement" },
+          "t": 20.745
+        },
+        {
+          "at": "bounced",
+          "show": "KeyPoint",
+          "props": { "text": "Emails are Bouncing" },
+          "t": 25.865
+        }
+      ]
+    },
+    {
+      "kind": "beat",
+      "start": 26.985,
+      "end": 35.01,
+      "text": "DMARC prevents spoofing, phishing, and business email compromise. Authenticated domains are much harder to impersonate.",
+      "visual": {
+        "type": "title",
+        "title": "Why DMARC Matters",
+        "subtitle": "Prevents email fraud"
+      },
+      "shots": [
+        {
+          "at": "spoofing",
+          "show": "KeyPoint",
+          "props": { "text": "Prevents Spoofing & Phishing" },
+          "t": 28.105
+        },
+        {
+          "at": "impersonate",
+          "show": "KeyPoint",
+          "props": { "text": "Authenticates Your Domain" },
+          "t": 34.05
+        }
+      ]
+    },
+    {
+      "kind": "beat",
+      "start": 35.01,
+      "end": 42.13,
+      "text": "The fix is one DNS record. DMARC passes if SPF or DKIM aligns with your From address domain.",
+      "visual": { "type": "code", "language": "dns", "code": "v=DMARC1; p=none;" },
+      "shots": [
+        {
+          "at": "DNS",
+          "show": "CodeBlock",
+          "props": { "code": "v=DMARC1; p=none;", "language": "dns" },
+          "t": 35.97
+        },
+        {
+          "at": "aligns",
+          "show": "KeyPoint",
+          "props": { "text": "Requires SPF or DKIM Alignment" },
+          "t": 39.73
+        }
+      ]
+    },
+    {
+      "kind": "outro",
+      "start": 42.13,
+      "end": 49.388,
+      "text": "DMARC at p=none is now the baseline for major mailbox providers. Add your DMARC record today."
+    }
+  ],
+  "words": [
+    { "text": "Outlook.com", "start": 0.0, "end": 1.04 },
+    { "text": "is", "start": 1.04, "end": 1.28 },
+    { "text": "quietly", "start": 1.28, "end": 1.68 },
+    { "text": "rejecting", "start": 1.68, "end": 2.24 },
+    { "text": "emails", "start": 2.24, "end": 2.56 },
+    { "text": "from", "start": 2.56, "end": 2.88 },
+    { "text": "domains", "start": 2.88, "end": 3.28 },
+    { "text": "without", "start": 3.28, "end": 3.6 },
+    { "text": "DMARC", "start": 3.6, "end": 4.08 },
+    { "text": "records.", "start": 4.08, "end": 4.8 },
+    { "text": "Since", "start": 5.04, "end": 5.36 },
+    { "text": "November", "start": 5.36, "end": 5.76 },
+    { "text": "5,", "start": 5.76, "end": 6.267 },
+    { "text": "2026,", "start": 6.267, "end": 7.28 },
+    { "text": "Microsoft's", "start": 7.36, "end": 8.16 },
+    { "text": "consumer", "start": 8.16, "end": 8.56 },
+    { "text": "mail", "start": 8.56, "end": 8.88 },
+    { "text": "service", "start": 8.88, "end": 9.2 },
+    { "text": "has", "start": 9.2, "end": 9.44 },
+    { "text": "been", "start": 9.44, "end": 9.6 },
+    { "text": "rejecting", "start": 9.6, "end": 10.08 },
+    { "text": "emails.", "start": 10.08, "end": 10.88 },
+    { "text": "This", "start": 11.12, "end": 11.44 },
+    { "text": "affects", "start": 11.44, "end": 11.76 },
+    { "text": "mail", "start": 11.76, "end": 12.08 },
+    { "text": "to", "start": 12.08, "end": 12.32 },
+    { "text": "outlook.com,", "start": 12.32, "end": 13.562 },
+    { "text": "hotmail.com,", "start": 13.562, "end": 14.804 },
+    { "text": "live.com,", "start": 14.804, "end": 15.76 },
+    { "text": "or", "start": 15.945, "end": 16.265 },
+    { "text": "msn.com", "start": 16.265, "end": 17.305 },
+    { "text": "addresses", "start": 17.305, "end": 17.865 },
+    { "text": "if", "start": 17.865, "end": 18.185 },
+    { "text": "your", "start": 18.185, "end": 18.345 },
+    { "text": "domain", "start": 18.345, "end": 18.665 },
+    { "text": "lacks", "start": 18.665, "end": 19.065 },
+    { "text": "DMARC.", "start": 19.065, "end": 19.785 },
+    { "text": "This", "start": 19.945, "end": 20.265 },
+    { "text": "change", "start": 20.265, "end": 20.505 },
+    { "text": "was", "start": 20.505, "end": 20.745 },
+    { "text": "unannounced,", "start": 20.745, "end": 21.465 },
+    { "text": "causing", "start": 21.465, "end": 21.785 },
+    { "text": "problems", "start": 21.785, "end": 22.185 },
+    { "text": "for", "start": 22.185, "end": 22.345 },
+    { "text": "many.", "start": 22.345, "end": 22.905 },
+    { "text": "Developers", "start": 23.225, "end": 23.865 },
+    { "text": "and", "start": 23.865, "end": 24.025 },
+    { "text": "companies", "start": 24.025, "end": 24.425 },
+    { "text": "are", "start": 24.425, "end": 24.585 },
+    { "text": "now", "start": 24.585, "end": 24.825 },
+    { "text": "scrambling", "start": 24.825, "end": 25.305 },
+    { "text": "to", "start": 25.305, "end": 25.465 },
+    { "text": "mitigate", "start": 25.465, "end": 25.865 },
+    { "text": "bounced", "start": 25.865, "end": 26.265 },
+    { "text": "emails.", "start": 26.265, "end": 26.985 },
+    { "text": "DMARC", "start": 27.225, "end": 27.785 },
+    { "text": "prevents", "start": 27.785, "end": 28.105 },
+    { "text": "spoofing,", "start": 28.105, "end": 28.745 },
+    { "text": "phishing,", "start": 28.745, "end": 29.65 },
+    { "text": "and", "start": 29.65, "end": 29.97 },
+    { "text": "business", "start": 29.97, "end": 30.37 },
+    { "text": "email", "start": 30.37, "end": 30.77 },
+    { "text": "compromise.", "start": 30.77, "end": 31.57 },
+    { "text": "Authenticated", "start": 31.89, "end": 32.69 },
+    { "text": "domains", "start": 32.69, "end": 33.09 },
+    { "text": "are", "start": 33.09, "end": 33.41 },
+    { "text": "much", "start": 33.41, "end": 33.57 },
+    { "text": "harder", "start": 33.57, "end": 33.89 },
+    { "text": "to", "start": 33.89, "end": 34.05 },
+    { "text": "impersonate.", "start": 34.05, "end": 35.01 },
+    { "text": "The", "start": 35.17, "end": 35.33 },
+    { "text": "fix", "start": 35.33, "end": 35.57 },
+    { "text": "is", "start": 35.57, "end": 35.81 },
+    { "text": "one", "start": 35.81, "end": 35.97 },
+    { "text": "DNS", "start": 35.97, "end": 36.45 },
+    { "text": "record.", "start": 36.45, "end": 37.17 },
+    { "text": "DMARC", "start": 37.33, "end": 37.89 },
+    { "text": "passes", "start": 37.89, "end": 38.21 },
+    { "text": "if", "start": 38.21, "end": 38.45 },
+    { "text": "SPF", "start": 38.45, "end": 39.01 },
+    { "text": "or", "start": 39.01, "end": 39.25 },
+    { "text": "DKIM", "start": 39.25, "end": 39.73 },
+    { "text": "aligns", "start": 39.73, "end": 40.13 },
+    { "text": "with", "start": 40.13, "end": 40.29 },
+    { "text": "your", "start": 40.29, "end": 40.45 },
+    { "text": "From", "start": 40.45, "end": 41.01 },
+    { "text": "address", "start": 41.01, "end": 41.41 },
+    { "text": "domain.", "start": 41.41, "end": 42.13 },
+    { "text": "DMARC", "start": 42.37, "end": 42.85 },
+    { "text": "at", "start": 42.693, "end": 42.933 },
+    { "text": "p=none", "start": 42.933, "end": 43.813 },
+    { "text": "is", "start": 43.813, "end": 44.053 },
+    { "text": "now", "start": 44.053, "end": 44.293 },
+    { "text": "the", "start": 44.293, "end": 44.453 },
+    { "text": "baseline", "start": 44.453, "end": 44.853 },
+    { "text": "for", "start": 44.853, "end": 45.093 },
+    { "text": "major", "start": 45.093, "end": 45.493 },
+    { "text": "mailbox", "start": 45.493, "end": 45.973 },
+    { "text": "providers.", "start": 45.973, "end": 46.853 },
+    { "text": "Add", "start": 47.253, "end": 47.493 },
+    { "text": "your", "start": 47.493, "end": 47.653 },
+    { "text": "DMARC", "start": 47.653, "end": 48.133 },
+    { "text": "record", "start": 48.133, "end": 48.453 },
+    { "text": "today.", "start": 48.453, "end": 48.853 }
+  ],
+  "audio": "job/narration.mp3",
+  "headline": "OUTLOOK REJECTING EMAILS WITHOUT DMARC",
+  "facts": {
+    "hn": { "points": 521, "comments": 347, "author": "xmddmx" },
+    "reddit": { "subreddit": "selfhosted", "upvotes": 1, "comments": 1, "author": "LogicalDirect" },
+    "article": { "site": "mailroute.net" }
+  },
+  "claims": [
+    "Outlook.com is rejecting email from domains without DMARC records.",
+    "Since November 5, 2026, Microsoft's consumer mail service has been turning away some email from domains that don't publish a DMARC record.",
+    "This affects mail sent to outlook.com, hotmail.com, live.com, or msn.com addresses.",
+    "The change was unannounced.",
+    "DMARC helps prevent spoofing, phishing, and business email compromise.",
+    "A domain that authenticates is much harder to impersonate.",
+    "The fix is one DNS record.",
+    "DMARC passes only when SPF or DKIM passes for the domain in your From address.",
+    "DMARC at p=none is now the baseline for major mailbox providers."
+  ],
+  "images": [
+    {
+      "src": "job/img0.jpg",
+      "kind": "og",
+      "width": 1200,
+      "height": 630,
+      "alt": "MailRoute \u2014 Cloud Email Security"
+    }
+  ],
+  "broll": [
+    {
+      "src": "job/broll0.mp4",
+      "seconds": 6.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 1,
+      "creator": "Tima Miroshnichenko",
+      "creatorUrl": "https://www.pexels.com/@tima-miroshnichenko",
+      "pageUrl": "https://www.pexels.com/video/close-up-view-of-a-person-s-fingers-using-an-apple-keyboard-for-typing-5647324/"
+    },
+    {
+      "src": "job/broll1.mp4",
+      "seconds": 5.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 2,
+      "creator": "Pavel Danilyuk",
+      "creatorUrl": "https://www.pexels.com/@pavel-danilyuk",
+      "pageUrl": "https://www.pexels.com/video/a-man-typing-on-his-keyboard-8003418/"
+    },
+    {
+      "src": "job/broll2.mp4",
+      "seconds": 6.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 3,
+      "creator": "Hanna Pad",
+      "creatorUrl": "https://www.pexels.com/@anna-nekrashevich",
+      "pageUrl": "https://www.pexels.com/video/a-black-and-white-photo-of-a-woman-typing-on-a-laptop-6799745/"
+    },
+    {
+      "src": "job/broll3.mp4",
+      "seconds": 6.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 4,
+      "creator": "Diyorbek Mirzamakhmudov",
+      "creatorUrl": "https://www.pexels.com/@diyorbek-mirzamakhmudov-706176427",
+      "pageUrl": "https://www.pexels.com/video/a-person-typing-on-a-laptop-keyboard-27385370/"
+    }
+  ]
+}
