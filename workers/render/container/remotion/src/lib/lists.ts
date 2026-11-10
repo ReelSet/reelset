@@ -35,7 +35,16 @@ function headItem(seg: string, max: number): string | null {
  * "spoofing, phishing, and business email compromise") with the words that introduce it.
  */
 export function listIn(sentence: string): SpokenList | null {
-  const segs = sentence.replace(/[.!?]+$/, '').split(/,\s*/)
+  const raw = sentence.replace(/[.!?]+$/, '').split(/,\s*/)
+  // "Flux, Qwen and SDXL" (no serial comma): the last segment holds two items.
+  const segs = raw.flatMap((seg, k) => {
+    const m = k > 0 ? /^(.+?)\s+((?:and|or)\s+.+)$/i.exec(seg) : null
+    if (!m?.[1] || !m[2] || /^(?:and|or)\s/i.test(seg)) return [seg]
+    const left = tokens(m[1])
+    // Only names ("Qwen", "msn.com"): lower-case words here are usually verbs ("fixes and explores").
+    const nouns = left.every((w) => isItemWord(w) && !isVerbForm(w) && /^[A-Z0-9]|\./.test(w))
+    return left.length > 0 && left.length <= 3 && nouns ? [m[1], m[2]] : [seg]
+  })
   for (let i = 0; i + 2 < segs.length; i += 1) {
     const middle: string[] = []
     let j = i + 1
@@ -53,7 +62,8 @@ export function listIn(sentence: string): SpokenList | null {
     if (short && nameLike(middle[0]!)) last = last.split(' ')[0]!
     const items = [first.item, ...middle, last]
     if (items.length < 3) continue
-    const kicker = claimTokensOf(first.head).join(' ')
+    // The words that introduce the items ("image models like"), never a whole clause.
+    const kicker = claimTokensOf(first.head).slice(-4).join(' ')
     return { kicker: kicker.charAt(0).toUpperCase() + kicker.slice(1), items }
   }
   return null
@@ -83,10 +93,37 @@ export function itemTimes(
   return { times, end }
 }
 
+export type ListPiece = { from: number; to: number; first: number; last: number }
+
 /**
- * Spoken lists become one list card that fills in as each item is said (same layout for every
- * item, cut on the voice), replacing whatever was planned over them. Longer than 4 s, it splits at
- * an item into two cards; the second starts with the items already said.
+ * Cards for a list said over `[start, end)` with items starting at `times`, none held over 4 s:
+ * one card; for three items or fewer one card over the last 4 s (items said before it start lit);
+ * else two cards that each show their own items, so the cut is a new card, not the same again.
+ */
+export function listPieces(
+  start: number,
+  end: number,
+  times: readonly number[],
+): ListPiece[] | null {
+  const n = times.length
+  if (end - start < 1.2) return null
+  if (end - start <= MAX_HOLD_S) return [{ from: start, to: end, first: 0, last: n }]
+  if (n <= 3 || end - times[0]! <= MAX_HOLD_S - 0.1)
+    return [{ from: end - MAX_HOLD_S, to: end, first: 0, last: n }]
+  const mid = Math.min(n - 2, Math.max(1, Math.ceil(n / 2)))
+  if (mid < 1) return null
+  const split = times[mid]! - 0.1
+  const from = Math.max(start, split - MAX_HOLD_S)
+  if (end - split > MAX_HOLD_S || split - from < 1 || times[0]! < from) return null
+  return [
+    { from, to: split, first: 0, last: mid },
+    { from: split, to: end, first: mid, last: n },
+  ]
+}
+
+/**
+ * Spoken lists become list cards that fill in as each item is said (same layout for every item,
+ * cut on the voice), replacing whatever was planned over them; see `listPieces` for long lists.
  */
 export function revealLists(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
   let out = [...shots]
@@ -100,29 +137,29 @@ export function revealLists(shots: TimedShot[], props: ReelProps, fps: number): 
       const kickerWords = tokens(list.kicker).length
       const firstIdx = props.words.findIndex((w) => w.start >= at.times[0]! - 0.01)
       const lead = props.words[Math.max(0, firstIdx - Math.min(kickerWords, 3))]
-      const start = Math.max(lead?.start ?? at.times[0]!, at.times[0]! - 1.2)
       const end = at.end + 0.25
-      if (end - start < 1.2) continue
-      const pieces: { from: number; to: number; first: number }[] = []
-      if (end - start <= MAX_HOLD_S) pieces.push({ from: start, to: end, first: 0 })
-      else {
-        const mid = at.times.findIndex((t) => t - start > (end - start) / 2)
-        const split = mid > 0 ? at.times[mid]! : start + (end - start) / 2
-        if (split - start > MAX_HOLD_S || end - split > MAX_HOLD_S) continue
-        pieces.push({ from: start, to: split, first: 0 }, { from: split, to: end, first: mid })
-      }
-      const made: TimedShot[] = pieces.map((p) => {
+      const pieces = listPieces(
+        Math.max(lead?.start ?? at.times[0]!, at.times[0]! - 1.2),
+        end,
+        at.times,
+      )
+      if (!pieces) continue
+      const made: TimedShot[] = pieces.map((p, k) => {
         const from = Math.round(p.from * fps)
         return {
           from,
           frames: Math.round(p.to * fps) - from,
           show: 'KeyPoint',
           props: {
-            items: list.items,
+            items: list.items.slice(p.first, p.last),
             kicker: list.kicker,
-            times: at.times.map((t) => Math.round((t - p.from) * 100) / 100),
+            times: at.times
+              .slice(p.first, p.last)
+              .map((t) => Math.max(0, Math.round((t - p.from) * 100) / 100)),
             text: '',
             sub: '',
+            // The second card of a long list uses the other layout: a cut, not the same card again.
+            ...(k > 0 ? { layout: 1 } : {}),
           },
           sceneIndex,
           origin: 'planned',
@@ -156,4 +193,32 @@ export function spliceShots(shots: TimedShot[], made: TimedShot[], fps: number):
     const next = merged[i + 1]
     return next ? { ...s, frames: next.from - s.from } : s
   })
+}
+
+/**
+ * Type size for a list card: as large as fits (at most 120 px), items may wrap between words but a
+ * word never breaks or crosses the frame, and the rows fit `height`.
+ */
+export function listSize(items: readonly string[], width: number, height: number): number {
+  const charW = 0.64
+  const words = items.flatMap((i) => i.split(/\s+/))
+  const widest = Math.max(1, ...words.map((w) => w.length))
+  for (let size = 120; size > 40; size -= 2) {
+    if (widest * charW * size > width) continue
+    const perLine = Math.max(1, Math.floor(width / (size * charW)))
+    const lines = items.reduce((n, item) => {
+      let rows = 1
+      let used = 0
+      for (const w of item.split(/\s+/)) {
+        const need = w.length + (used > 0 ? 1 : 0)
+        if (used + need > perLine && used > 0) {
+          rows += 1
+          used = w.length
+        } else used += need
+      }
+      return n + rows
+    }, 0)
+    if (lines * size * 1.05 + items.length * size * 0.45 <= height) return size
+  }
+  return 40
 }

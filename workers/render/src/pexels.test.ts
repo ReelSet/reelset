@@ -65,6 +65,26 @@ describe('terms', () => {
       termsForBeat({ text: 'x', broll: ['circuit board', 'Kubernetes'] }, 'news', 'Other'),
     ).toEqual(['circuit board'])
   })
+
+  it('puts the topic before tooling: an email story gets mail footage first', () => {
+    const terms = termsForBeat(
+      { text: 'Outlook is rejecting emails from domains without a DMARC record.' },
+      'hn',
+      'Outlook.com rejects email',
+    )
+    expect(terms[0]).toBe('email inbox')
+    expect(terms).toContain('network cables')
+    expect(terms).not.toContain('keyboard typing')
+    expect(termsForBeat({ text: 'DMARC prevents spoofing and phishing.' }, 'hn', 't')).toContain(
+      'cyber security',
+    )
+  })
+
+  it('reads a bare "domain" as a data domain, not DNS', () => {
+    const beat = { text: 'Distillation consolidates domain experts across all domains.' }
+    expect(termsForBeat(beat, 'papers', 't')).not.toContain('network cables')
+    expect(termsForBeat({ text: 'Add a DNS TXT record.' }, 'hn', 't')).toContain('network cables')
+  })
 })
 
 describe('file selection', () => {
@@ -78,6 +98,14 @@ describe('file selection', () => {
     ])
     expect(f?.width).toBe(1080)
     expect(pickFile([file(720, 1280), file(1920, 1080)])).toBeNull()
+  })
+
+  it('skips files the container would refuse for size', () => {
+    const big = { ...file(1080, 1920), size: 68_000_000 }
+    const ok = { ...file(1440, 2560), size: 20_000_000 }
+    expect(pickFile([big, ok])?.width).toBe(1440)
+    expect(pickFile([big])).toBeNull()
+    expect(slimVideos([video(1, 10, [big])])).toEqual([])
   })
 
   it('drops videos without a usable file or credit', () => {
@@ -151,6 +179,19 @@ describe('pickBroll', () => {
       creator: expect.stringContaining('Creator'),
       pageUrl: expect.stringContaining('pexels.com/video'),
     })
+  })
+
+  it('searches a term an earlier beat used only after the fresh ones', async () => {
+    const cache = new MemCache()
+    const fetch = fakeFetch({
+      'email inbox': [video(1), video(2)],
+      'envelope letters': [video(3)],
+    })
+    const mail = [{ text: 'Mail bounces.' }, { text: 'More mail bounces.' }]
+    const picks = await pickBroll({ apiKey: 'k', fetch, cache, log: silentLog }, mail, ctx)
+    expect(picks.map((p) => p.id)).toEqual([1, 3])
+    const queries = fetch.mock.calls.map((c) => new URL(c[0]).searchParams.get('query'))
+    expect(queries[1]).toBe('envelope letters')
   })
 
   it('prefers clips used less in earlier reels', async () => {

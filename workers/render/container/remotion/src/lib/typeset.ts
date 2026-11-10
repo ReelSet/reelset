@@ -88,5 +88,12 @@ export function fitWords(
 
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7)
 
-/** KeyPoint layout (0 left, 1 uppercase, 2 right-aligned), a pure function of its text. */
-export const styleOf = (text: string): number => hash(text.replace(/\s+/g, ' ').trim()) % 3
+/**
+ * KeyPoint layout (0 left, 1 uppercase, 2 right-aligned), a pure function of its text. Uppercase
+ * only when its longest word stays short: a long uppercase word forces small type in a big frame.
+ */
+export const styleOf = (text: string): number => {
+  const t = text.replace(/\s+/g, ' ').trim()
+  const style = hash(t) % 3
+  return style === 1 && longestWord(t) > 9 ? 0 : style
+}

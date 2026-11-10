@@ -4,7 +4,12 @@ const LEAD = '(?:sudo\\s+)?'
 const PKG_FLAGS = '(?:-\\S+\\s+)*'
 
 function lastSegment(url: string): string {
-  const seg = url.replace(/[?#].*$/, '').replace(/\/+$/, '').split(/[/:]/).pop() ?? ''
+  const seg =
+    url
+      .replace(/[?#].*$/, '')
+      .replace(/\/+$/, '')
+      .split(/[/:]/)
+      .pop() ?? ''
   return seg.replace(/\.git$/, '')
 }
 
@@ -14,11 +19,21 @@ export function outputFor(cmd: string): string[] {
   const clone = new RegExp(`^${LEAD}git clone\\s+(?:-\\S+\\s+)*(\\S+)(?:\\s+(\\S+))?`).exec(c)
   if (clone?.[1]) {
     const dir = clone[2] ?? lastSegment(clone[1])
-    return [`Cloning into '${dir}'...`, 'Receiving objects: 100%, done.', 'Resolving deltas: 100%, done.']
+    return [
+      `Cloning into '${dir}'...`,
+      'Receiving objects: 100%, done.',
+      'Resolving deltas: 100%, done.',
+    ]
   }
   const pip = new RegExp(`^${LEAD}(?:pip3?|pipx|uv pip) install\\s+${PKG_FLAGS}(\\S+)`).exec(c)
-  if (pip?.[1]) return [`Collecting ${pip[1]}`, `Installing collected packages: ${pip[1]}`, `Successfully installed ${pip[1]}`]
-  if (/^(?:npm|pnpm|yarn|bun)\s+(?:i|install|add)\b/.test(c)) return ['Installing dependencies...', 'Done.']
+  if (pip?.[1])
+    return [
+      `Collecting ${pip[1]}`,
+      `Installing collected packages: ${pip[1]}`,
+      `Successfully installed ${pip[1]}`,
+    ]
+  if (/^(?:npm|pnpm|yarn|bun)\s+(?:i|install|add)\b/.test(c))
+    return ['Installing dependencies...', 'Done.']
   const npx = /^(?:npx|bunx|pnpm dlx)\s+(?:-\S+\s+)*(\S+)/.exec(c)
   if (npx?.[1]) return ['Need to install the following packages:', npx[1], 'Ok to proceed? (y) y']
   const cargo = new RegExp(`^cargo install\\s+${PKG_FLAGS}(\\S+)`).exec(c)
@@ -43,7 +58,10 @@ export function buildSession(
   given: readonly string[],
   repo: { owner?: string; name?: string; latestRelease?: string },
 ): SessionRow[] {
-  const cmds = given.map((c) => c.trim()).filter(Boolean).slice(0, 4)
+  const cmds = given
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .slice(0, 4)
   if (cmds.length === 0 && repo.name) {
     const dir = repo.name
     cmds.push(`git clone https://github.com/${repo.owner ?? 'owner'}/${dir}`, `cd ${dir}`)

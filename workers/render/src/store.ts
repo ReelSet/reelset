@@ -19,7 +19,7 @@ import {
 import { RETRYABLE_FAILURE_CODES } from './errors'
 import { buildFacts, type ItemFacts } from './facts'
 import { parseDemo, type ItemDemo } from './demo'
-import { sourceLabel } from './plan'
+import { primarySource, sourceLabel } from './plan'
 
 export type ItemForRender = {
   id: string
@@ -119,6 +119,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         .limit(12)
         .execute()
       const mention = mentions[0]
+      const source = primarySource((mention?.source ?? null) as Source | null, item.canonical_url)
       return {
         id: item.id,
         title: item.title,
@@ -126,8 +127,8 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         script: item.script,
         contentHash: item.content_hash,
         promptVersion: item.prompt_version,
-        sourceLabel: sourceLabel((mention?.source ?? null) as Source | null),
-        source: (mention?.source ?? null) as Source | null,
+        sourceLabel: sourceLabel(source),
+        source,
         canonicalUrl: item.canonical_url,
         mentionUrl: mention?.url ?? null,
         images: parseItemImages(item.images),

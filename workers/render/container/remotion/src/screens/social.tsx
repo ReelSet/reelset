@@ -2,9 +2,22 @@ import { Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
 import { Pop, Rise } from '../fx'
 import { clipWords } from '../lib/table'
 import { estimateLines, fitText, sentencesUpTo } from '../lib/text'
-import { COLOR, CONTENT_TOP, CONTENT_W, FONT, H, LOW_TOP, SAFE, W, ZONE_BOTTOM } from '../theme'
+import {
+  COLOR,
+  CONTENT_TOP,
+  CONTENT_W,
+  FONT,
+  H,
+  LOW_TOP,
+  PANEL_TOP,
+  SAFE,
+  W,
+  ZONE_BOTTOM,
+  ZONE_H,
+} from '../theme'
 import {
   Chip,
+  Fit,
   Page,
   Photo,
   compact,
@@ -92,19 +105,22 @@ function QuoteCard({
   const size = fitText(body, box, opts)
   return (
     <>
-      <div
-        style={{
-          fontSize: 36,
-          color: COLOR.muted,
-          fontWeight: 600,
-          lineHeight: 1.25,
-          maxHeight: 92,
-          overflow: 'hidden',
-        }}
-      >
-        {title}
-      </div>
-      <Pop delay={4} style={{ marginTop: 40 }}>
+      {title ? (
+        <div
+          style={{
+            fontSize: 36,
+            color: COLOR.muted,
+            fontWeight: 600,
+            lineHeight: 1.25,
+            maxHeight: 92,
+            overflow: 'hidden',
+            marginBottom: 40,
+          }}
+        >
+          {title}
+        </div>
+      ) : null}
+      <Pop delay={4}>
         <div
           style={{
             borderLeft: `10px solid ${color}`,
@@ -170,13 +186,14 @@ export function HNThread({ frames, ctx, props, topPad }: ScreenProps) {
     </div>
   )
   const pad = { padding: `54px ${SAFE.right}px 0 ${SAFE.left}px` }
+  const room = ZONE_BOTTOM - (PANEL_TOP + topPad + 124 + 54)
   return (
     <Page frames={frames} tint={COLOR.hn} topPad={topPad} bleed>
       <div
         style={{
           position: 'absolute',
           left: 0,
-          top: CONTENT_TOP + topPad - 28,
+          top: PANEL_TOP + topPad,
           width: W,
           bottom: 0,
           background: '#16161a',
@@ -185,67 +202,75 @@ export function HNThread({ frames, ctx, props, topPad }: ScreenProps) {
         {header}
         {variant === 'comment' && comment ? (
           <div style={pad}>
-            <QuoteCard
-              quote={comment}
-              by={by}
-              color={COLOR.hn}
-              title={ctx.title}
-              room={ZONE_BOTTOM - CONTENT_TOP - topPad - 150}
-            />
+            <Fit maxHeight={room}>
+              <QuoteCard quote={comment} by={by} color={COLOR.hn} title="" room={room + 150} />
+            </Fit>
           </div>
         ) : variant === 'stats' && (hn?.points !== undefined || hn?.comments !== undefined) ? (
           <div style={pad}>
-            <div
-              style={{
-                fontSize: 38,
-                color: COLOR.muted,
-                fontWeight: 600,
-                lineHeight: 1.25,
-                maxHeight: 96,
-                overflow: 'hidden',
-              }}
-            >
-              {ctx.title}
-            </div>
-            <div style={{ marginTop: 70, display: 'flex', flexDirection: 'column', gap: 36 }}>
-              {hn?.points !== undefined ? (
-                <CountZoom value={hn.points} noun="points" color={COLOR.hn} />
-              ) : null}
-              {hn?.comments !== undefined ? (
-                <CountZoom value={hn.comments} noun="comments" color={COLOR.text} delay={6} />
-              ) : null}
-            </div>
-            {hn?.author ? (
-              <div style={{ marginTop: 40, fontSize: 40, color: COLOR.muted, fontWeight: 600 }}>
-                posted by {hn.author}
+            <Fit maxHeight={room}>
+              <div
+                style={{
+                  fontSize: 38,
+                  color: COLOR.muted,
+                  fontWeight: 600,
+                  lineHeight: 1.25,
+                  maxHeight: 96,
+                  overflow: 'hidden',
+                }}
+              >
+                {ctx.title}
               </div>
-            ) : null}
+              <div style={{ marginTop: 70, display: 'flex', flexDirection: 'column', gap: 36 }}>
+                {hn?.points !== undefined ? (
+                  <CountZoom value={hn.points} noun="points" color={COLOR.hn} />
+                ) : null}
+                {hn?.comments !== undefined ? (
+                  <CountZoom value={hn.comments} noun="comments" color={COLOR.text} delay={6} />
+                ) : null}
+              </div>
+              {hn?.author ? (
+                <div style={{ marginTop: 40, fontSize: 40, color: COLOR.muted, fontWeight: 600 }}>
+                  posted by {hn.author}
+                </div>
+              ) : null}
+            </Fit>
           </div>
         ) : (
           <div style={pad}>
-            <Rise>
-              <div style={{ display: 'flex', gap: 28 }}>
-                <div style={{ color: COLOR.hn, fontSize: 64, lineHeight: 1, paddingTop: 6 }}>▲</div>
-                <div
-                  style={{
-                    fontSize: size,
-                    fontWeight: 700,
-                    lineHeight: 1.12,
-                    letterSpacing: '-0.025em',
-                  }}
-                >
-                  {ctx.title}
+            <Fit maxHeight={room}>
+              <Rise>
+                <div style={{ display: 'flex', gap: 28 }}>
+                  <div style={{ color: COLOR.hn, fontSize: 64, lineHeight: 1, paddingTop: 6 }}>
+                    ▲
+                  </div>
+                  <div
+                    style={{
+                      fontSize: size,
+                      fontWeight: 700,
+                      lineHeight: 1.12,
+                      letterSpacing: '-0.025em',
+                    }}
+                  >
+                    {ctx.title}
+                  </div>
                 </div>
-              </div>
-            </Rise>
-            <div style={{ marginTop: 26, paddingLeft: 92 }}>
-              <Meta>
-                <span>{ctx.domain}</span>
-                {hn?.points !== undefined ? (
-                  <b style={{ color: COLOR.hn }}>{grouped(hn.points)} points</b>
+              </Rise>
+              <div style={{ marginTop: 26, paddingLeft: 92 }}>
+                <Meta>
+                  <span>{ctx.domain}</span>
+                  {hn?.points !== undefined ? (
+                    <b style={{ color: COLOR.hn }}>{grouped(hn.points)} points</b>
+                  ) : null}
+                  {hn?.comments !== undefined ? <span>{grouped(hn.comments)} comments</span> : null}
+                </Meta>
+                {hn?.author ? (
+                  <div style={{ marginTop: 18, fontSize: 34, color: COLOR.dim, fontWeight: 600 }}>
+                    by {hn.author}
+                  </div>
                 ) : null}
-              </Meta>
-            </div>
+              </div>
+            </Fit>
           </div>
         )}
       </div>
@@ -299,83 +324,89 @@ export function RedditPost({ frames, ctx, props, topPad }: ScreenProps) {
   if (variant === 'comment' && quote) {
     return (
       <Page frames={frames} tint={COLOR.reddit} topPad={topPad}>
-        {sub}
-        <div style={{ marginTop: 36 }}>
-          <QuoteCard
-            quote={quote}
-            by={by}
-            color={COLOR.reddit}
-            title={ctx.title}
-            room={ZONE_BOTTOM - CONTENT_TOP - topPad - 150}
-          />
-        </div>
+        <Fit maxHeight={ZONE_H - topPad}>
+          {sub}
+          <div style={{ marginTop: 36 }}>
+            <QuoteCard
+              quote={quote}
+              by={by}
+              color={COLOR.reddit}
+              title={ctx.title}
+              room={ZONE_BOTTOM - CONTENT_TOP - topPad - 150}
+            />
+          </div>
+        </Fit>
       </Page>
     )
   }
   if (variant === 'stats' && (rd?.upvotes !== undefined || rd?.comments !== undefined)) {
     return (
       <Page frames={frames} tint={COLOR.reddit} topPad={topPad}>
-        {sub}
-        <div
-          style={{
-            fontSize: 40,
-            color: COLOR.muted,
-            fontWeight: 600,
-            marginTop: 30,
-            lineHeight: 1.25,
-          }}
-        >
-          {ctx.title}
-        </div>
-        <div style={{ marginTop: 70, display: 'flex', flexDirection: 'column', gap: 36 }}>
-          {rd?.upvotes !== undefined ? (
-            <CountZoom value={rd.upvotes} noun="upvotes" color={COLOR.reddit} />
-          ) : null}
-          {rd?.comments !== undefined ? (
-            <CountZoom value={rd.comments} noun="comments" color={COLOR.text} delay={6} />
-          ) : null}
-        </div>
+        <Fit maxHeight={ZONE_H - topPad}>
+          {sub}
+          <div
+            style={{
+              fontSize: 40,
+              color: COLOR.muted,
+              fontWeight: 600,
+              marginTop: 30,
+              lineHeight: 1.25,
+            }}
+          >
+            {ctx.title}
+          </div>
+          <div style={{ marginTop: 70, display: 'flex', flexDirection: 'column', gap: 36 }}>
+            {rd?.upvotes !== undefined ? (
+              <CountZoom value={rd.upvotes} noun="upvotes" color={COLOR.reddit} />
+            ) : null}
+            {rd?.comments !== undefined ? (
+              <CountZoom value={rd.comments} noun="comments" color={COLOR.text} delay={6} />
+            ) : null}
+          </div>
+        </Fit>
       </Page>
     )
   }
   return (
     <Page frames={frames} tint={COLOR.reddit} topPad={topPad}>
-      <Pop>
-        <div
-          style={{
-            background: '#1a1a1e',
-            borderRadius: 44,
-            padding: '48px 44px',
-            border: `2px solid ${COLOR.line}`,
-          }}
-        >
-          {sub}
+      <Fit maxHeight={ZONE_H - topPad}>
+        <Pop>
           <div
             style={{
-              fontSize: size,
-              fontWeight: 800,
-              lineHeight: 1.14,
-              letterSpacing: '-0.03em',
-              marginTop: 36,
+              background: '#1a1a1e',
+              borderRadius: 44,
+              padding: '48px 44px',
+              border: `2px solid ${COLOR.line}`,
             }}
           >
-            {ctx.title}
+            {sub}
+            <div
+              style={{
+                fontSize: size,
+                fontWeight: 800,
+                lineHeight: 1.14,
+                letterSpacing: '-0.03em',
+                marginTop: 36,
+              }}
+            >
+              {ctx.title}
+            </div>
+            <div style={{ display: 'flex', gap: 22, marginTop: 44, flexWrap: 'wrap' }}>
+              <Chip size={40} bg="rgba(255,255,255,0.09)">
+                <span style={{ color: COLOR.reddit }}>▲</span>
+                {rd?.upvotes !== undefined ? grouped(rd.upvotes) : 'Upvote'}
+                <span style={{ color: COLOR.dim }}>▼</span>
+              </Chip>
+              {rd?.comments !== undefined ? (
+                <Chip
+                  size={40}
+                  bg="rgba(255,255,255,0.09)"
+                >{`${grouped(rd.comments)} comments`}</Chip>
+              ) : null}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 22, marginTop: 44, flexWrap: 'wrap' }}>
-            <Chip size={40} bg="rgba(255,255,255,0.09)">
-              <span style={{ color: COLOR.reddit }}>▲</span>
-              {rd?.upvotes !== undefined ? grouped(rd.upvotes) : 'Upvote'}
-              <span style={{ color: COLOR.dim }}>▼</span>
-            </Chip>
-            {rd?.comments !== undefined ? (
-              <Chip
-                size={40}
-                bg="rgba(255,255,255,0.09)"
-              >{`${grouped(rd.comments)} comments`}</Chip>
-            ) : null}
-          </div>
-        </div>
-      </Pop>
+        </Pop>
+      </Fit>
     </Page>
   )
 }
@@ -384,7 +415,7 @@ export function YouTubePlayer({ frames, ctx, props, topPad }: ScreenProps) {
   const frame = useCurrentFrame()
   const yt = ctx.facts.youtube
   const img = imageAt(ctx, props)
-  const top = CONTENT_TOP + topPad - 28
+  const top = PANEL_TOP + topPad
   const playerH = 608
   const progress = interpolate(frame, [0, frames], [0.08, 0.34], { extrapolateRight: 'clamp' })
   const size = fitText(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columnWidths, fitLabel, holdFor, readTable, rowHeight } from './table'
+import { columnWidths, fitLabel, holdFor, readTable, rowHeight, focusTable } from './table'
 
 const props = {
   ref: 'Table 2',
@@ -74,5 +74,41 @@ describe('layout helpers', () => {
   it('holds tables and equations longer than normal shots', () => {
     expect(holdFor('TableScreen')!.gap).toBeGreaterThan(2)
     expect(holdFor('KeyPoint')).toBeUndefined()
+  })
+})
+
+describe('focusTable', () => {
+  const view = {
+    headers: ['Method', 'MedQA', 'Avg. Recovery'],
+    hi: 0,
+    rows: [
+      ['Base student', '44.10', '0'],
+      ['MOPD (TA init)', '48.87', '80.93'],
+      ['IM-MOPD', '55.22', '67.81'],
+      ['P2-MOPD', '57.20', '94.74'],
+    ],
+  }
+
+  it('shows the narrated row, the compared row and the baseline, highlighting only the said cell', () => {
+    const f = focusTable(view, { row: 3, col: 2 }, [
+      { raw: '80.9%', label: 'MOPD average recovery' },
+    ])!
+    expect(f.rows.map((r) => r.split('|')[0])).toEqual([
+      'Base student',
+      'MOPD (TA init)',
+      'P2-MOPD',
+    ])
+    expect(f.hi).toBe(2)
+    expect(f.value).toBe('94.74')
+    expect(f.label).toBe('P2-MOPD · Avg. Recovery')
+  })
+
+  it('refuses a table that does not hold every compared number', () => {
+    expect(focusTable(view, { row: 3, col: 2 }, [{ raw: '83.1%', label: 'MOPD' }])).toBeNull()
+  })
+
+  it('refuses rows the viewer cannot tell apart', () => {
+    const twice = { ...view, rows: [...view.rows, ['P2-MOPD', '78.74', '94.85']] }
+    expect(focusTable(twice, { row: 3, col: 2 }, [])).toBeNull()
   })
 })

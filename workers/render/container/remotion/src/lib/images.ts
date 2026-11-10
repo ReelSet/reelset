@@ -66,6 +66,33 @@ export function planImages(props: Pick<ReelProps, 'images' | 'scenes'>): ImagePl
   return { hero, beats }
 }
 
+const contentWords = (t: string) =>
+  new Set(
+    t
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w.length >= 4),
+  )
+
+/**
+ * A site's default share card ("MailRoute — Cloud Email Security"): an og image whose alt names the
+ * site and shares at most one word with the story's title. It says nothing about the story, so it
+ * is never shown.
+ */
+export function isBrandImage(image: ReelImage, title: string, domain: string): boolean {
+  if (image.kind !== 'og' || !image.alt?.trim()) return false
+  const stem =
+    domain
+      .replace(/^www\./, '')
+      .split('.')[0]
+      ?.toLowerCase() ?? ''
+  const alt = [...contentWords(image.alt)]
+  const brand = stem.length >= 3 && alt.some((w) => w.includes(stem))
+  const titleWords = contentWords(title)
+  const shared = alt.filter((w) => !w.includes(stem) && titleWords.has(w)).length
+  return brand && shared <= 1
+}
+
 /** Short source caption: "Figure 2" from a paper caption, else the domain. */
 export function captionFor(image: ReelImage, domain: string): string {
   const vetted = image.caption?.trim()
@@ -84,43 +111,42 @@ export function focusOrigin(image: ReelImage | undefined, fallback: string): str
   return `${pct(f.x)}% ${pct(f.y)}%`
 }
 
-export type DemoBox = {
-  left: number
+export type DemoCrop = {
   top: number
-  width: number
   height: number
-  fullBleed: boolean
+  videoWidth: number
+  videoHeight: number
+  /** Horizontal px of the scaled clip outside the window. */
+  overflow: number
+  /** Pan start and end as shares of `overflow` (0 = left edge in view). */
+  panFrom: number
+  panTo: number
 }
 
-/** Side margin of a landscape demo: the whole clip stays visible, with room for a gentle push-in. */
-export const DEMO_MARGIN = 24
+/** A demo is never zoomed past this share of its width: more crops the UI's own headings. */
+export const DEMO_MIN_SHARE = 0.72
 
 /**
- * Where the README demo plays: portrait clips go full-bleed; landscape and square clips are shown
- * whole (never cropped: README UIs have text at the edges), as wide as the frame allows, centred in
- * the zone between the top chrome and the captions so no caption ever sits on the clip.
+ * Window for a README demo between `top` and `bottom` (above the caption band): the clip fills the
+ * frame width and is scaled up as far as the room allows, but always shows at least 72% of its
+ * width, panning gently across the rest; the window is centred in the room and never taller than
+ * the clip. A portrait clip fills the width.
  */
-export function demoBox(
-  iw: number,
-  ih: number,
-  contentTop: number,
-  w = 1080,
-  h = 1920,
-  zoneBottom = Math.round(h * 0.58) - 24,
-): DemoBox {
-  if (ih > iw * 1.1) return { left: 0, top: 0, width: w, height: h, fullBleed: true }
-  const zone = Math.max(1, zoneBottom - contentTop)
-  let width = w - 2 * DEMO_MARGIN
-  let height = Math.round((width * ih) / iw)
-  if (height > zone) {
-    height = zone
-    width = Math.round((height * iw) / ih)
-  }
+export function demoCrop(iw: number, ih: number, top: number, bottom: number, w = 1080): DemoCrop {
+  const room = Math.max(1, Math.min(bottom - top, Math.round(w * 1.25)))
+  const fill = w / iw
+  const scale = Math.max(fill, Math.min(room / ih, w / (iw * DEMO_MIN_SHARE)))
+  const videoWidth = Math.round(iw * scale)
+  const videoHeight = Math.round(ih * scale)
+  const height = Math.min(room, videoHeight)
+  const overflow = Math.max(0, videoWidth - w)
   return {
-    left: Math.round((w - width) / 2),
-    top: contentTop + Math.round((zone - height) / 2),
-    width,
+    top: top + Math.round((room - height) / 2),
     height,
-    fullBleed: false,
+    videoWidth,
+    videoHeight,
+    overflow,
+    panFrom: 0.1,
+    panTo: 0.9,
   }
 }

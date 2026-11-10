@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { corpusOf, namesOf, spokenIn, wordsIn } from './numbers'
-import { identityOf } from './planner'
+import { CAPTION_ONLY_MAX_S, echoes, isCallToAction, isCaptionOnly, lookKey } from './finalize'
 import { readTable } from './table'
 import {
   isCompleteCodeLine,
@@ -20,8 +20,7 @@ import outlook from './samples/outlook.json'
 const FPS = 30
 const SAMPLES = { mopd, outlook, fizgig } as unknown as Record<string, ReelProps>
 const plan = (p: ReelProps) => resolveShots(p, FPS, totalFrames(p.durationSeconds, FPS)).shots
-/** Shots as the viewer counts looks: a punch-in continues the shot before it. */
-const viewed = (shots: TimedShot[]) => shots.filter((s) => !s.props.punch)
+const viewed = (shots: TimedShot[]) => shots
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
 describe.each(Object.entries(SAMPLES))('sample reel %s', (_name, props) => {
@@ -51,15 +50,40 @@ describe.each(Object.entries(SAMPLES))('sample reel %s', (_name, props) => {
   })
 
   it('never shows an identical look twice', () => {
-    const ids = viewed(shots)
-      .filter((s) => s.show !== 'RepoDemo')
-      .map((s) => identityOf(s.show, s.props))
+    const ids = shots.map(lookKey)
     expect(ids.length - new Set(ids).size).toBe(0)
+  })
+
+  it('never cuts to the same look or the same idea', () => {
+    shots.forEach((s, i) => {
+      const prev = shots[i - 1]
+      if (!prev) return
+      expect(lookKey(s), `${s.show} at ${s.from / FPS}`).not.toBe(lookKey(prev))
+      expect(echoes(prev, s), `${s.show} at ${s.from / FPS}`).toBe(false)
+    })
+  })
+
+  it('keeps caption-only footage under 3 s and never says the end card CTA on a key point', () => {
+    for (const s of shots) {
+      if (isCaptionOnly(s)) expect(s.frames / FPS).toBeLessThanOrEqual(CAPTION_ONLY_MAX_S + 0.01)
+      expect(isCallToAction(str(s.props.text)), str(s.props.text)).toBe(false)
+    }
+  })
+
+  it('plays a demo at most once and shows only narrated tables', () => {
+    expect(shots.filter((s) => s.show === 'RepoDemo').length).toBeLessThanOrEqual(1)
+    for (const s of shots.filter((x) => x.show === 'TableScreen')) {
+      expect((s.props.rows as string[]).length).toBeLessThanOrEqual(4)
+      expect(s.props.best).toBeUndefined()
+      expect(str(s.props.value)).not.toBe('')
+    }
   })
 
   it('only puts complete ideas on key points', () => {
     const names = namesOf(props)
-    for (const s of shots.filter((x) => x.show === 'KeyPoint' && !x.props.quote)) {
+    for (const s of shots.filter(
+      (x) => x.show === 'KeyPoint' && !x.props.quote && !Array.isArray(x.props.items),
+    )) {
       const text = str(s.props.text)
       if (!text) {
         expect(typeof s.props.bg, 'caption-only shot needs footage').toBe('number')
@@ -104,16 +128,16 @@ describe('sample specifics', () => {
   it('mopd: 94.7% and 80.9% are one comparison that names P²-MOPD and MOPD, shown once', () => {
     const shots = plan(SAMPLES.mopd!)
     const bars = shots.filter((s) => s.show === 'BarRace')
-    expect(bars.length).toBeGreaterThan(0)
-    for (const b of bars) {
-      expect(b.props.title).toBe('average recovery')
-      expect(b.props.bars).toEqual([
-        { label: 'P^2-MOPD', value: '94.7%' },
-        { label: 'MOPD', value: '80.9%' },
-      ])
-    }
-    const slams = shots.filter((s) => s.show === 'StatSlam').map((s) => str(s.props.value))
-    expect(slams).not.toContain('94.7%')
+    expect(bars).toHaveLength(1)
+    expect(bars[0]!.props.title).toBe('average recovery')
+    expect(bars[0]!.props.bars).toEqual([
+      { label: 'P^2-MOPD', value: '94.7%' },
+      { label: 'MOPD', value: '80.9%' },
+    ])
+    expect(bars[0]!.frames / FPS).toBeLessThanOrEqual(4)
+    const slams = viewed(shots)
+      .filter((s) => s.show === 'StatSlam')
+      .map((s) => str(s.props.value))
     expect(slams).not.toContain('80.9%')
     expect(slams).toContain('~90%')
     expect(shots.some((s) => s.show === 'TableScreen' && str(s.props.value) === '78.74')).toBe(
@@ -130,14 +154,16 @@ describe('sample specifics', () => {
     expect(texts).toContain('MOPD is a heavy pipeline')
   })
 
-  it('outlook: the mailbox domains are one list card that fills in with the voice', () => {
+  it('outlook: the mailbox domains are list cards that fill in with the voice, none held over 4 s', () => {
     const lists = plan(SAMPLES.outlook!).filter((s) => Array.isArray(s.props.items))
-    const domains = lists.filter((s) => (s.props.items as string[]).includes('live.com'))
-    expect(domains.length).toBeGreaterThan(0)
-    for (const s of domains) {
-      expect(s.props.items).toEqual(['outlook.com', 'hotmail.com', 'live.com', 'msn.com'])
-      expect(s.frames / FPS).toBeLessThanOrEqual(4)
-    }
+    const domains = lists.filter((s) => (s.props.items as string[]).some((i) => /\.com$/.test(i)))
+    expect(domains.flatMap((s) => s.props.items as string[])).toEqual([
+      'outlook.com',
+      'hotmail.com',
+      'live.com',
+      'msn.com',
+    ])
+    for (const s of domains) expect(s.frames / FPS).toBeLessThanOrEqual(4)
     const texts = plan(SAMPLES.outlook!).map((s) => str(s.props.text))
     for (const bad of ['SPF', 'DMARC', 'outlook.com', 'hotmail.com', 'msn.com'])
       expect(texts).not.toContain(bad)
@@ -149,8 +175,10 @@ describe('sample specifics', () => {
     expect(str(code[0]!.props.code)).toBe('v=DMARC1; p=none;')
   })
 
-  it('fizgig: the demo plays over "watch the tour"; the outro names the repo', () => {
+  it('fizgig: the demo plays once, over "watch the tour"; no key point names the repo', () => {
     const shots = plan(SAMPLES.fizgig!)
+    expect(shots.filter((s) => s.show === 'RepoDemo')).toHaveLength(1)
+    expect(shots.some((s) => s.show === 'RedditPost')).toBe(false)
     const watch = SAMPLES.fizgig!.words.find((w) => /^watch$/i.test(w.text))!
     const t = watch.start + 0.1
     const over = shots.find((s) => s.from / FPS <= t && (s.from + s.frames) / FPS > t)
@@ -164,10 +192,17 @@ describe('sample specifics', () => {
   it('fizgig: no weak social proof slammed; sizes say what was measured', () => {
     const shots = plan(SAMPLES.fizgig!)
     expect(shots.some((s) => s.show === 'RedditPost' && s.props.variant === 'stats')).toBe(false)
-    const memory = shots.find((s) => s.show === 'BarRace')
+    const memory = shots.find((s) => s.show === 'BarRace' && /GB/.test(JSON.stringify(s.props)))
     expect(str(memory?.props.title)).toMatch(/memory/i)
-    const twenty = shots.find((s) => s.show === 'StatSlam' && /20/.test(str(s.props.value)))
-    expect(str(twenty?.props.label)).toContain('was 49 min')
+    // "about 20 minutes instead of 49" is one comparison: bars Before 49 min, Now ~20 min.
+    const time = shots.find((s) => s.show === 'BarRace' && /49/.test(JSON.stringify(s.props)))
+    const bars = time?.props.bars as { label: string; value: string }[]
+    expect(bars.map((b) => b.label)).toEqual(['Before', 'Now'])
+    expect(bars[0]!.value).toBe('49 min')
+    expect(bars[1]!.value).toMatch(/20 min/)
+    const [before, now] = time?.props.times as number[]
+    expect(now!).toBeLessThan(before!)
+    expect(shots.some((s) => s.show === 'StatSlam' && /20/.test(str(s.props.value)))).toBe(false)
   })
 
   it('fizgig: no product or version numbers as stats; "12 times" reads 12×', () => {

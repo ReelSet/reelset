@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { lookKey } from './finalize'
 import { sampleReel } from './fixtures'
 import { chunkSpan, identityOf, MAX_HOLD_S } from './planner'
 import { resolveShots, totalFrames, headlineEnd, headlineOf } from './timeline'
@@ -35,7 +36,7 @@ describe('chunkSpan', () => {
 
 describe('planner', () => {
   it('covers every frame with no gaps and no hold over 4s', () => {
-    const p = sampleReel()
+    const p = sampleReel({ broll: [clip(1), clip(2), clip(3)] })
     const { shots } = run(p)
     const total = totalFrames(p.durationSeconds, FPS)
     expect(shots[0]!.from).toBe(0)
@@ -47,21 +48,23 @@ describe('planner', () => {
     expect(last.from + last.frames).toBe(total)
   })
 
-  it('averages a cut every 1.4-2.5s', () => {
+  it('averages a cut every 1.4-2.65s without repeating a look to get there', () => {
+    // The fixture narration offers few claims; cuts are never bought with a repeated screen.
     const p = rich()
     const { shots } = run(p)
     const avg = p.durationSeconds / shots.length
     expect(avg).toBeGreaterThan(1.4)
-    expect(avg).toBeLessThan(2.5)
+    expect(avg).toBeLessThan(2.65)
   })
 
-  it('never shows the same look twice in a row (only key points of another layout may follow each other)', () => {
+  it('never shows the same look twice in a row (only key points may follow each other)', () => {
     const { shots } = run(rich())
     shots.forEach((s, i) => {
       const prev = shots[i - 1]
-      if (!prev || s.show === 'RepoDemo' || s.props.punch) return
+      if (!prev) return
       if (s.show !== 'KeyPoint') expect(s.show).not.toBe(prev.show)
-      expect(identityOf(s.show, s.props)).not.toBe(identityOf(prev.show, prev.props))
+      expect(s.props.alt).toBeUndefined()
+      expect(lookKey(s)).not.toBe(lookKey(prev))
     })
   })
 
@@ -69,14 +72,16 @@ describe('planner', () => {
     expect(run(sampleReel())).toEqual(run(sampleReel()))
   })
 
-  it('shows a real image at least every ~9s when images exist', () => {
+  it('shows each real image once, early images no more than 15 s apart', () => {
     const p = rich()
     const { shots } = run(p)
     const img = new Set(['ImageFull', 'FigureZoom', 'ArticleHeadline', 'YouTubePlayer'])
     const times = shots.filter((s) => img.has(s.show)).map((s) => s.from / FPS)
     expect(times.length).toBeGreaterThan(1)
+    const used = shots.filter((s) => img.has(s.show)).map((s) => s.props.image)
+    expect(new Set(used).size).toBe(used.length)
     let prev = 0
-    for (const t of [...times, p.durationSeconds]) {
+    for (const t of times) {
       expect(t - prev).toBeLessThan(15)
       prev = t
     }
@@ -134,7 +139,7 @@ describe('beat sheet cues', () => {
   })
 
   it('fills a cue shot held over 4s', () => {
-    const p = sampleReel()
+    const p = sampleReel({ broll: [clip(1), clip(2), clip(3)] })
     const beat = p.scenes[2] as Extract<ReelProps['scenes'][number], { kind: 'beat' }>
     p.scenes[2] = { ...beat, shots: [{ at: 'It', show: 'KeyPoint' }] }
     const { shots } = run(p)

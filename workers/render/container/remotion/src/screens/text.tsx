@@ -8,21 +8,12 @@ import {
 } from 'remotion'
 import { Pop, Rise, easeOut, useSpring } from '../fx'
 import { fitText } from '../lib/text'
+import { accentIndex } from '../lib/emphasis'
+import { listSize } from '../lib/lists'
 import { fitWords, styleOf, typeset } from '../lib/typeset'
 import { SourceChip } from '../Marks'
-import {
-  COLOR,
-  CONTENT_TOP,
-  CONTENT_W,
-  FONT,
-  H,
-  LOW_TOP,
-  SAFE,
-  W,
-  ZONE_BOTTOM,
-  ZONE_H,
-} from '../theme'
-import { Chip, Page, Photo, prop, useBackdrop, type ScreenProps } from './ui'
+import { COLOR, CONTENT_TOP, CONTENT_W, H, LOW_TOP, SAFE, W, ZONE_H } from '../theme'
+import { Chip, Page, prop, useBackdrop, type ScreenProps } from './ui'
 
 /** Domain strip under a key point: where this came from. */
 function DomainMark({ ctx, topPad }: Pick<ScreenProps, 'ctx' | 'topPad'>) {
@@ -61,16 +52,8 @@ function ListCard({ frames, ctx, props, topPad }: ScreenProps) {
   const t = frame / fps
   const said = times.filter((x) => x <= t + 0.05).length
   const current = Math.max(0, said - 1)
-  const longest = items.reduce((a, b) => (b.length > a.length ? b : a), '')
-  const rowH = Math.min(150, (ZONE_H - topPad - (kicker ? 120 : 0)) / items.length)
-  const size = Math.min(
-    fitWords(
-      longest,
-      { width: CONTENT_W - 90, height: rowH * 0.9 },
-      { min: 40, max: 120, lineHeight: 1 },
-    ),
-    rowH * 0.78,
-  )
+  const size = listSize(items, CONTENT_W - 60, ZONE_H - topPad - (kicker ? 120 : 0))
+  if (props.layout === 1) return <ListPills {...{ frames, ctx, props, topPad }} />
   return (
     <Page frames={frames} topPad={topPad}>
       <div
@@ -109,12 +92,13 @@ function ListCard({ frames, ctx, props, topPad }: ScreenProps) {
             <div
               key={i}
               style={{
-                height: rowH,
+                minHeight: size * 1.25,
+                padding: `${Math.round(size * 0.12)}px 0`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 30,
-                opacity: shown ? (on ? 1 : 0.62) * (0.3 + 0.7 * k) : 0.18,
-                transform: `translateX(${(1 - k) * -40}px)`,
+                opacity: shown ? (on ? 1 : 0.62) * (0.45 + 0.55 * k) : 0.4,
+                transform: `translateX(${(1 - k) * 28}px)`,
               }}
             >
               <div
@@ -133,11 +117,95 @@ function ListCard({ frames, ctx, props, topPad }: ScreenProps) {
                   letterSpacing: '-0.035em',
                   lineHeight: 1,
                   color: on ? COLOR.accent : COLOR.text,
-                  whiteSpace: 'nowrap',
+                  overflowWrap: 'normal',
                 }}
               >
                 {item}
               </div>
+            </div>
+          )
+        })}
+      </div>
+      <DomainMark ctx={ctx} topPad={topPad} />
+    </Page>
+  )
+}
+
+/**
+ * The other list layout (the second card of a long list, or of a terms card): items centred in
+ * pills, the one being said filled with the accent. A visibly new frame, same honest content.
+ */
+function ListPills({ frames, ctx, props, topPad }: ScreenProps) {
+  const frame = useCurrentFrame()
+  const { fps } = useVideoConfig()
+  const items = (props.items as unknown[]).map((i) => typeset(String(i)))
+  const times = Array.isArray(props.times)
+    ? (props.times as number[])
+    : items.map((_, i) => i * 0.6)
+  const kicker = typeset(prop<string>(props, 'kicker', ''))
+  const t = frame / fps
+  const said = times.filter((x) => x <= t + 0.05).length
+  const current = Math.max(0, said - 1)
+  const size = Math.min(
+    112,
+    listSize(items, CONTENT_W - 140, ZONE_H - topPad - (kicker ? 140 : 0) - items.length * 60),
+  )
+  return (
+    <Page frames={frames} topPad={topPad}>
+      <div
+        style={{
+          height: ZONE_H - topPad,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          textAlign: 'center',
+          gap: 30,
+        }}
+      >
+        {kicker ? (
+          <div
+            style={{
+              fontSize: 42,
+              fontWeight: 800,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              color: COLOR.muted,
+              marginBottom: 10,
+            }}
+          >
+            {kicker}
+          </div>
+        ) : null}
+        {items.map((item, i) => {
+          const at = (times[i] ?? 0) * fps
+          const shown = frame >= at - 1
+          const on = i === current && shown
+          const k = easeOut(
+            interpolate(frame, [at - 1, at + 6], [0, 1], {
+              extrapolateLeft: 'clamp',
+              extrapolateRight: 'clamp',
+            }),
+          )
+          return (
+            <div
+              key={i}
+              style={{
+                maxWidth: CONTENT_W,
+                padding: `${Math.round(size * 0.22)}px ${Math.round(size * 0.45)}px`,
+                borderRadius: 999,
+                background: on ? COLOR.accent : 'rgba(255,255,255,0.08)',
+                border: `3px solid ${on ? COLOR.accent : 'rgba(255,255,255,0.16)'}`,
+                color: on ? COLOR.accentInk : COLOR.text,
+                fontSize: size,
+                fontWeight: 900,
+                letterSpacing: '-0.03em',
+                lineHeight: 1.05,
+                opacity: shown ? 0.5 + 0.5 * k : 0.35,
+                transform: `scale(${0.9 + 0.1 * k})`,
+              }}
+            >
+              {item}
             </div>
           )
         })}
@@ -163,7 +231,8 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
   const by = prop<string>(props, 'by', '')
   const words = text.split(' ')
   const style = styleOf(typeof props.text === 'string' ? props.text : '')
-  const upper = style === 1
+  // One casing for every key point in a reel: sentence case (layouts differ by alignment only).
+  const upper = false
   const size = quote
     ? fitText(
         text,
@@ -188,7 +257,7 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
               top: -(CONTENT_TOP + topPad),
               width: W,
               height: H,
-              opacity: 0.55,
+              opacity: 0.85,
             }}
           >
             <OffthreadVideo
@@ -218,7 +287,7 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
       </Page>
     )
   }
-  const accentIdx = words.length - 1
+  const accentIdx = accentIndex(words)
   const bar = easeOut(
     interpolate(frame, [0, 14], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
   )
@@ -239,6 +308,7 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
             background: COLOR.accent,
             borderRadius: 7,
             marginBottom: 44,
+            alignSelf: style === 2 ? 'flex-end' : style === 1 ? 'center' : 'flex-start',
           }}
         />
         {quote ? (
@@ -270,8 +340,7 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
               fontWeight: 900,
               lineHeight: 1.02,
               letterSpacing: '-0.045em',
-              textAlign: style === 2 ? 'right' : 'left',
-              textTransform: upper ? 'uppercase' : undefined,
+              textAlign: style === 2 ? 'right' : style === 1 ? 'center' : 'left',
               overflowWrap: 'anywhere',
             }}
           >
@@ -332,84 +401,90 @@ export function endName(ctx: ScreenProps['ctx']): string {
   if (ctx.demo?.repo) return ctx.demo.repo
   const head = /^([^:]{2,24}):\s/.exec(ctx.title)?.[1]
   if (ctx.source === 'papers' && head) return head
-  return ctx.title
+  // The hook already showed the full title: the end card names the story in its short form.
+  return ctx.headline?.trim() || ctx.title
 }
 
+/** Where the reel came from, as one line: "github.com/owner/repo", "arxiv.org", the article's site. */
+export function endSource(ctx: ScreenProps['ctx']): string {
+  const r = ctx.facts.repo
+  const repo = r?.owner && r.name ? `${r.owner}/${r.name}` : ctx.demo?.repo
+  if (ctx.source === 'github' && repo) return `github.com/${repo}`
+  return ctx.domain
+}
+
+/**
+ * Last card: the name big, the full title under it, where it came from, and the follow CTA. No
+ * image (a small, low-contrast copy of the hook image reads as filler).
+ */
 export function EndCard({ frames, ctx, topPad }: ScreenProps) {
   const pulse = useSpring(20, 8, 0.5)
   const name = typeset(endName(ctx))
-  const sub = name === ctx.title ? ctx.domain : ctx.title
-  const size = fitText(
-    name,
-    { width: CONTENT_W, height: 260 },
-    { min: 56, max: 120, charWidth: 0.58, lineHeight: 1.05 },
+  const sub = name === ctx.title || name === ctx.headline?.trim() ? '' : ctx.title
+  // "owner/repo" may break after the slash, never inside a word.
+  const longest = Math.max(...name.split(/[\s/]+/).map((w) => w.length + 1))
+  const size = Math.min(
+    fitText(
+      name.replace(/\//g, '/ '),
+      { width: CONTENT_W, height: 380 },
+      { min: 56, max: 168, charWidth: 0.6, lineHeight: 1.02 },
+    ),
+    Math.floor(CONTENT_W / (longest * 0.62)),
   )
-  const backdrop = useBackdrop()
-  const cover = ctx.images.find((i) => i.kind !== 'avatar' && i.kind !== 'figure') ?? ctx.images[0]
-  const top = CONTENT_TOP + topPad + 30
-  const cardTop = top + 470
-  const cardH = ZONE_BOTTOM - cardTop
   return (
-    <Page frames={frames} bleed topPad={topPad}>
-      {cover && !backdrop ? <Photo image={cover} frames={frames} backdropOnly /> : null}
+    <Page frames={frames} topPad={topPad}>
       <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          background: cover && !backdrop ? 'rgba(9,9,11,0.7)' : 'transparent',
+          height: ZONE_H - topPad,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
         }}
-      />
-      <div style={{ position: 'absolute', left: SAFE.left, right: SAFE.right, top }}>
+      >
+        <Pop>
+          <SourceChip source={ctx.source} label={ctx.sourceLabel} size={1.9} />
+        </Pop>
         <Rise
+          delay={3}
           style={{
             fontSize: size,
             fontWeight: 900,
-            letterSpacing: '-0.04em',
-            lineHeight: 1.05,
-            overflowWrap: 'anywhere',
-            maxHeight: 280,
+            letterSpacing: '-0.045em',
+            lineHeight: 1.02,
+            marginTop: 40,
+            maxHeight: 400,
             overflow: 'hidden',
           }}
         >
-          {name}
+          {name.replace(/\//g, '/\u200b')}
         </Rise>
-        <Rise
-          delay={6}
-          style={{
-            fontSize: 44,
-            color: COLOR.muted,
-            fontWeight: 600,
-            marginTop: 26,
-            lineHeight: 1.25,
-            maxHeight: 112,
-            overflow: 'hidden',
-          }}
-        >
-          {sub}
+        {sub ? (
+          <Rise
+            delay={6}
+            style={{
+              fontSize: 46,
+              color: COLOR.muted,
+              fontWeight: 650,
+              marginTop: 30,
+              lineHeight: 1.22,
+              maxHeight: 170,
+              overflow: 'hidden',
+            }}
+          >
+            {sub}
+          </Rise>
+        ) : null}
+        <Rise delay={9} style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 40 }}>
+          <i style={{ width: 16, height: 16, borderRadius: 8, background: COLOR.accent }} />
+          <span style={{ fontSize: 44, fontWeight: 800, color: COLOR.text }}>{endSource(ctx)}</span>
         </Rise>
       </div>
-      {cover && cardH > 200 ? (
-        <Pop delay={8}>
-          <Photo
-            image={cover}
-            frames={frames}
-            x={SAFE.left}
-            y={cardTop}
-            w={W - SAFE.left - SAFE.right}
-            h={cardH}
-            backdrop={false}
-            maxUp={1.6}
-            zoomTo={1.04}
-            radius={28}
-          />
-        </Pop>
-      ) : null}
       <div
         style={{
           position: 'absolute',
-          left: SAFE.left,
-          right: SAFE.right,
-          top: LOW_TOP + 20,
+          left: 0,
+          right: 0,
+          top: LOW_TOP - CONTENT_TOP - topPad + 20,
           display: 'flex',
           flexDirection: 'column',
           gap: 26,

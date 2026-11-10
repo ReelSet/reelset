@@ -14,18 +14,13 @@ import {
   type PlanState,
 } from './planner'
 import { enforceVariety } from './variety'
-import { cellLabel, holdFor, matchCell, readTable } from './table'
+import { finalizeShots, paceShots } from './finalize'
+import { repoCardSparse, withPrimarySource } from './sources'
+import { holdFor, tableFor } from './table'
 import { barProps, quantitiesOf, spokenIn, wordsIn } from './numbers'
 import { revealLists, spliceShots } from './lists'
 import { quantityValue } from './text-rules'
-import {
-  easeTextRuns,
-  fillEmpty,
-  pacePunches,
-  polishKeyPoints,
-  settleEmpty,
-  wordCueKeyPoints,
-} from './polish'
+import { easeTextRuns, fillEmpty, polishKeyPoints, settleEmpty, wordCueKeyPoints } from './polish'
 import { completeCode } from './planner'
 import type { ReelProps, Scene, ScreenName, Shot, TimedScene, TimedShot } from './types'
 import { SCREEN_NAMES, SFX_NAMES } from './types'
@@ -51,6 +46,7 @@ export type Resolved = { shots: TimedShot[]; warnings: string[] }
 
 function validShot(s: Shot, props: ReelProps): boolean {
   if (s.show === 'RepoDemo' && !props.demo) return false
+  if (s.show === 'RepoPage' && repoCardSparse(props)) return false
   return (
     typeof s.at === 'string' &&
     (SCREEN_NAMES as readonly string[]).includes(s.show) &&
@@ -232,11 +228,12 @@ export function withDemoOffsets(
 
 /** Beat sheet cues (or the deterministic planner when absent) -> shots covering every frame. Never throws. */
 export function resolveShots(
-  props: ReelProps,
+  input: ReelProps,
   fps: number,
   total: number,
   trace?: (stage: string, shots: readonly TimedShot[]) => void,
 ): Resolved {
+  const props = withPrimarySource(input)
   const warnings: string[] = []
   const scenes = toFrames(props.scenes, fps, total)
   const state = newState()
@@ -272,40 +269,31 @@ export function resolveShots(
     fillEmpty(easeTextRuns(polishKeyPoints(grounded, props, fps), fps), props, fps),
   )
   const backed = step('broll', settleEmpty(assignBroll(worded, props.broll), props, fps))
-  const paced = step('pace', pacePunches(backed, props, fps))
+  const final = step('final', finalizeShots(backed, props, fps))
+  const paced = step('pace', paceShots(final, props, fps))
   return { shots: withDemoOffsets(paced, props.demo?.seconds, fps), warnings }
 }
 
 /**
- * The highlighted table cell must be the number spoken over it. A number narrated during the shot
- * moves the highlight to its cell; if the table does not hold it, the shot becomes a StatSlam of
- * that number (grounded later).
+ * A table appears only when a number said over it is a cell of it and the numbers it is compared
+ * with are too (see `tableFor`). Otherwise the shot becomes a StatSlam of the number said, or an
+ * empty shot for the later passes when nothing is said: a table nobody narrates is never shown.
  */
 export function matchTables(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
   return shots.map((shot) => {
     if (shot.show !== 'TableScreen') return shot
-    const view = readTable(shot.props)
+    const focused = tableFor(shot.props, shot, props, fps)
+    if (focused) return { ...shot, props: focused }
     const scene = props.scenes[shot.sceneIndex]
-    if (!view || !scene || !('text' in scene)) return shot
     const spoken = wordsIn(props.words, shot.from / fps - 0.3, (shot.from + shot.frames) / fps)
-    const said = spokenIn(scene.text, spoken)
-    for (const q of said) {
-      const cell = matchCell(view, q.raw, q.label)
-      if (!cell) continue
-      const value = view.rows[cell.row]![cell.col]!
+    const first = scene && 'text' in scene ? spokenIn(scene.text, spoken)[0] : undefined
+    if (!first)
       return {
         ...shot,
-        props: {
-          ...shot.props,
-          hi: cell.row,
-          col: cell.col,
-          value,
-          label: cellLabel(view.rows[cell.row]![0], view.headers[cell.col]),
-        },
+        show: 'KeyPoint' as ScreenName,
+        props: { text: '', sub: '' },
+        origin: 'planned',
       }
-    }
-    const first = said[0]
-    if (!first) return { ...shot, props: { ...shot.props, plain: true, value: '', label: '' } }
     return {
       ...shot,
       show: 'StatSlam' as ScreenName,
@@ -317,9 +305,9 @@ export function matchTables(shots: TimedShot[], props: ReelProps, fps: number): 
 
 /**
  * A stat said as one side of a comparison ("94.7% average recovery, surpassing MOPD's 80.9%";
- * "falls from 22.9 to 14.9 gigabytes") is shown once, as bars that name both sides and build as
- * each number is said (`times`, seconds into the shot). It runs from the first number to just
- * after the second, in pieces of at most 4 s; later shots of either number are dropped.
+ * "falls from 22.9 to 14.9 gigabytes") is shown once, as bars that name both sides (`times` marks
+ * when each is said, seconds into the shot). One shot of at most 4 s that ends just after the
+ * second number; what comes before it keeps its own shot. Later shots of either number are dropped.
  */
 export function compareStats(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
   let out = shots.map((s) => ({ ...s }))
@@ -345,24 +333,28 @@ export function compareStats(shots: TimedShot[], props: ReelProps, fps: number):
       !prev.props.items &&
       !prev.props.quote
     const floor = prev ? (blankBefore ? prev.from : prev.from + 0.6 * fps) / fps : 0
-    const start = blankBefore ? floor : Math.max(floor, Math.min(shot.from / fps, t1.start - 0.15))
     const end = Math.max((shot.from + shot.frames) / fps, t2.end + 0.5)
-    const pieces = splitSpan(start, end, t2.start - 0.15)
-    if (!pieces) continue
-    const made: TimedShot[] = pieces.map(([a, b]) => {
-      const from = Math.round(a! * fps)
-      return {
+    const start = Math.max(
+      blankBefore ? floor : Math.max(floor, Math.min(shot.from / fps, t1.start - 0.15)),
+      end - MAX_HOLD_S,
+    )
+    if (end - start < 1.2) continue
+    const from = Math.round(start * fps)
+    const made: TimedShot[] = [
+      {
         ...shot,
         from,
-        frames: Math.round(b! * fps) - from,
+        frames: Math.round(end * fps) - from,
         show: 'BarRace',
         sfx: 'tick',
         props: {
           ...pair.bars,
-          times: [t1.start - a!, t2.start - a!].map((t) => Math.round(t * 100) / 100),
+          times: (pair.saidLast ?? [0, 1])
+            .map((k) => [t1, t2][k]!.start - start)
+            .map((t) => Math.max(0, Math.round(t * 100) / 100)),
         },
-      }
-    })
+      },
+    ]
     done.add(v)
     done.add(quantityValue(pair.second.raw))
     done.add(quantityValue(pair.first.raw))
@@ -388,33 +380,42 @@ export function compareStats(shots: TimedShot[], props: ReelProps, fps: number):
 
 type Said = { raw: string; index: number; sentence: string }
 
-/** `[a, b]` in pieces of at most 4 s, cut at `prefer` when that works, else evenly (<= 3 pieces). */
-export function splitSpan(a: number, b: number, prefer: number): number[][] | null {
-  if (b - a <= MAX_HOLD_S) return [[a, b]]
-  if (
-    prefer - a >= 1.2 &&
-    prefer - a <= MAX_HOLD_S &&
-    b - prefer <= MAX_HOLD_S &&
-    b - prefer >= 1.2
-  )
-    return [
-      [a, prefer],
-      [prefer, b],
-    ]
-  const n = Math.ceil((b - a) / MAX_HOLD_S)
-  if (n > 3) return null
-  const step = (b - a) / n
-  return Array.from({ length: n }, (_, k) => [a + k * step, a + (k + 1) * step])
-}
-
 /** The other side of a comparison for value `v` in a narration text, as named bars. */
 export function comparisonFor(
   text: string,
   v: number | null,
-): { first: Said; second: Said; bars: ReturnType<typeof barProps> } | null {
+): {
+  first: Said
+  second: Said
+  bars: ReturnType<typeof barProps>
+  /** For each bar, which of [first, second] it shows (said order differs from bar order). */
+  saidLast?: [number, number]
+} | null {
   const all = quantitiesOf(text)
   const q = all.find((x) => quantityValue(x.raw) === v)
   if (!q) return null
+  const was = / · was (\S+)/.exec(q.label)?.[1]
+  if (was) {
+    // "20 minutes instead of 49": the old value is said after the new one; bars stay Before, Now.
+    const digits = /\d[\d,]*(?:\.\d+)?/.exec(was)?.[0] ?? ''
+    const index = digits ? q.sentence.indexOf(digits, q.index + q.raw.length) : -1
+    const head = q.label.split(' · ')[0] ?? ''
+    if (index < 0 || !head) return null
+    const unit = q.raw.replace(/^[~<>≈]?\s*\d[\d,]*(?:\.\d+)?/, '')
+    const before = /\d$/.test(was) && unit ? `${was}${unit}` : was
+    return {
+      first: q,
+      second: { raw: before, index, sentence: q.sentence },
+      bars: {
+        title: head,
+        bars: [
+          { label: 'Before', value: before },
+          { label: 'Now', value: q.raw },
+        ],
+      },
+      saidLast: [1, 0],
+    }
+  }
   const from = / · from (\S+)$/.exec(q.label)?.[1]
   if (from) {
     const digits = /\d[\d,]*(?:\.\d+)?/.exec(from)?.[0] ?? ''

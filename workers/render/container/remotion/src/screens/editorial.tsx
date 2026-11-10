@@ -7,7 +7,7 @@ import { fitText, fitWindow } from '../lib/text'
 import { typeset } from '../lib/typeset'
 import { SourceChip } from '../Marks'
 import { COLOR, CONTENT_TOP, CONTENT_W, H, LOW_TOP, MONO, SAFE, W, ZONE_BOTTOM } from '../theme'
-import { Chip, Page, Photo, Sweep, imageAt, prop, type ScreenProps } from './ui'
+import { Chip, Fit, Page, Photo, Sweep, imageAt, prop, type ScreenProps } from './ui'
 
 export function PaperPage({ frames, ctx, props, topPad }: ScreenProps) {
   const paper = ctx.facts.paper
@@ -44,7 +44,8 @@ export function PaperPage({ frames, ctx, props, topPad }: ScreenProps) {
       abstract,
       phrase,
       { width: CONTENT_W, height: ZONE_BOTTOM - CONTENT_TOP - topPad - 360 },
-      { min: 40, max: 58, charWidth: 0.52, lineHeight: 1.3 },
+      { min: 46, max: 62, charWidth: 0.52, lineHeight: 1.3 },
+      190,
     )
     return (
       <Page frames={frames} tint={COLOR.arxiv} topPad={topPad}>
@@ -96,8 +97,8 @@ export function PaperPage({ frames, ctx, props, topPad }: ScreenProps) {
         <div
           style={{
             position: 'absolute',
-            left: 30,
-            right: 30,
+            left: SAFE.left,
+            right: SAFE.right,
             top,
             height: h,
             background: '#fafafa',
@@ -111,7 +112,7 @@ export function PaperPage({ frames, ctx, props, topPad }: ScreenProps) {
             frames={frames}
             x={0}
             y={0}
-            w={W - 60}
+            w={CONTENT_W}
             h={h}
             backdrop={false}
             maxUp={1.4}
@@ -186,39 +187,44 @@ export function FigureZoom({ frames, ctx, props, topPad }: ScreenProps) {
   const ih = img.height ?? 720
   const wide = iw / ih >= 1.5
   if (wide) {
+    // Whole figure inside the safe box first, then a slow push toward its point of interest.
     const cardTop = top + 92
     const room = ZONE_BOTTOM - cardTop - 10
-    const scale = Math.min(1.2, Math.max(W / iw, room / ih))
-    const dw = iw * scale
-    const dh = Math.min(room, ih * scale)
-    const travel = Math.max(0, dw - W)
-    const x = variant % 2 === 0 ? -travel * p : -travel * (1 - p)
+    const base = Math.min(1.2, CONTENT_W / iw)
+    const cardH = Math.min(room, Math.max(ih * base, Math.round(CONTENT_W * 0.62)))
+    const zoom = Math.max(1, Math.min(1.7, cardH / (ih * base), 1.2 / base))
+    const z = 1 + (zoom - 1) * p
+    const [fx, fy] = focusOrigin(img, variant % 2 === 0 ? '30% 50%' : '70% 50%')
+      .split(' ')
+      .map((v) => parseFloat(v) / 100)
+    const dw = iw * base * z
+    const dh = ih * base * z
+    const left = Math.min(0, Math.max(CONTENT_W - dw, CONTENT_W / 2 - dw * (fx ?? 0.5)))
+    const topIn =
+      dh <= cardH
+        ? (cardH - dh) / 2
+        : Math.min(0, Math.max(cardH - dh, cardH / 2 - dh * (fy ?? 0.5)))
     return (
-      <Page frames={frames} bleed topPad={topPad}>
+      <Page frames={frames} topPad={topPad}>
         <div
           style={{
             position: 'absolute',
             left: 0,
-            top: cardTop,
-            width: W,
-            height: dh,
+            top: cardTop - (CONTENT_TOP + topPad),
+            width: CONTENT_W,
+            height: cardH,
             overflow: 'hidden',
             background: '#fafafa',
+            borderRadius: 22,
             boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
           }}
         >
           <Img
             src={staticFile(img.src)}
-            style={{
-              position: 'absolute',
-              left: travel > 0 ? x : (W - dw) / 2,
-              top: (dh - ih * scale) / 2,
-              width: dw,
-              height: ih * scale,
-            }}
+            style={{ position: 'absolute', left, top: topIn, width: dw, height: dh }}
           />
         </div>
-        <div style={{ position: 'absolute', left: SAFE.left, top }}>
+        <div style={{ position: 'absolute', left: 0, top: top - (CONTENT_TOP + topPad) }}>
           <Pop>
             <Chip size={40} bg={COLOR.accent} color={COLOR.accentInk}>
               {captionFor(img, ctx.domain)}
@@ -229,9 +235,9 @@ export function FigureZoom({ frames, ctx, props, topPad }: ScreenProps) {
           <div
             style={{
               position: 'absolute',
-              left: SAFE.left,
-              right: SAFE.right,
-              top: LOW_TOP + 30,
+              left: 0,
+              right: 0,
+              top: LOW_TOP + 30 - (CONTENT_TOP + topPad),
               fontSize: 36,
               lineHeight: 1.3,
               color: '#e4e4e7',
@@ -298,14 +304,17 @@ export function FigureZoom({ frames, ctx, props, topPad }: ScreenProps) {
 export function ArticleHeadline({ frames, ctx, props, topPad }: ScreenProps) {
   const img = imageAt(ctx, props)
   const site = ctx.facts.article?.site ?? ctx.domain
+  const phrase = prop<string>(props, 'phrase', '') || keyPhraseIn(ctx.title, 2, 3)
+  const top = CONTENT_TOP + topPad + 8
+  const imgH = img ? (topPad > 0 ? 220 : 420) : 0
+  const textTop = top + (img ? imgH + 30 : 40)
+  // The headline stays above the caption band: what does not fit is set smaller, never under it.
+  const room = ZONE_BOTTOM - textTop
   const size = fitText(
     ctx.title,
-    { width: CONTENT_W, height: 160 },
-    { min: 44, max: 68, charWidth: 0.58, lineHeight: 1.1 },
+    { width: CONTENT_W, height: Math.max(80, room - 90) },
+    { min: 36, max: 68, charWidth: 0.58, lineHeight: 1.1 },
   )
-  const phrase = prop<string>(props, 'phrase', '') || keyPhraseIn(ctx.title, 2, 3)
-  const imgH = topPad > 0 ? 300 : 440
-  const top = CONTENT_TOP + topPad + 8
   return (
     <Page frames={frames} bleed topPad={topPad}>
       {img ? <Photo image={img} frames={frames} y={0} h={H} backdropOnly /> : null}
@@ -329,13 +338,9 @@ export function ArticleHeadline({ frames, ctx, props, topPad }: ScreenProps) {
           zoomTo={1.1}
         />
       ) : null}
-      <div
-        style={{
-          position: 'absolute',
-          left: SAFE.left,
-          right: SAFE.right,
-          top: top + (img ? imgH + 30 : 40),
-        }}
+      <Fit
+        maxHeight={room}
+        style={{ position: 'absolute', left: SAFE.left, right: SAFE.right, top: textTop }}
       >
         <Pop>
           <SourceChip source={ctx.source} label={site} size={1.6} />
@@ -351,7 +356,7 @@ export function ArticleHeadline({ frames, ctx, props, topPad }: ScreenProps) {
         >
           <Sweep text={ctx.title} phrase={phrase} frames={frames} />
         </div>
-      </div>
+      </Fit>
     </Page>
   )
 }
@@ -361,7 +366,10 @@ export function ImageFull({ frames, ctx, props, topPad }: ScreenProps) {
   const variant = prop<number>(props, 'variant', 0)
   if (!img) return <Page frames={frames} topPad={topPad} />
   const origins = ['50% 40%', '30% 50%', '70% 55%', '50% 65%']
-  const padded = topPad > 0
+  // Share cards and screenshots carry text to their edges: shown whole inside the safe box (phones
+  // crop the sides, the action rail covers the right), never cropped full-bleed.
+  const textual = img.kind === 'og' || img.kind === 'screenshot' || img.kind === 'figure'
+  const padded = topPad > 0 || textual
   const top = CONTENT_TOP + topPad + 8
   return (
     <Page frames={frames} bleed topPad={topPad}>
@@ -371,13 +379,16 @@ export function ImageFull({ frames, ctx, props, topPad }: ScreenProps) {
           <Photo
             image={img}
             frames={frames}
+            x={SAFE.left}
+            w={CONTENT_W}
             y={top}
             h={ZONE_BOTTOM - top}
             backdrop={false}
             maxUp={1.6}
-            zoomTo={1.1}
+            zoomTo={1.06}
             radius={20}
-            pan={variant % 2 === 0 ? -20 : 20}
+            keepInFrame
+            contain={textual}
           />
         </>
       ) : (

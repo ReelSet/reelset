@@ -1,6 +1,7 @@
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 import { Pop, Rise, easeOut, useSpring } from '../fx'
 import { parseStat } from '../lib/count'
+import { barValueWidth } from '../lib/looks'
 import { fitText } from '../lib/text'
 import { typeset } from '../lib/typeset'
 import { SourceChip } from '../Marks'
@@ -65,7 +66,8 @@ export function StatSlam({ frames, ctx, props, topPad }: ScreenProps) {
             lineHeight: 1,
             color: COLOR.accent,
             fontVariantNumeric: 'tabular-nums',
-            transform: `scale(${interpolate(slam, [0, 1], [1.35, 1])})`,
+            // Grows into place from below its size: a slam that starts larger would cross the safe edge.
+            transform: `scale(${interpolate(slam, [0, 1], [0.82, 1])})`,
             transformOrigin: '0% 60%',
             opacity: fade,
             textShadow: '0 0 90px rgba(200,247,81,0.38)',
@@ -123,7 +125,8 @@ export function BarRace({ frames, props, ctx, topPad }: ScreenProps) {
   const parsed = bars.map((b) => ({ ...b, stat: parseStat(b.value) }))
   const max = Math.max(...parsed.map((b) => b.stat?.value ?? 0), 1)
   const same = new Set(parsed.map((b) => b.stat?.suffix.trim())).size === 1
-  const valueW = 300
+  // The value column fits the longest value on one line ("~20 min" never wraps).
+  const valueW = barValueWidth(bars.map((b) => b.value))
   const track = CONTENT_W - valueW - 24
   return (
     <Page frames={frames} topPad={topPad}>
@@ -150,14 +153,22 @@ export function BarRace({ frames, props, ctx, topPad }: ScreenProps) {
           </div>
         ) : null}
         {parsed.map((b, i) => {
-          const start = times ? (times[i] ?? 0) * fps : 4 + i * 5
+          // Every bar and value is on screen from the first frame (no empty tracks): bars grow in
+          // within 8 frames, and the one being said gets a brief glow.
           const grow = easeOut(
-            interpolate(frame, [start, start + 16], [0, 1], {
+            interpolate(frame, [i * 2, i * 2 + 8], [0.15, 1], {
               extrapolateLeft: 'clamp',
               extrapolateRight: 'clamp',
             }),
           )
-          const shown = frame >= start - 1
+          const said = times ? (times[i] ?? 0) * fps : -1
+          const glow =
+            said > 2
+              ? interpolate(frame, [said, said + 4, said + 20], [0, 1, 0], {
+                  extrapolateLeft: 'clamp',
+                  extrapolateRight: 'clamp',
+                })
+              : 0
           const v = b.stat?.value ?? 0
           const width = same ? Math.max(0.06, v / max) : 1
           const color = i === 0 ? COLOR.accent : '#7c8cff'
@@ -169,7 +180,7 @@ export function BarRace({ frames, props, ctx, topPad }: ScreenProps) {
                   fontWeight: 800,
                   marginBottom: 16,
                   letterSpacing: '-0.02em',
-                  color: shown ? COLOR.text : COLOR.dim,
+                  color: COLOR.text,
                 }}
               >
                 {typeset(b.label)}
@@ -191,6 +202,7 @@ export function BarRace({ frames, props, ctx, topPad }: ScreenProps) {
                       height: '100%',
                       background: color,
                       borderRadius: 20,
+                      boxShadow: glow > 0 ? `0 0 ${60 * glow}px ${color}` : undefined,
                     }}
                   />
                 </div>
@@ -200,9 +212,9 @@ export function BarRace({ frames, props, ctx, topPad }: ScreenProps) {
                     fontSize: 84,
                     fontWeight: 900,
                     letterSpacing: '-0.04em',
-                    color: shown ? color : 'transparent',
+                    color,
                     fontVariantNumeric: 'tabular-nums',
-                    opacity: grow,
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {b.value}

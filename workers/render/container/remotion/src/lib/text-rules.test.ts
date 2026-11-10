@@ -74,10 +74,6 @@ describe('claims', () => {
       'Optimizes mixing coefficients and student weights',
     ],
     [
-      'You can also fix a broken LoRA block by block without retraining, and find the best epoch by eye.',
-      'Fix a broken LoRA block',
-    ],
-    [
       'Outlook.com is quietly rejecting emails from domains without DMARC records.',
       'Outlook.com is rejecting emails',
     ],
@@ -89,6 +85,14 @@ describe('claims', () => {
     ['Check out shootthesound slash Fizgig on GitHub.', 'Check out shootthesound/Fizgig on GitHub'],
   ])('states the claim of %s', (sentence, claim) => {
     expect(claimPhrases(sentence)[0]).toBe(claim)
+  })
+
+  it('never cuts a claim inside a pairing like "block by block"', () => {
+    const out = claimPhrases(
+      'You can also fix a broken LoRA block by block without retraining, and find the best epoch by eye.',
+    )
+    expect(out).not.toContain('Fix a broken LoRA block')
+    expect(out).toContain('Find the best epoch by eye')
   })
 
   it.each([

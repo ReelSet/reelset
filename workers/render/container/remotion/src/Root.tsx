@@ -1,6 +1,7 @@
 import { loadFont } from '@remotion/fonts'
 import { Composition, staticFile, type CalculateMetadataFunction } from 'remotion'
 import { Reel } from './Reel'
+import { withPrimarySource } from './lib/sources'
 import { resolveShots, totalFrames } from './lib/timeline'
 import type { ReelProps } from './lib/types'
 import { FPS, H, W } from './theme'
@@ -32,7 +33,7 @@ const calculateMetadata: CalculateMetadataFunction<ReelProps> = async ({ props }
   const durationInFrames = totalFrames(props.durationSeconds, FPS)
   const { shots, warnings } = resolveShots(props, FPS, durationInFrames)
   for (const w of warnings) console.warn(`[plan] ${w}`)
-  return { durationInFrames, props: { ...props, plan: shots } }
+  return { durationInFrames, props: { ...withPrimarySource(props), plan: shots } }
 }
 
 export function Root() {

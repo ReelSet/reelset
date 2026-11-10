@@ -13,10 +13,12 @@ describe('tables follow the narration', () => {
     expect(narratedAt(SENTENCE, 'recovery')).toEqual({
       raw: '94.7%',
       label: 'P^2-MOPD average recovery',
+      others: ['80.9%'],
     })
     expect(narratedAt(SENTENCE, 'surpassing')).toEqual({
       raw: '80.9%',
       label: 'MOPD average recovery',
+      others: ['94.7%'],
     })
     expect(narratedAt('No numbers here.', 'numbers')).toBeNull()
   })
@@ -30,6 +32,20 @@ describe('tables follow the narration', () => {
     expect(props.value).toMatch(/^80\.93/)
     expect(props.label).toBe('Avg. Recovery')
     expect(rows.some((r) => r.startsWith('P2-MOPD|78.74'))).toBe(false)
+  })
+
+  it('shows only the narrated row, the row it is compared with and the baseline', () => {
+    const props = buildTableProps(table, { value: '94.7%', others: ['80.9%'] })!
+    const rows = (props.rows as string[]).map((r) => r.split('|'))
+    expect(props.ref).toBe('Table 1 · Qwen3-1.7B')
+    expect(rows.map((r) => r[0])).toEqual(['Base student (θ_0)', 'MOPD (TA init)', 'P2-MOPD'])
+    expect(rows[props.hi as number]![0]).toBe('P2-MOPD')
+    expect(String(props.value)).toMatch(/^94\.74/)
+    expect(props.best).toBeUndefined()
+  })
+
+  it('gives up the table when a compared number is not in it', () => {
+    expect(buildTableProps(table, { value: '94.7%', others: ['81.5%'] })).toBeNull()
   })
 
   it('never mixes rows from two sections', () => {

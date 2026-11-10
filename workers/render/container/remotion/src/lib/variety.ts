@@ -2,7 +2,6 @@ import {
   imageCap,
   FOLD_MAX_S,
   NO_REPEAT_WITHIN,
-  MAY_REPEAT,
   capFor,
   identityOf,
   varietyKey,
@@ -28,16 +27,13 @@ export const IMAGE_SHOWS = new Set<ScreenName>([
   'ArticleHeadline',
 ])
 
-function violates(
+export function violates(
   shot: TimedShot,
   state: PlanState,
   props: ReelProps,
   ahead: readonly TimedShot[] = [],
 ): boolean {
-  if (
-    shot.origin === 'planned' &&
-    ahead.some((a) => a.origin === 'cue' && a.show === shot.show && !MAY_REPEAT.has(a.show))
-  ) {
+  if (shot.origin === 'planned' && ahead.some((a) => a.origin === 'cue' && a.show === shot.show)) {
     return true
   }
   if (SOURCE_SCREENS.has(shot.show)) {
@@ -46,13 +42,9 @@ function violates(
   }
   if ((state.uses[varietyKey(shot.show, shot.props)] ?? 0) >= capFor(shot.show)) return true
   const id = identityOf(shot.show, shot.props)
-  if (!MAY_REPEAT.has(shot.show) && state.identities.includes(id)) return true
-  if (shot.origin === 'planned' && !MAY_REPEAT.has(shot.show) && state.reserved.has(id)) return true
-  if (
-    !MAY_REPEAT.has(shot.show) &&
-    recentLook(state, shot.show, shot.props, state.history[state.history.length - 1])
-  )
-    return true
+  if (state.identities.includes(id)) return true
+  if (shot.origin === 'planned' && state.reserved.has(id)) return true
+  if (recentLook(state, shot.show, shot.props, state.history[state.history.length - 1])) return true
   if (
     IMAGE_SHOWS.has(shot.show) &&
     (state.imageUses[imageIndex(shot.props)] ?? 0) >=
@@ -92,7 +84,7 @@ export function enforceVariety(shots: TimedShot[], props: ReelProps, fps: number
   const state = newState()
   reserveCues(state, props, shots)
   const ctx = { props, fps }
-  const hasImages = usableImages(props.images).length > 0
+  const hasImages = usableImages(props.images, false, props).length > 0
   const out: TimedShot[] = []
   shots.forEach((raw, i) => {
     const shot = withVariant(raw, props, state)
@@ -121,8 +113,7 @@ export function enforceVariety(shots: TimedShot[], props: ReelProps, fps: number
           prev.frames += shot.frames
           return
         }
-        const seen = (s: TimedShot) =>
-          !MAY_REPEAT.has(s.show) && state.identities.includes(identityOf(s.show, s.props))
+        const seen = (s: TimedShot) => state.identities.includes(identityOf(s.show, s.props))
         if (next && !seen(next))
           cur = { ...next, sfx: sfxFor(next.show, i, state.history[state.history.length - 1]) }
         else if (seen(cur) && shot.show !== 'EndCard') {

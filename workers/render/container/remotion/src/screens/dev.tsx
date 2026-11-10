@@ -6,9 +6,10 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
-import { Pop, Rise, easeOut } from '../fx'
+import { Pop, Rise, easeInOut, easeOut } from '../fx'
 import { codeMetrics, tokenize, type TokenKind } from '../lib/highlight'
-import { demoBox } from '../lib/images'
+import { cardLines, codeKind, isShortCode } from '../lib/looks'
+import { demoCrop } from '../lib/images'
 import { fitText } from '../lib/text'
 import { buildSession, fitSessionFont, revealSession } from '../lib/terminal'
 import {
@@ -19,12 +20,14 @@ import {
   H,
   LOW_TOP,
   MONO,
+  PANEL_TOP,
   SAFE,
   W,
   ZONE_BOTTOM,
 } from '../theme'
 import {
   Chip,
+  Fit,
   Page,
   compact,
   ghLanguageColor,
@@ -68,13 +71,16 @@ const Fork = ({ size = 44 }: { size?: number }) => (
 export function RepoPage({ frames, ctx, topPad }: ScreenProps) {
   const { owner, name } = repoIdentity(ctx)
   const r = ctx.facts.repo
+  // Only the repo's own description: the title of the post that linked it is somebody else's words.
   const desc = r?.description ?? ''
-  const demo = ctx.demo
+  // The README card never freezes a frame of the demo the reel plays as its own shot.
+  const demo = ctx.demoInPlan ? undefined : ctx.demo
   const count = useCount(frames, 0.55)
+  const sparse = !r?.description && !r?.topics?.length && !r?.languages?.length && !r?.language
   const nameSize = fitText(
     name,
-    { width: CONTENT_W, height: 130 },
-    { min: 56, max: 110, charWidth: 0.6, lineHeight: 1.05 },
+    { width: CONTENT_W, height: sparse ? 260 : 130 },
+    { min: 56, max: sparse ? 170 : 110, charWidth: 0.6, lineHeight: 1.05 },
   )
   const langs =
     r?.languages && r.languages.length > 0
@@ -86,161 +92,168 @@ export function RepoPage({ frames, ctx, topPad }: ScreenProps) {
   const stat = (n: number | undefined) => (n === undefined ? null : grouped(n * count))
   return (
     <Page frames={frames} topPad={topPad}>
-      <Rise>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 20,
-            color: COLOR.muted,
-            fontSize: 44,
-            fontWeight: 600,
-          }}
-        >
-          <RepoIcon />
-          {owner ? <span>{owner} /</span> : null}
-        </div>
-        <div
-          style={{
-            fontSize: nameSize,
-            fontWeight: 800,
-            letterSpacing: '-0.035em',
-            lineHeight: 1.02,
-            marginTop: 8,
-            color: '#58a6ff',
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {name}
-        </div>
-      </Rise>
-      {desc ? (
-        <Rise
-          delay={5}
-          style={{
-            marginTop: 34,
-            fontSize: topics.length || langs.length ? 46 : 56,
-            lineHeight: 1.22,
-            color: '#c9d1d9',
-            fontWeight: 500,
-            maxHeight: 290,
-            overflow: 'hidden',
-          }}
-        >
-          {desc}
-        </Rise>
-      ) : null}
-      <div style={{ display: 'flex', gap: 22, marginTop: 40, flexWrap: 'wrap' }}>
-        {stat(r?.stars) ? (
-          <Pop delay={8}>
-            <Chip size={44} bg="rgba(255,255,255,0.1)">
-              <Star />
-              Star <b style={{ color: '#e3b341' }}>{stat(r?.stars)}</b>
-            </Chip>
-          </Pop>
-        ) : null}
-        {stat(r?.forks) ? (
-          <Pop delay={12}>
-            <Chip size={44} bg="rgba(255,255,255,0.1)">
-              <Fork />
-              Fork <b>{stat(r?.forks)}</b>
-            </Chip>
-          </Pop>
-        ) : null}
-      </div>
-      {langs.length > 0 ? (
-        <div style={{ marginTop: 40 }}>
-          <div style={{ display: 'flex', height: 18, borderRadius: 9, overflow: 'hidden', gap: 3 }}>
-            {langs.map((l) => (
-              <div
-                key={l.name}
-                style={{
-                  flex: l.pct * count + 0.001,
-                  background: ghLanguageColor[l.name] ?? COLOR.accent,
-                }}
-              />
-            ))}
-          </div>
+      <Fit maxHeight={ZONE_BOTTOM - CONTENT_TOP - topPad} center={sparse}>
+        <Rise>
           <div
             style={{
               display: 'flex',
-              gap: 30,
-              marginTop: 20,
-              flexWrap: 'wrap',
-              fontSize: 34,
+              alignItems: 'center',
+              gap: 20,
+              color: COLOR.muted,
+              fontSize: 44,
               fontWeight: 600,
             }}
           >
-            {langs.map((l) => (
-              <span key={l.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                <i
+            <RepoIcon />
+            {owner ? <span>{owner} /</span> : null}
+          </div>
+          <div
+            style={{
+              fontSize: nameSize,
+              fontWeight: 800,
+              letterSpacing: '-0.035em',
+              lineHeight: 1.02,
+              marginTop: 8,
+              color: '#58a6ff',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {name}
+          </div>
+        </Rise>
+        {desc ? (
+          <Rise
+            delay={5}
+            style={{
+              marginTop: 34,
+              fontSize: topics.length || langs.length ? 46 : 56,
+              lineHeight: 1.22,
+              color: '#c9d1d9',
+              fontWeight: 500,
+              maxHeight: 290,
+              overflow: 'hidden',
+            }}
+          >
+            {desc}
+          </Rise>
+        ) : null}
+        <div style={{ display: 'flex', gap: 22, marginTop: 40, flexWrap: 'wrap' }}>
+          {stat(r?.stars) ? (
+            <Pop delay={8}>
+              <Chip size={44} bg="rgba(255,255,255,0.1)">
+                <Star />
+                Star <b style={{ color: '#e3b341' }}>{stat(r?.stars)}</b>
+              </Chip>
+            </Pop>
+          ) : null}
+          {stat(r?.forks) ? (
+            <Pop delay={12}>
+              <Chip size={44} bg="rgba(255,255,255,0.1)">
+                <Fork />
+                Fork <b>{stat(r?.forks)}</b>
+              </Chip>
+            </Pop>
+          ) : null}
+        </div>
+        {langs.length > 0 ? (
+          <div style={{ marginTop: 40 }}>
+            <div
+              style={{ display: 'flex', height: 18, borderRadius: 9, overflow: 'hidden', gap: 3 }}
+            >
+              {langs.map((l) => (
+                <div
+                  key={l.name}
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
+                    flex: l.pct * count + 0.001,
                     background: ghLanguageColor[l.name] ?? COLOR.accent,
                   }}
                 />
-                {l.name}
-                {langs.length > 1 ? (
-                  <span style={{ color: COLOR.muted }}>{l.pct.toFixed(1)}%</span>
-                ) : null}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      {topics.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 36 }}>
-          {topics.map((t, i) => (
-            <Pop key={t} delay={14 + i * 3}>
-              <Chip size={32} color="#58a6ff" bg="rgba(56,139,253,0.15)">
-                {t}
-              </Chip>
-            </Pop>
-          ))}
-        </div>
-      ) : null}
-      {demo ? (
-        <Pop delay={6} style={{ marginTop: 40 }}>
-          <div
-            style={{
-              border: `2px solid ${COLOR.line}`,
-              borderRadius: 24,
-              overflow: 'hidden',
-              background: COLOR.surface,
-            }}
-          >
+              ))}
+            </div>
             <div
               style={{
-                padding: '18px 28px',
-                fontSize: 32,
-                color: COLOR.muted,
-                fontWeight: 700,
-                borderBottom: `2px solid ${COLOR.line}`,
+                display: 'flex',
+                gap: 30,
+                marginTop: 20,
+                flexWrap: 'wrap',
+                fontSize: 34,
+                fontWeight: 600,
               }}
             >
-              README.md
+              {langs.map((l) => (
+                <span
+                  key={l.name}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}
+                >
+                  <i
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      background: ghLanguageColor[l.name] ?? COLOR.accent,
+                    }}
+                  />
+                  {l.name}
+                  {langs.length > 1 ? (
+                    <span style={{ color: COLOR.muted }}>{l.pct.toFixed(1)}%</span>
+                  ) : null}
+                </span>
+              ))}
             </div>
-            <Freeze frame={Math.round(Math.min(2, demo.seconds / 2) * 30)}>
-              <OffthreadVideo
-                src={staticFile(demo.src)}
-                muted
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  height: Math.min(
-                    460,
-                    Math.round(((CONTENT_W - 4) * (demo.height ?? 720)) / (demo.width ?? 1280)),
-                  ),
-                  objectFit: 'contain',
-                  background: '#000',
-                }}
-              />
-            </Freeze>
           </div>
-        </Pop>
-      ) : null}
+        ) : null}
+        {topics.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 36 }}>
+            {topics.map((t, i) => (
+              <Pop key={t} delay={14 + i * 3}>
+                <Chip size={32} color="#58a6ff" bg="rgba(56,139,253,0.15)">
+                  {t}
+                </Chip>
+              </Pop>
+            ))}
+          </div>
+        ) : null}
+        {demo ? (
+          <Pop delay={6} style={{ marginTop: 40 }}>
+            <div
+              style={{
+                border: `2px solid ${COLOR.line}`,
+                borderRadius: 24,
+                overflow: 'hidden',
+                background: COLOR.surface,
+              }}
+            >
+              <div
+                style={{
+                  padding: '18px 28px',
+                  fontSize: 32,
+                  color: COLOR.muted,
+                  fontWeight: 700,
+                  borderBottom: `2px solid ${COLOR.line}`,
+                }}
+              >
+                README.md
+              </div>
+              <Freeze frame={Math.round(Math.min(2, demo.seconds / 2) * 30)}>
+                <OffthreadVideo
+                  src={staticFile(demo.src)}
+                  muted
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    height: Math.min(
+                      460,
+                      Math.round(((CONTENT_W - 4) * (demo.height ?? 720)) / (demo.width ?? 1280)),
+                    ),
+                    objectFit: 'contain',
+                    background: '#000',
+                  }}
+                />
+              </Freeze>
+            </div>
+          </Pop>
+        ) : null}
+      </Fit>
     </Page>
   )
 }
@@ -254,7 +267,7 @@ export function Terminal({ frames, ctx, props, topPad }: ScreenProps) {
     name,
     latestRelease: r?.latestRelease,
   })
-  const top = CONTENT_TOP + topPad - 28
+  const top = PANEL_TOP + topPad
   const termH = LOW_TOP - top - 24
   const size = fitSessionFont(rows, W - SAFE.left - SAFE.right, termH - 190)
   const chars = rows.reduce((n, row) => n + row.cmd.length + 4 + row.out.length * 3, 0)
@@ -401,7 +414,66 @@ const EXT: Record<string, string> = {
   java: 'java',
 }
 
-export function CodeBlock({ frames, props, topPad }: ScreenProps) {
+function CodeCard({ frames, props, topPad }: ScreenProps) {
+  const code = prop<string>(props, 'code', '').replace(/\s+$/, '')
+  const language = prop<string>(props, 'language', 'text')
+  const lines = cardLines(code, language)
+  const cols = Math.max(...lines.map((l) => l.length), 1)
+  const size = Math.max(40, Math.min(120, Math.floor((CONTENT_W - 100) / (cols * 0.62))))
+  return (
+    <Page frames={frames} topPad={topPad}>
+      <div
+        style={{
+          height: ZONE_BOTTOM - CONTENT_TOP - topPad,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <Pop>
+          <Chip size={40} bg={COLOR.accent} color={COLOR.accentInk}>
+            {codeKind(language)}
+          </Chip>
+        </Pop>
+        <Pop delay={3} style={{ marginTop: 34 }}>
+          <div
+            style={{
+              background: '#0d1117',
+              border: `2px solid ${COLOR.line}`,
+              borderLeft: `10px solid ${COLOR.accent}`,
+              borderRadius: 28,
+              padding: '64px 46px',
+              fontFamily: MONO,
+              fontSize: size,
+              lineHeight: 1.35,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              textAlign: 'center',
+            }}
+          >
+            {lines.map((line, i) => (
+              <div key={i}>
+                {tokenize(line).map((t, k) => (
+                  <span key={k} style={{ color: KIND_COLOR[t.kind] }}>
+                    {t.text}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Pop>
+      </div>
+    </Page>
+  )
+}
+
+export function CodeBlock(screen: ScreenProps) {
+  const code = prop<string>(screen.props, 'code', '').replace(/\s+$/, '')
+  if (isShortCode(code.split('\n'))) return <CodeCard {...screen} />
+  return <CodeEditor {...screen} />
+}
+
+function CodeEditor({ frames, props, topPad }: ScreenProps) {
   const frame = useCurrentFrame()
   const code = prop<string>(props, 'code', '').replace(/\s+$/, '')
   const language = prop<string>(props, 'language', 'text')
@@ -508,7 +580,11 @@ export function CodeBlock({ frames, props, topPad }: ScreenProps) {
   )
 }
 
-/** README demo clip, full-bleed; a blurred copy fills the frame when the clip does not. */
+/**
+ * README demo clip, large: a landscape clip is cropped to a 4:5 window (full width, from below the
+ * chrome to the bottom safe line) that pans gently across the UI so its text is readable on a phone;
+ * a portrait clip fills the frame. A blurred copy fills what is left.
+ */
 export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
   const { fps } = useVideoConfig()
   const frame = useCurrentFrame()
@@ -519,10 +595,9 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
     Math.max(0, demo.seconds - frames / fps),
   )
   const startFrom = Math.round(offset * fps)
-  const box = demoBox(demo.width ?? 1280, demo.height ?? 720, CONTENT_TOP + topPad)
-  const zoom = interpolate(frame, [0, Math.max(1, frames)], [1, box.fullBleed ? 1.05 : 1.03], {
-    extrapolateRight: 'clamp',
-  })
+  const crop = demoCrop(demo.width ?? 1280, demo.height ?? 720, PANEL_TOP + topPad, ZONE_BOTTOM)
+  const p = easeInOut(Math.min(1, frame / Math.max(1, frames)))
+  const x = -crop.overflow * (crop.panFrom + (crop.panTo - crop.panFrom) * p)
   const { owner, name } = repoIdentity(ctx)
   const label = owner && name ? `github.com/${owner}/${name}` : ctx.domain
   return (
@@ -532,7 +607,7 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
           position: 'absolute',
           inset: 0,
           overflow: 'hidden',
-          filter: 'blur(44px) brightness(0.4) saturate(1.2)',
+          filter: 'blur(44px) brightness(0.55) saturate(1.2)',
         }}
       >
         <OffthreadVideo
@@ -545,14 +620,11 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
       <div
         style={{
           position: 'absolute',
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
+          left: 0,
+          top: crop.top,
+          width: W,
+          height: crop.height,
           overflow: 'hidden',
-          borderRadius: box.fullBleed ? 0 : 18,
-          boxShadow: box.fullBleed ? undefined : '0 30px 80px rgba(0,0,0,0.55)',
-          transform: box.fullBleed ? undefined : `scale(${zoom})`,
         }}
       >
         <OffthreadVideo
@@ -560,22 +632,17 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
           muted
           startFrom={startFrom}
           style={{
-            width: box.width,
-            height: box.height,
-            objectFit: box.fullBleed ? 'cover' : 'contain',
-            transform: box.fullBleed ? `scale(${zoom})` : undefined,
+            position: 'absolute',
+            left: x,
+            top: (crop.height - crop.videoHeight) / 2,
+            width: crop.videoWidth,
+            height: crop.videoHeight,
           }}
         />
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: box.fullBleed ? SAFE.left : box.left,
-          top: box.fullBleed ? CONTENT_TOP + topPad : box.top + box.height + 16,
-        }}
-      >
-        <Chip size={24} bg="rgba(9,9,11,0.72)" color={COLOR.muted}>
-          <i style={{ width: 10, height: 10, borderRadius: 5, background: COLOR.accent }} />
+      <div style={{ position: 'absolute', left: SAFE.left, top: crop.top + 24 }}>
+        <Chip size={30} bg="rgba(9,9,11,0.78)" color={COLOR.text}>
+          <i style={{ width: 12, height: 12, borderRadius: 6, background: COLOR.accent }} />
           Demo · {label}
         </Chip>
       </div>

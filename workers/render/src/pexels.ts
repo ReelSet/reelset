@@ -8,6 +8,8 @@ const MIN_WIDTH = 1080
 const MIN_HEIGHT = 1920
 const MIN_SECONDS = 4
 const MAX_SECONDS = 45
+// The container refuses stock clips over 25 MB (reel/media.py MAX_CLIP_BYTES).
+export const MAX_FILE_BYTES = 25 * 1024 * 1024
 const USAGE_KEY = 'cache/pexels/usage.json'
 const RATE_KEY = 'cache/pexels/rate.json'
 
@@ -36,6 +38,24 @@ export type Cache = Pick<R2Bucket, 'get' | 'put'>
 export type Fetch = (url: string, init: { headers: Record<string, string> }) => Promise<Response>
 
 const ABSTRACT: [RegExp, string[]][] = [
+  // Topic before tooling: an email story gets mail footage, not another keyboard.
+  [
+    /\b(e-?mails?|inbox\w*|mailbox\w*|mail|spam|bounc\w*|smtp|dmarc|dkim|newsletter)\b/i,
+    ['email inbox', 'envelope letters'],
+  ],
+  [
+    /\b(phishing|spoof\w*|impersonat\w*|fraud|scam\w*|password\w*|authenticat\w*)\b/i,
+    ['cyber security', 'padlock'],
+  ],
+  [
+    /\b(images?|photos?|pictures?|pixels?|diffusion|lora\w*|render\w*)\b/i,
+    ['digital art', 'camera lens'],
+  ],
+  // Not a bare "domain": in a paper it means a data domain, not DNS.
+  [
+    /\b(dns|nameservers?|registrars?|domain names?|(dmarc|dns|txt|mx) records?)\b/i,
+    ['network cables', 'server room'],
+  ],
   [
     /\b(terminal|command|cli|shell|install|npm|pip|script)\b/i,
     ['keyboard typing', 'code on screen'],
@@ -91,7 +111,10 @@ export function cleanTerm(raw: unknown, title: string): string | null {
   return words.join(' ')
 }
 
-/** 1-2 abstract terms for a beat: the script's own `broll`, else the keyword map, else the source default. */
+/**
+ * Abstract search terms for a beat, best first: the script's own `broll` (1-2), else every matching
+ * keyword-map entry (topic before tooling, at most 4), else the source default.
+ */
 export function termsForBeat(
   beat: { text: string; broll?: readonly string[] },
   source: string | null,
@@ -101,11 +124,18 @@ export function termsForBeat(
     .map((t) => cleanTerm(t, title))
     .filter((t): t is string => t !== null)
   if (given.length > 0) return [...new Set(given)].slice(0, 2)
-  for (const [re, terms] of ABSTRACT) if (re.test(beat.text)) return terms
+  const matched = ABSTRACT.filter(([re]) => re.test(beat.text)).flatMap(([, terms]) => terms)
+  if (matched.length > 0) return [...new Set(matched)].slice(0, 4)
   return SOURCE_DEFAULT[source ?? ''] ?? FALLBACK
 }
 
-type PexelsFile = { link?: string; width?: number; height?: number; file_type?: string }
+type PexelsFile = {
+  link?: string
+  width?: number
+  height?: number
+  file_type?: string
+  size?: number
+}
 type PexelsVideo = {
   id?: number
   url?: string
@@ -114,7 +144,7 @@ type PexelsVideo = {
   video_files?: PexelsFile[]
 }
 
-/** Smallest mp4 that is still portrait and at least 1080x1920. */
+/** Smallest mp4 that is still portrait, at least 1080x1920 and small enough for the container. */
 export function pickFile(files: readonly PexelsFile[]): PexelsFile | null {
   const ok = files.filter(
     (f) =>
@@ -123,7 +153,8 @@ export function pickFile(files: readonly PexelsFile[]): PexelsFile | null {
       f.file_type === 'video/mp4' &&
       (f.width ?? 0) >= MIN_WIDTH &&
       (f.height ?? 0) >= MIN_HEIGHT &&
-      (f.height ?? 0) > (f.width ?? 0),
+      (f.height ?? 0) > (f.width ?? 0) &&
+      (f.size ?? 0) <= MAX_FILE_BYTES,
   )
   ok.sort((a, b) => a.width! * a.height! - b.width! * b.height!)
   return ok[0] ?? null
@@ -225,16 +256,24 @@ export async function pickBroll(
 ): Promise<BrollPick[]> {
   const usage = (await readJson<Record<string, number>>(deps.cache, USAGE_KEY)) ?? {}
   const taken = new Set<number>()
+  const usedTerms = new Set<string>()
   const picks: BrollPick[] = []
   for (const [index, beat] of beats.entries()) {
     if (picks.length >= MAX_REEL_CLIPS) break
-    for (const term of termsForBeat(beat, ctx.source, ctx.title)) {
+    // A term an earlier beat already used goes last, so the reel is not four keyboards.
+    const terms = termsForBeat(beat, ctx.source, ctx.title)
+    const ordered = [
+      ...terms.filter((t) => !usedTerms.has(t)),
+      ...terms.filter((t) => usedTerms.has(t)),
+    ]
+    for (const term of ordered) {
       const found = (await searchVideos(deps, term))
         .filter((v) => !taken.has(v.id) && v.seconds >= MIN_SECONDS && v.seconds <= MAX_SECONDS)
         .map((v, rank) => ({ v, rank }))
         .sort((a, b) => (usage[a.v.id] ?? 0) - (usage[b.v.id] ?? 0) || a.rank - b.rank)[0]?.v
       if (!found) continue
       taken.add(found.id)
+      usedTerms.add(term)
       usage[found.id] = (usage[found.id] ?? 0) + 1
       picks.push({
         url: found.link,

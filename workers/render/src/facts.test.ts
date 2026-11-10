@@ -169,3 +169,24 @@ describe('mention bodies', () => {
     expect(excerpt('[link](https://x.y) short')).toBeUndefined()
   })
 })
+
+describe('buildFacts repo identity', () => {
+  it('names the repo from a github canonical URL when no github mention was stored', () => {
+    const facts = buildFacts(
+      [
+        m({
+          source: 'reddit',
+          url: 'https://www.reddit.com/r/StableDiffusion/comments/abc/x/',
+          score: 75,
+        }),
+      ],
+      'https://github.com/shootthesound/fizgig',
+    )
+    expect(facts.repo).toEqual({ owner: 'shootthesound', name: 'fizgig' })
+    expect(facts.reddit?.upvotes).toBe(75)
+  })
+
+  it('adds no repo for other hosts', () => {
+    expect(buildFacts([], 'https://mailroute.net/blog/x').repo).toBeUndefined()
+  })
+})

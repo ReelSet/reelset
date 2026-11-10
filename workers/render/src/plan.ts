@@ -81,6 +81,22 @@ export function sourceLabel(source: Source | null): string {
   return source ? SOURCE_LABELS[source] : 'Dev'
 }
 
+/**
+ * The source a reel is about: the canonical URL's own kind wins over the mention it was found
+ * through (a GitHub repo posted on Reddit is a GitHub reel, an arXiv paper linked from HN a paper).
+ */
+export function primarySource(
+  mentionSource: Source | null,
+  canonicalUrl: string | null | undefined,
+): Source | null {
+  const url = parseUrl(canonicalUrl)
+  const host = url?.hostname.replace(/^www\./, '') ?? ''
+  if (host === 'github.com' && url && GITHUB_PATH.test(url.pathname)) return 'github'
+  if (host === 'arxiv.org') return 'papers'
+  if (youtubeVideoId(canonicalUrl)) return 'youtube'
+  return mentionSource
+}
+
 export function collectImageUrls(script: ReelScript): string[] {
   const urls = script.beats.flatMap((beat) =>
     beat.visual.type === 'image' && beat.visual.url.startsWith('https://') ? [beat.visual.url] : [],
