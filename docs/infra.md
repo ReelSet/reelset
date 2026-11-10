@@ -17,7 +17,7 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 - Queues: `ingest-items`, `ingest-items-dlq`, `render-jobs`, `render-jobs-dlq`
 - R2: `reelset-media`, custom domain `media.reelset.app`
 - Hyperdrive: `reelset-db` (id in `.env.local` as `HYPERDRIVE_ID`) -> Supabase direct connection
-- Workers (not deployed yet): `reelset-ingest`, `reelset-render`
+- Workers: `reelset-ingest`, `reelset-render` (deployed)
 
 ## Supabase (project `ydcasrnilwtvtcfveamz`)
 

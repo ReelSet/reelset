@@ -2,7 +2,9 @@ import { getContainer } from '@cloudflare/containers'
 import {
   createDb,
   createLogger,
+  getSetting,
   recordSpend,
+  SETTINGS,
   sendAlert,
   transitionItem,
   type Logger,
@@ -103,20 +105,24 @@ export default {
       max: 1,
     })
     ctx.waitUntil(
-      (async () =>
-        runMaintenance({
+      (async () => {
+        const upgradeEnabled = await getSetting(db, SETTINGS.renderUpgradeEnabled, log)
+        return runMaintenance({
           store: createMaintenanceStore(db, log),
           media: env.MEDIA,
           alert: (input) => sendAlert(db, env.ALERT_WEBHOOK_URL, input, log),
           retentionDays: () => loadRetentionDays(db, log),
-          upgrade: {
-            voice: (await loadTtsConfig(db, env, log)).voice,
-            send: async (itemIds) => {
-              await env.RENDER_JOBS.sendBatch(itemIds.map((itemId) => ({ body: { itemId } })))
-            },
-          },
+          upgrade: upgradeEnabled
+            ? {
+                voice: (await loadTtsConfig(db, env, log)).voice,
+                send: async (itemIds) => {
+                  await env.RENDER_JOBS.sendBatch(itemIds.map((itemId) => ({ body: { itemId } })))
+                },
+              }
+            : undefined,
           log,
-        }))().finally(close),
+        })
+      })().finally(close),
     )
   },
 } satisfies ExportedHandler<Env>

@@ -75,6 +75,7 @@ export const SETTINGS = {
     'edge' as 'edge' | 'aura2' | 'kokoro',
   ),
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
+  renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 
