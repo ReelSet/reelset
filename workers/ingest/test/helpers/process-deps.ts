@@ -120,7 +120,8 @@ export function makeDeps(
     embedder: { embed },
     transcripts: { fetch: transcriptFetch },
     renderQueue: { send },
-    geminiModel: 'gemini-test',
+    llmModel: 'gemini-test',
+    narrationLimits: {},
     embeddingModel: 'embed-test',
   }
   return { deps, fake, generate, embed, transcriptFetch, send, world }

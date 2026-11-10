@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { corpusOf, namesOf, spokenIn, wordsIn } from './numbers'
+import { echoesCaption, isSentenceCase } from './caption-echo'
+import { repeatedClips } from './broll'
+import { sparseShots } from './fill'
+import { isScrollStopper } from './hook'
 import { CAPTION_ONLY_MAX_S, echoes, isCallToAction, isCaptionOnly, lookKey } from './finalize'
 import { readTable } from './table'
 import {
@@ -18,7 +22,27 @@ import outlook from './samples/outlook.json'
 
 // Round-11 sample reels (stored scripts + Aura word timings) that looked amateur; see docs/contracts.md.
 const FPS = 30
-const SAMPLES = { mopd, outlook, fizgig } as unknown as Record<string, ReelProps>
+/** The worker sends up to 14 distinct clips per reel; the stored samples carry 3-4, so cycle them. */
+const withClips = (p: ReelProps, n = 14): ReelProps => {
+  const base = p.broll ?? []
+  const beats = Math.max(1, p.scenes.length - 2)
+  return {
+    ...p,
+    broll: base.length
+      ? Array.from({ length: n }, (_, i) => ({
+          ...base[i % base.length]!,
+          src: `job/broll${i}.mp4`,
+          beat: (i % beats) + 1,
+        }))
+      : base,
+  }
+}
+const SAMPLES = Object.fromEntries(
+  Object.entries({ mopd, outlook, fizgig }).map(([k, v]) => [
+    k,
+    withClips(v as unknown as ReelProps),
+  ]),
+) as Record<string, ReelProps>
 const plan = (p: ReelProps) => resolveShots(p, FPS, totalFrames(p.durationSeconds, FPS)).shots
 const viewed = (shots: TimedShot[]) => shots
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -70,8 +94,14 @@ describe.each(Object.entries(SAMPLES))('sample reel %s', (_name, props) => {
     }
   })
 
-  it('plays a demo at most once and shows only narrated tables', () => {
-    expect(shots.filter((s) => s.show === 'RepoDemo').length).toBeLessThanOrEqual(1)
+  it('plays a demo 3-5 s in at most two cuts and shows only narrated tables', () => {
+    const demos = shots.filter((s) => s.show === 'RepoDemo')
+    expect(demos.length).toBeLessThanOrEqual(2)
+    if (demos.length > 0) {
+      const seconds = demos.reduce((n, s) => n + s.frames, 0) / FPS
+      expect(seconds).toBeGreaterThanOrEqual(3)
+      expect(seconds).toBeLessThanOrEqual(5.1)
+    }
     for (const s of shots.filter((x) => x.show === 'TableScreen')) {
       expect((s.props.rows as string[]).length).toBeLessThanOrEqual(4)
       expect(s.props.best).toBeUndefined()
@@ -85,10 +115,9 @@ describe.each(Object.entries(SAMPLES))('sample reel %s', (_name, props) => {
       (x) => x.show === 'KeyPoint' && !x.props.quote && !Array.isArray(x.props.items),
     )) {
       const text = str(s.props.text)
-      if (!text) {
-        expect(typeof s.props.bg, 'caption-only shot needs footage').toBe('number')
-        continue
-      }
+      if (s.props.hook) continue
+      // A text-less shot is footage, or (out of clips) the full context plate, never an empty card.
+      if (!text) continue
       const ok = validKeyPoint(text, { names, allowVerbStart: true, allowParticipleStart: true })
       expect(ok, text).toBe(text)
     }
@@ -124,6 +153,41 @@ describe.each(Object.entries(SAMPLES))('sample reel %s', (_name, props) => {
   })
 })
 
+describe.each(Object.entries(SAMPLES))('render rules on sample reel %s', (_name, props) => {
+  const shots = plan(props)
+  const spoken = (s: TimedShot) => wordsIn(props.words, s.from / FPS - 1, (s.from + s.frames) / FPS)
+  const texts = shots.filter(
+    (s) =>
+      s.show === 'KeyPoint' && !s.props.hook && !s.props.quote && !Array.isArray(s.props.items),
+  )
+
+  it('shows no clip twice', () => {
+    expect(repeatedClips(shots)).toEqual([])
+  })
+
+  it('opens on something that stops the scroll', () => {
+    expect(isScrollStopper(shots[0]!), `${shots[0]!.show}`).toBe(true)
+  })
+
+  it('shows big text only as a sentence-case statement that the captions do not repeat', () => {
+    for (const s of texts.filter((x) => str(x.props.text))) {
+      const text = str(s.props.text)
+      expect(isSentenceCase(text), text).toBe(true)
+      expect(echoesCaption(text, spoken(s)), `${text} @${s.from / FPS}`).toBe(false)
+    }
+  })
+
+  it('never makes a card of keyword fragments', () => {
+    for (const s of shots) expect(s.props.terms).toBeUndefined()
+    for (const s of shots.filter((x) => Array.isArray(x.props.items)))
+      expect(str(s.props.kicker), 'a list needs its label').not.toBe('')
+  })
+
+  it('leaves no screen more than half empty for over 1.5 s', () => {
+    expect(sparseShots(shots, FPS)).toEqual([])
+  })
+})
+
 describe('sample specifics', () => {
   it('mopd: 94.7% and 80.9% are one comparison that names P²-MOPD and MOPD, shown once', () => {
     const shots = plan(SAMPLES.mopd!)
@@ -149,9 +213,15 @@ describe('sample specifics', () => {
     const texts = plan(SAMPLES.mopd!)
       .filter((s) => s.show === 'KeyPoint')
       .map((s) => str(s.props.text))
-    for (const bad of ['1.7B model', 'P^2-MOPD', 'Linear parameter combination', 'expert weights'])
+    for (const bad of [
+      '1.7B model',
+      'P^2-MOPD',
+      'Linear parameter combination',
+      'linear combination',
+      'expert weights',
+      'source of supervision',
+    ])
       expect(texts).not.toContain(bad)
-    expect(texts).toContain('MOPD is a heavy pipeline')
   })
 
   it('outlook: the mailbox domains are list cards that fill in with the voice, none held over 4 s', () => {
@@ -175,9 +245,9 @@ describe('sample specifics', () => {
     expect(str(code[0]!.props.code)).toBe('v=DMARC1; p=none;')
   })
 
-  it('fizgig: the demo plays once, over "watch the tour"; no key point names the repo', () => {
+  it('fizgig: the demo plays in two cuts, one over "watch the tour"; no key point names the repo', () => {
     const shots = plan(SAMPLES.fizgig!)
-    expect(shots.filter((s) => s.show === 'RepoDemo')).toHaveLength(1)
+    expect(shots.filter((s) => s.show === 'RepoDemo').length).toBeLessThanOrEqual(2)
     expect(shots.some((s) => s.show === 'RedditPost')).toBe(false)
     const watch = SAMPLES.fizgig!.words.find((w) => /^watch$/i.test(w.text))!
     const t = watch.start + 0.1

@@ -21,7 +21,6 @@ import type { RenderJobMessage } from '../env'
 import {
   approxTokens,
   embeddingCostUsd,
-  llmCostUsd,
   parseModelOutput,
   type Embedder,
   type LlmClient,
@@ -30,6 +29,8 @@ import {
   buildEvidenceRows,
   hasEnoughEvidence,
   parseExtraTexts,
+  parseFacts,
+  hasDemo,
   selectPromptChunks,
   stageFor,
   youtubeIdFromKey,
@@ -40,7 +41,10 @@ import { captureItemImages } from '../images'
 import { pdfMarkdownEvidence } from '../arxiv-html'
 import { arxivIdFromKey, type PaperClient } from '../paper-client'
 import type { ScrapeFallback } from '../types'
+import { buildSourceBrief, type BriefInput, type SourceBrief } from './brief'
+import { enrichItem } from '../brief-fetch'
 import { paperAssetsPrompt, resolvePaperShots } from './paper-shots'
+import { llmCostFor, type LlmProvider } from './llm'
 import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
@@ -54,7 +58,9 @@ export type ProcessDeps = {
   papers?: PaperClient
   scrape?: ScrapeFallback
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
-  geminiModel: string
+  llmModel: string
+  narrationLimits?: { min?: number; max?: number }
+  llmProvider?: LlmProvider
   embeddingModel: string
   alertWebhookUrl?: string
   githubToken?: string
@@ -86,6 +92,7 @@ type ItemRow = {
 }
 
 const GENERATION_ATTEMPTS = 2
+export const NARRATION_LIMITS = { min: 110, max: 125 }
 
 async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefined> {
   const row = await db
@@ -201,6 +208,15 @@ function paperTexts(paper: ParsedPaper | null, source: string): string[] | null 
   return texts.length > 0 ? texts : null
 }
 
+function safeBrief(log: Logger, input: BriefInput): SourceBrief {
+  try {
+    return buildSourceBrief(input)
+  } catch (err) {
+    log.warn(errorFields(err), 'source brief failed, continuing without it')
+    return { text: '', facts: '' }
+  }
+}
+
 async function summarize(
   deps: ProcessDeps,
   item: ItemRow,
@@ -212,7 +228,19 @@ async function summarize(
 
   const mentions = await db
     .selectFrom('mention')
-    .select(['id', 'source', 'external_id', 'url', 'title', 'body', 'raw'])
+    .select([
+      'id',
+      'source',
+      'external_id',
+      'url',
+      'title',
+      'body',
+      'raw',
+      'author',
+      'score',
+      'num_comments',
+      'published_at',
+    ])
     .where('item_id', '=', item.id)
     .orderBy('published_at', 'asc')
     .execute()
@@ -265,16 +293,29 @@ async function summarize(
     transcript = result.text
   }
 
+  const enrichment = await enrichItem(
+    item.canonical_key,
+    mentions.map((m) => ({
+      id: m.id,
+      source: m.source,
+      externalId: m.external_id,
+      extraTexts: parseExtraTexts(m.raw),
+      facts: parseFacts(m.raw),
+    })),
+    { log, githubToken: deps.githubToken, scrape: deps.scrape },
+  )
   const rows = buildEvidenceRows(
     mentions.map((m) => ({
       id: m.id,
       source: m.source,
       title: m.title,
       body: m.body,
-      extraTexts:
-        paperTexts(paper, m.source) ??
-        (m.source === 'papers' ? pdfTexts : null) ??
-        parseExtraTexts(m.raw),
+      extraTexts: [
+        ...(paperTexts(paper, m.source) ??
+          (m.source === 'papers' ? pdfTexts : null) ??
+          parseExtraTexts(m.raw)),
+        ...(enrichment.extraTexts.get(m.id) ?? []),
+      ],
     })),
     transcript,
   )
@@ -317,7 +358,30 @@ async function summarize(
   const promptChunks = selectPromptChunks(stored)
   const chunkIds = new Set(stored.map((c) => c.id))
   const promptChunkIds = new Set(promptChunks.map((c) => c.id))
+  const brief = safeBrief(log, {
+    kind: item.kind,
+    title: item.title,
+    canonicalKey: item.canonical_key,
+    canonicalUrl: item.canonical_url,
+    mentions: mentions.map((m) => ({
+      source: m.source,
+      url: m.url,
+      title: m.title,
+      body: m.body,
+      author: m.author,
+      score: m.score,
+      numComments: m.num_comments,
+      publishedAt: m.published_at,
+      facts: parseFacts(m.raw),
+      extraTexts: parseExtraTexts(m.raw),
+      externalId: m.external_id,
+    })),
+    paper,
+    hasDemo: hasDemo(item.demo),
+    supplements: enrichment.supplements,
+  })
   const sourceText = [
+    brief.facts,
     item.title,
     item.canonical_url,
     ...mentions.map((m) => `${m.url} ${m.title ?? ''}`),
@@ -346,6 +410,7 @@ async function summarize(
         chunks: promptChunks,
         imageUrls,
         paperAssets: paper ? paperAssetsPrompt(paper, images) : undefined,
+        brief: brief.text || undefined,
         rejection,
       }),
     })
@@ -354,8 +419,13 @@ async function summarize(
       {
         category: 'llm',
         units: result.usage.inputTokens + result.usage.outputTokens,
-        costUsd: llmCostUsd(result.usage),
-        meta: { model: deps.geminiModel, itemId: item.id, attempt },
+        costUsd: llmCostFor(deps.llmProvider ?? 'gemini', result.usage),
+        meta: {
+          model: deps.llmModel,
+          provider: deps.llmProvider ?? 'gemini',
+          itemId: item.id,
+          attempt,
+        },
       },
       log,
     )
@@ -369,7 +439,12 @@ async function summarize(
       'llm call done',
     )
 
-    const parsed = parseModelOutput(result.text, promptChunkIds, sourceText)
+    const parsed = parseModelOutput(
+      result.text,
+      promptChunkIds,
+      sourceText,
+      deps.narrationLimits ?? NARRATION_LIMITS,
+    )
     if (!parsed.ok) {
       rejection = parsed.reason
       log.warn({ attempt, reason: rejection }, 'model output rejected (parse)')

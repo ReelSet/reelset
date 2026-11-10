@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DEMO_MIN_SHARE, captionFor, demoCrop, fitImage, isBrandImage, planImages } from './images'
+import {
+  MAX_FIGURE_ZOOM,
+  captionFor,
+  fitImage,
+  isBrandImage,
+  planImages,
+  wideFigureZoom,
+} from './images'
 import type { ReelImage, Scene } from './types'
 
 describe('fitImage', () => {
@@ -93,28 +100,6 @@ describe('captionFor', () => {
   })
 })
 
-describe('demoCrop', () => {
-  it('shows a landscape demo large but never zoomed past 72% of its width, above the captions', () => {
-    const c = demoCrop(1080, 608, 330, 1090)
-    expect(1080 / c.videoWidth).toBeGreaterThanOrEqual(DEMO_MIN_SHARE - 0.01)
-    expect(c.videoHeight / 608).toBeGreaterThan(1.2)
-    expect(c.top).toBeGreaterThanOrEqual(330)
-    expect(c.top + c.height).toBeLessThanOrEqual(1090)
-    expect(c.overflow).toBe(c.videoWidth - 1080)
-    expect(c.panFrom).toBeLessThan(c.panTo)
-  })
-
-  it('never makes the window taller than the clip and fills the width of a portrait clip', () => {
-    const c = demoCrop(1080, 608, 0, 1920)
-    expect(c.height).toBeLessThanOrEqual(c.videoHeight)
-    expect(c.height).toBeLessThanOrEqual(1350)
-    const p = demoCrop(720, 1280, 330, 1090)
-    expect(p.videoWidth).toBe(1080)
-    expect(p.overflow).toBe(0)
-    expect(p.height).toBe(760)
-  })
-})
-
 describe('isBrandImage', () => {
   const title = 'Outlook.com Is Quietly Rejecting Email from Domains Without DMARC'
   it("skips a site's default share card", () => {
@@ -127,5 +112,18 @@ describe('isBrandImage', () => {
     expect(isBrandImage({ src: 'x', kind: 'og' }, title, 'mailroute.net')).toBe(false)
     const fig = { src: 'x', kind: 'figure' as const, alt: 'MailRoute pipeline' }
     expect(isBrandImage(fig, title, 'mailroute.net')).toBe(false)
+  })
+})
+
+describe('wideFigureZoom', () => {
+  it('shows the whole figure first and never pushes in past a quarter of its width', () => {
+    const { base, zoom } = wideFigureZoom(1280, 429, 799, 495)
+    expect(base).toBeCloseTo(799 / 1280)
+    expect(zoom).toBeLessThanOrEqual(MAX_FIGURE_ZOOM)
+    expect(1 / zoom).toBeGreaterThan(0.75)
+  })
+
+  it('does not zoom a figure that already fills its card', () => {
+    expect(wideFigureZoom(800, 450, 799, 450).zoom).toBeCloseTo(1, 2)
   })
 })

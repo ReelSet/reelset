@@ -300,3 +300,24 @@ describe('keyPointText chunk edges', () => {
     ).toBe('DMARC at p=none is the baseline')
   })
 })
+
+describe('model statements that state something', () => {
+  it('accepts modal verbs, a hiding verb and a same-less contrast', () => {
+    for (const t of [
+      'Anyone can verify the result',
+      'Inconsistent failures hide the problem',
+      'Same likeness, less time',
+    ]) {
+      expect(isClaimLike(t), t).toBe(true)
+    }
+  })
+
+  it('still rejects labels', () => {
+    for (const t of [
+      'Faster and more balanced recovery',
+      'Same likeness',
+      'Less memory, faster Muon',
+    ])
+      expect(isClaimLike(t), t).toBe(false)
+  })
+})

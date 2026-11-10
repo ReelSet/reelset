@@ -20,7 +20,7 @@ const FUNCTION = words(
   times instead rather plus vs versus etc like slash dot dash colon`,
 )
 /** Words that may open a key point although they are function words ("No official announcement"). */
-const OK_START = words('no more less fewer most all every each both')
+const OK_START = words('no more less fewer most all every each both same')
 /** Words that leave a phrase hanging when they come last ("94.7% average", "the latest"). */
 const DANGLING = words(
   'average worst best new latest top key main major big small large high low fast slow faster slower better worse larger smaller higher lower bigger first last next same own whole entire full total overall one',
@@ -33,7 +33,7 @@ const IRREGULAR_PAST = words(
 )
 /** Base forms that are verbs far more often than nouns; their -s form is treated as a verb. */
 const STRONG = words(
-  'accelerate achieve affect align allow appear apply ask authenticate become lack bring cause choose come consolidate contain continue convert create deliver describe enable ensure expect explain find get give go guide happen help improve include increase introduce keep let lose make mean mitigate move need offer optimize optimise pass prevent provide raise reach receive recover reduce reject remain remove replace require reveal run say scramble see seem shrink solve speed surpass take tell think treat try turn unlock use want win write add bounce drop fall rise land hit jump slash cut double triple halve outperform beat leave lift support turn',
+  'accelerate achieve affect align allow appear apply ask hide authenticate become lack bring cause choose come consolidate contain continue convert create deliver describe enable ensure expect explain find get give go guide happen help improve include increase introduce keep let lose make mean mitigate move need offer optimize optimise pass prevent provide raise reach receive recover reduce reject remain remove replace require reveal run say scramble see seem shrink solve speed surpass take tell think treat try turn unlock use want win write add bounce drop fall rise land hit jump slash cut double triple halve outperform beat leave lift support turn',
 )
 const AMBIGUOUS = words(
   'announce build change check clone compare compile cost cut deploy design end fail fix follow grow hold install launch lead learn look measure open plan play publish pull push release report return save scale ship show sign sound spend start stay stop switch test track train type update view wait watch work',
@@ -308,6 +308,7 @@ const NEGATION =
 const isPredicate = (w: string, i: number, prev = ''): boolean => {
   const l = low(w)
   if (NEGATION.test(l)) return true
+  if (MODALS.has(l)) return i > 0
   if (COPULAS.has(l)) return i > 0
   if (isVerbForm(w)) return true
   if (!BASES.has(l)) return false
@@ -315,11 +316,15 @@ const isPredicate = (w: string, i: number, prev = ''): boolean => {
   return i === 0 || (/[^s]s$/.test(p) && !isVerbForm(prev) && !FUNCTION.has(p))
 }
 
+/** "Same likeness, less time": two halves set against each other, each opening on a comparison word. */
+const CONTRAST = /^(?:same|more|less|fewer|no)\b[^,]+,\s*(?:same|more|less|fewer|no)\b/i
+
 /** The phrase states something: it has a verb (or a "Name: point" headline form). */
 export function hasPredicate(text: string): boolean {
   const toks = cleanPhrase(text).split(' ').filter(Boolean)
   if (/^[^:]{2,40}:\s*\S/.test(text)) return true
   if (/^(?:no|zero|not)$/i.test(toks[0] ?? '') && toks.length >= 2) return true
+  if (CONTRAST.test(text)) return true
   return toks.some((t, i) => isPredicate(t, i, toks[i - 1]))
 }
 

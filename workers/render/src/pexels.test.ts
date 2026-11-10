@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   HOURLY_REQUEST_BUDGET,
+  MAX_REEL_CLIPS,
+  PER_PAGE,
+  clipScore,
   cleanTerm,
   pickBroll,
   pickFile,
   searchVideos,
   slimVideos,
+  slugWords,
   termsForBeat,
   type Cache,
 } from './pexels'
@@ -29,9 +33,9 @@ const file = (w: number, h: number, type = 'video/mp4') => ({
   height: h,
   file_type: type,
 })
-const video = (id: number, duration = 10, files = [file(1080, 1920)]) => ({
+const video = (id: number, duration = 10, files = [file(1080, 1920)], slug = 'clip') => ({
   id,
-  url: `https://www.pexels.com/video/${id}/`,
+  url: `https://www.pexels.com/video/${slug}-${id}/`,
   duration,
   user: { name: `Creator ${id}`, url: `https://www.pexels.com/@c${id}` },
   video_files: files,
@@ -181,6 +185,26 @@ describe('pickBroll', () => {
     })
   })
 
+  it('takes one clip per creator and never footage that is a prop shot (CRT, audio rack, cards)', async () => {
+    const sameDesk = (id: number) => ({ ...video(id), user: { name: 'Desk Co', url: 'https://x' } })
+    const fetch = fakeFetch({
+      'keyboard typing': [
+        sameDesk(1),
+        sameDesk(2),
+        video(3, 10, [file(1080, 1920)], 'old-crt-monitor-on-a-desk'),
+        video(4, 10, [file(1080, 1920)], 'audio-rack-with-dbx'),
+        video(5),
+      ],
+    })
+    const picks = await pickBroll(
+      { apiKey: 'k', fetch, cache: new MemCache(), log: silentLog },
+      [beats[0]!],
+      ctx,
+    )
+    expect(picks.map((p) => p.id).sort()).toEqual([1, 5])
+    expect(new Set(picks.map((p) => p.creator)).size).toBe(picks.length)
+  })
+
   it('searches a term an earlier beat used only after the fresh ones', async () => {
     const cache = new MemCache()
     const fetch = fakeFetch({
@@ -189,7 +213,7 @@ describe('pickBroll', () => {
     })
     const mail = [{ text: 'Mail bounces.' }, { text: 'More mail bounces.' }]
     const picks = await pickBroll({ apiKey: 'k', fetch, cache, log: silentLog }, mail, ctx)
-    expect(picks.map((p) => p.id)).toEqual([1, 3])
+    expect(picks.slice(0, 2).map((p) => p.id)).toEqual([1, 3])
     const queries = fetch.mock.calls.map((c) => new URL(c[0]).searchParams.get('query'))
     expect(queries[1]).toBe('envelope letters')
   })
@@ -213,10 +237,10 @@ describe('pickBroll', () => {
     expect(picks).toEqual([])
   })
 
-  it('caps a reel at 5 clips', async () => {
+  it('caps a reel at the candidate limit', async () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ text: `beat ${i}` }))
     const fetch = fakeFetch({
-      'code on screen': Array.from({ length: 12 }, (_, i) => video(i + 1)),
+      'code on screen': Array.from({ length: 30 }, (_, i) => video(i + 1)),
       'keyboard typing': [],
     })
     const picks = await pickBroll(
@@ -224,6 +248,74 @@ describe('pickBroll', () => {
       many,
       ctx,
     )
-    expect(picks.length).toBeLessThanOrEqual(5)
+    expect(picks.length).toBe(MAX_REEL_CLIPS)
+    expect(new Set(picks.map((p) => p.id)).size).toBe(picks.length)
+  })
+
+  it('finds a distinct clip for every cutaway slot, several per beat', async () => {
+    const fetch = fakeFetch({
+      'keyboard typing': Array.from({ length: 12 }, (_, i) => video(100 + i)),
+      'code on screen': Array.from({ length: 12 }, (_, i) => video(200 + i)),
+      'server room': Array.from({ length: 12 }, (_, i) => video(300 + i)),
+    })
+    const picks = await pickBroll(
+      { apiKey: 'k', fetch, cache: new MemCache(), log: silentLog },
+      beats,
+      ctx,
+    )
+    expect(picks.length).toBe(MAX_REEL_CLIPS)
+    expect(new Set(picks.map((p) => p.id)).size).toBe(MAX_REEL_CLIPS)
+    expect(new Set(picks.map((p) => p.beat)).size).toBeGreaterThan(1)
+  })
+
+  it('ranks footage of the thing ahead of a person typing on a laptop', async () => {
+    const fetch = fakeFetch({
+      'keyboard typing': [
+        video(1, 10, [file(1080, 1920)], 'woman-typing-on-laptop'),
+        video(2, 10, [file(1080, 1920)], 'close-up-of-a-keyboard-typing'),
+      ],
+    })
+    const picks = await pickBroll(
+      { apiKey: 'k', fetch, cache: new MemCache(), log: silentLog },
+      [beats[0]!],
+      ctx,
+    )
+    expect(picks[0]!.id).toBe(2)
+  })
+
+  it('asks for a full page of results per term', async () => {
+    const fetch = fakeFetch({ terminal: [video(1)] })
+    await searchVideos({ apiKey: 'k', fetch, cache: new MemCache(), log: silentLog }, 'terminal')
+    expect(new URL(fetch.mock.calls[0]![0]).searchParams.get('per_page')).toBe(String(PER_PAGE))
+    expect(PER_PAGE).toBeGreaterThanOrEqual(30)
+  })
+})
+
+describe('clip ranking', () => {
+  it('reads the slug of a Pexels page', () => {
+    expect(slugWords('https://www.pexels.com/video/woman-typing-on-a-laptop-1234567/')).toEqual([
+      'woman',
+      'typing',
+      'on',
+      'laptop',
+    ])
+  })
+
+  it('puts a term matched in the wrong world last', () => {
+    const waiter = {
+      pageUrl: 'https://www.pexels.com/video/restaurant-server-delivering-meals-1/',
+      seconds: 10,
+    }
+    const rack = {
+      pageUrl: 'https://www.pexels.com/video/rows-of-racks-in-a-data-hall-2/',
+      seconds: 10,
+    }
+    expect(clipScore(rack, 'server room', 6)).toBeLessThan(clipScore(waiter, 'server room', 0))
+  })
+
+  it('penalises people, rewards a slug that names the term', () => {
+    const person = { pageUrl: 'https://www.pexels.com/video/a-man-using-a-laptop-1/', seconds: 10 }
+    const thing = { pageUrl: 'https://www.pexels.com/video/server-room-corridor-2/', seconds: 10 }
+    expect(clipScore(thing, 'server room', 3)).toBeLessThan(clipScore(person, 'server room', 0))
   })
 })

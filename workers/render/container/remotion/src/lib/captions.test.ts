@@ -21,6 +21,28 @@ describe('toPages', () => {
   })
 })
 
+describe('caption fragments', () => {
+  const text = (pages: { text: string }[][]) => pages.map((p) => p.map((w) => w.text).join(' '))
+
+  it('does not end a page on a function word', () => {
+    const out = text(toPages(words('and uses an RTX 5090 for a time of 49 minutes now'), 3, 22))
+    expect(out.slice(0, -1).every((p) => !/\b(?:for|of|a|an)$/.test(p))).toBe(true)
+  })
+
+  it('moves the word before a lone number onto its page', () => {
+    const out = text(
+      toPages(words('hit on the Qwen3 run in Table 1. Then more words follow.'), 3, 22),
+    )
+    expect(out.some((p) => p.endsWith('Table 1.'))).toBe(true)
+    expect(out.every((p) => p !== '1.')).toBe(true)
+  })
+
+  it('keeps a clause end where it is', () => {
+    const out = text(toPages(words('We tried it, but it failed. Then the fix.'), 3, 22))
+    expect(out[0]).toBe('We tried it,')
+  })
+})
+
 describe('pageAt', () => {
   const pages = toPages(words('One two three four five six'), 3)
 

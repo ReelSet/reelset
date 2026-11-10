@@ -111,42 +111,20 @@ export function focusOrigin(image: ReelImage | undefined, fallback: string): str
   return `${pct(f.x)}% ${pct(f.y)}%`
 }
 
-export type DemoCrop = {
-  top: number
-  height: number
-  videoWidth: number
-  videoHeight: number
-  /** Horizontal px of the scaled clip outside the window. */
-  overflow: number
-  /** Pan start and end as shares of `overflow` (0 = left edge in view). */
-  panFrom: number
-  panTo: number
-}
-
-/** A demo is never zoomed past this share of its width: more crops the UI's own headings. */
-export const DEMO_MIN_SHARE = 0.72
+/** A figure is pushed in at most this far: more cuts its left and right edges off and the diagram stops making sense. */
+export const MAX_FIGURE_ZOOM = 1.3
 
 /**
- * Window for a README demo between `top` and `bottom` (above the caption band): the clip fills the
- * frame width and is scaled up as far as the room allows, but always shows at least 72% of its
- * width, panning gently across the rest; the window is centred in the room and never taller than
- * the clip. A portrait clip fills the width.
+ * Scale of a wide figure inside its card (`base`, whole figure across the content width) and how far
+ * the slow push-in goes. The push never shows less than ~77% of the figure's width.
  */
-export function demoCrop(iw: number, ih: number, top: number, bottom: number, w = 1080): DemoCrop {
-  const room = Math.max(1, Math.min(bottom - top, Math.round(w * 1.25)))
-  const fill = w / iw
-  const scale = Math.max(fill, Math.min(room / ih, w / (iw * DEMO_MIN_SHARE)))
-  const videoWidth = Math.round(iw * scale)
-  const videoHeight = Math.round(ih * scale)
-  const height = Math.min(room, videoHeight)
-  const overflow = Math.max(0, videoWidth - w)
-  return {
-    top: top + Math.round((room - height) / 2),
-    height,
-    videoWidth,
-    videoHeight,
-    overflow,
-    panFrom: 0.1,
-    panTo: 0.9,
-  }
+export function wideFigureZoom(
+  iw: number,
+  ih: number,
+  contentW: number,
+  cardH: number,
+): { base: number; zoom: number } {
+  const base = Math.min(1.2, contentW / iw)
+  const zoom = Math.max(1, Math.min(MAX_FIGURE_ZOOM, cardH / (ih * base), 1.2 / base))
+  return { base, zoom }
 }

@@ -13,17 +13,15 @@ import {
   totalFrames,
 } from './lib/timeline'
 import { overlapFrames, pickTransitions } from './lib/transitions'
+import { statSaysHeadline } from './lib/hook'
 import { displayTitle } from './lib/typeset'
 import type { ReelProps } from './lib/types'
 import { SCREENS } from './screens'
 import { BackdropContext, type ReelCtx } from './screens/ui'
 import { COLOR, H, HEADLINE_PAD, W } from './theme'
 
-const clipFor = (clips: ReelProps['broll'], shotProps: Record<string, unknown>) => {
-  const clip = clips && typeof shotProps.bg === 'number' ? clips[shotProps.bg] : undefined
-  if (!clip) return null
-  return typeof shotProps.bgAt === 'number' ? { ...clip, at: shotProps.bgAt } : clip
-}
+const clipFor = (clips: ReelProps['broll'], shotProps: Record<string, unknown>) =>
+  (clips && typeof shotProps.bg === 'number' ? clips[shotProps.bg] : undefined) ?? null
 
 function Finish() {
   return (
@@ -74,7 +72,11 @@ export function Reel(props: ReelProps) {
     [props, plan],
   )
   const headline = headlineOf(props)
-  const headlineFrames = Math.round(snapHeadlineEnd(headlineEnd(props), plan, fps) * fps)
+  // A hook that is the headline itself, or a stat that already says its number, needs no slab on top of it.
+  const hookIsHeadline = plan[0]?.props.hook === true || statSaysHeadline(plan[0], headline)
+  const headlineFrames = hookIsHeadline
+    ? 0
+    : Math.round(snapHeadlineEnd(headlineEnd(props), plan, fps) * fps)
   const transitions = useMemo(() => pickTransitions(plan.map((s) => s.show)), [plan])
   return (
     <AbsoluteFill style={{ background: COLOR.bg, width: W, height: H }}>
@@ -98,9 +100,11 @@ export function Reel(props: ReelProps) {
       })}
       <Finish />
       <Header scenes={scenes} source={props.source} sourceLabel={props.sourceLabel} />
-      <Sequence durationInFrames={headlineFrames} layout="none">
-        <Headline text={headline} frames={headlineFrames} />
-      </Sequence>
+      {headlineFrames > 0 ? (
+        <Sequence durationInFrames={headlineFrames} layout="none">
+          <Headline text={headline} frames={headlineFrames} />
+        </Sequence>
+      ) : null}
       <div
         style={{
           position: 'absolute',

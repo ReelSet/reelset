@@ -69,6 +69,7 @@ export const reelScriptSchema = z.object({
         visual: visualSchema,
         shots: z.array(shotSchema).max(6).optional(),
         broll: z.array(z.string().min(2).max(40)).max(2).optional(),
+        keyPoints: z.array(z.string().min(3).max(70)).max(2).optional(),
       }),
     )
     .min(2)

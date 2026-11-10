@@ -23,7 +23,13 @@ export class GeminiError extends Error {
   }
 }
 
-export type LlmUsage = { inputTokens: number; outputTokens: number }
+/** inputTokens excludes cache tokens when the provider reports them separately. */
+export type LlmUsage = {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+}
 export type LlmResult = { text: string; usage: LlmUsage }
 
 // USD per 1M tokens for gemini-3.1-flash-lite. Estimates for spend tracking, not billing.
@@ -155,7 +161,7 @@ function clip(o: Obj, key: string, max: number): void {
 }
 
 /**
- * Gemini regularly overshoots the hard length limits by a few characters. Rejecting those wastes
+ * Models regularly overshoot the hard length limits by a few characters. Rejecting those wastes
  * the LLM spend and the daily reel slot, so trim at word boundaries and fill a missing quote
  * attribution before strict validation. Anything structurally wrong is still rejected.
  */
@@ -238,10 +244,13 @@ export function repairModelOutput(
 
 export type ParsedOutput = { ok: true; value: GeneratedContent } | { ok: false; reason: string }
 
+export type NarrationLimits = { min?: number; max?: number }
+
 export function parseModelOutput(
   text: string,
   allowedChunkIds?: ReadonlySet<string>,
   facts = '',
+  limits: NarrationLimits = {},
 ): ParsedOutput {
   const stripped = text
     .trim()
@@ -262,10 +271,17 @@ export function parseModelOutput(
     return { ok: false, reason: `JSON did not match the required schema: ${issues}` }
   }
   const words = narrationWordCount(parsed.data.script)
-  if (words > MAX_NARRATION_WORDS) {
+  const max = limits.max ?? MAX_NARRATION_WORDS
+  if (words > max) {
     return {
       ok: false,
-      reason: `narration is ${words} words, over ${MAX_NARRATION_WORDS}; write 110 to 125 words total`,
+      reason: `narration is ${words} words, over ${max}; write 110 to 125 words total`,
+    }
+  }
+  if (limits.min !== undefined && words < limits.min) {
+    return {
+      ok: false,
+      reason: `narration is ${words} words, under ${limits.min}; write 110 to 125 words total`,
     }
   }
   const topics = [...new Set(parsed.data.topics.map((t) => t.toLowerCase()))]

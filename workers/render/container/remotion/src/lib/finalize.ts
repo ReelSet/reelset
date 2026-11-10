@@ -1,10 +1,10 @@
 import { MAX_HOLD_S, identityOf, imageIndex, newState, pickShot, register, sfxFor } from './planner'
 import { violates } from './variety'
-import { itemTimes } from './lists'
-import { namesOf } from './numbers'
-import { REUSE_OFFSET_S } from './broll'
+import { wordsIn } from './numbers'
+import { showable } from './caption-echo'
+import { DEMO_MAX_S, DEMO_MIN_S } from './demo'
 import { sameIdea } from './ideas'
-import { findQuantities, nounChunks, quantityValue } from './text-rules'
+import { findQuantities, quantityValue } from './text-rules'
 import type { ReelProps, ScreenName, TimedShot } from './types'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -13,7 +13,7 @@ const norm = (v: unknown) => str(v).toLowerCase().replace(/\s+/g, ' ').trim()
 /** A caption-only shot runs at most this long, footage or not. */
 export const CAPTION_ONLY_MAX_S = 2.9
 /** Neighbouring footage-only shots (different clips) together run at most this long. */
-export const BLANK_RUN_MAX_S = 4.5
+export const BLANK_RUN_MAX_S = 5
 /** Shortest piece a held shot is cut into. */
 export const MIN_PIECE_S = 1.3
 /** The reel's first shot runs at most this long. */
@@ -33,12 +33,12 @@ export function lookKey(s: Pick<TimedShot, 'show' | 'props'>): string {
   if (s.show === 'KeyPoint') {
     if (Array.isArray(p.items)) return `KeyPoint/list/${(p.items as unknown[]).join('|')}`
     if (p.quote) return `KeyPoint/q/${norm(p.quote)}`
-    if (!str(p.text)) return `KeyPoint/blank/${String(p.bg ?? '')}@${String(p.bgAt ?? 0)}`
+    if (!str(p.text)) return `KeyPoint/blank/${String(p.bg ?? '')}/${String(p.ambient ?? '')}`
     return `KeyPoint/${norm(p.text)}`
   }
   if (s.show === 'StatSlam') return `StatSlam/${norm(p.value)}`
   if (s.show === 'BarRace') return `BarRace/${JSON.stringify(p.bars ?? [])}`
-  if (s.show === 'RepoDemo') return 'RepoDemo'
+  if (s.show === 'RepoDemo') return `RepoDemo/${String(p.part ?? '')}`
   return identityOf(s.show, { ...p, bg: undefined, bgAt: undefined, offset: undefined })
 }
 
@@ -148,10 +148,14 @@ export function repick(
     const longBlank =
       isCaptionOnly(made) &&
       (typeof made.props.bg !== 'number' || shot.frames > CAPTION_ONLY_MAX_S * fps)
-    if (!cta && !longBlank && !violates(made, state, props) && fits(made)) return made
+    const said = wordsIn(props.words, start - 0.3, chunk.end)
+    const echo =
+      made.show === 'KeyPoint' &&
+      str(made.props.text) !== '' &&
+      !showable(str(made.props.text), said)
+    if (!cta && !longBlank && !echo && !violates(made, state, props) && fits(made)) return made
   }
-  const terms = termsCard(shot, props, fps)
-  return terms && fits(terms) ? terms : null
+  return null
 }
 
 /** `c` may take slot `i`: a look and idea new to both neighbours and a look the reel has not shown. */
@@ -165,68 +169,6 @@ export function fitsAt(shots: readonly TimedShot[], i: number, c: TimedShot): bo
           (n.show !== c.show || c.show === 'KeyPoint')),
     ) && !shots.some((x, k) => k !== i && lookKey(x) === lookKey(c))
   )
-}
-
-const TERM_LOOKBACK_S = 0.8
-
-/** "linear combination of student" cut at "and expert parameters" names half a thing: keep the head. */
-export function coordinated(item: string, text: string): string {
-  const m = /^(.+?) of \S+$/.exec(item)
-  if (!m?.[1]) return item
-  const at = text.toLowerCase().indexOf(item.toLowerCase())
-  const after =
-    at >= 0
-      ? text
-          .slice(at + item.length)
-          .trimStart()
-          .toLowerCase()
-      : ''
-  return /^(?:and|or)\b/.test(after) ? m[1] : item
-}
-/** Numbers belong to stats: a term that is a quantity ("20 minutes", "eight gigabytes") is not one. */
-const NUMERIC_TERM =
-  /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand|million|billion|half|twice)\b/i
-
-/**
- * The terms being said, lit one by one as each is spoken: noun chunks of the narration over the
- * shot ("linear combination", "expert parameters", "one differentiable model"). Always honest,
- * available whenever the narration names two or more things; null otherwise.
- */
-export function termsCard(
-  shot: TimedShot,
-  props: ReelProps,
-  fps: number,
-  min = 2,
-): TimedShot | null {
-  const start = shot.from / fps
-  const end = (shot.from + shot.frames) / fps
-  if (end - start > MAX_HOLD_S) return null
-  // A term whose first word was said just before the cut ("linear | combination") is still whole.
-  const from = start - TERM_LOOKBACK_S
-  const spoken = props.words.filter((w) => w.start >= from - 0.01 && w.start < end)
-  const text = spoken.map((w) => w.text).join(' ')
-  const found = nounChunks(text, { names: namesOf(props) })
-    .map((item) => coordinated(item, text))
-    .filter((item) => (min > 1 || item.includes(' ')) && !NUMERIC_TERM.test(item))
-    .map((item) => ({ item, at: itemTimes(props.words, [item], from, end)?.times[0] }))
-    .filter((x): x is { item: string; at: number } => x.at !== undefined)
-    .sort((a, b) => a.at - b.at)
-    .slice(0, 3)
-  if (found.length < min || !found.some((f) => f.at >= start - 0.05)) return null
-  return {
-    ...shot,
-    show: 'KeyPoint',
-    origin: 'planned',
-    sfx: 'pop',
-    props: {
-      items: found.map((f) => f.item),
-      kicker: '',
-      times: found.map((f) => Math.max(0, Math.round((f.at - start) * 100) / 100)),
-      text: '',
-      sub: '',
-      terms: true,
-    },
-  }
 }
 
 /** Seconds by which a shot's own number has been said (a stat leaves only after its number). */
@@ -303,38 +245,15 @@ function giveAway(
   return want - left
 }
 
-/**
- * Least-used stock clip that neither neighbour shows, or null. A clip already in the reel starts
- * further in (`bgAt`), so it never shows the same footage twice.
- */
-function freeClip(
-  shots: readonly TimedShot[],
-  i: number,
-  props: ReelProps,
-): { bg: number; bgAt?: number } | null {
-  const near = [shots[i - 1], shots[i + 1]].map((x) => x?.props.bg)
-  const recent = new Set(
-    shots
-      .slice(Math.max(0, i - 2), i + 3)
-      .filter((x, k) => x !== shots[i] && typeof x.props.bg === 'number' && k >= 0)
-      .map((x) => x.props.bg as number),
+/** A stock clip no shot of the reel shows yet: a clip never appears twice in one reel. */
+function freeClip(shots: readonly TimedShot[], i: number, props: ReelProps): { bg: number } | null {
+  const used = new Set(
+    shots.flatMap((x, j) => (j !== i && typeof x.props.bg === 'number' ? [x.props.bg] : [])),
   )
-  const clips = (props.broll ?? [])
-    .map((c, k) => ({
-      k,
-      seconds: c.seconds,
-      at: shots.filter((x, j) => j !== i && x.props.bg === k).map((x) => Number(x.props.bgAt ?? 0)),
-    }))
-    // A clip comes back at most twice (each time from another moment), never within 2 shots.
-    .filter((c) => c.at.length < 3 && !recent.has(c.k) && !near.includes(c.k))
-    .sort((a, b) => a.at.length - b.at.length || a.k - b.k)
-  for (const c of clips) {
-    if (c.at.length === 0) return { bg: c.k }
-    for (let at = REUSE_OFFSET_S; at < c.seconds - 1; at += REUSE_OFFSET_S / 2) {
-      if (!c.at.includes(at)) return { bg: c.k, bgAt: at }
-    }
-  }
-  return null
+  const beat = shots[i]?.sceneIndex
+  const free = (props.broll ?? []).flatMap((c, k) => (used.has(k) ? [] : [{ k, beat: c.beat }]))
+  const pick = free.find((c) => c.beat === beat) ?? free[0]
+  return pick ? { bg: pick.k } : null
 }
 
 /** Frames of footage-only screen around `shots[i]` if it became one: itself plus caption-only neighbours. */
@@ -352,12 +271,6 @@ function blankRun(shots: readonly TimedShot[], i: number): number {
 function replace(shots: TimedShot[], i: number, props: ReelProps, fps: number): boolean {
   const s = shots[i]!
   const made = repick(shots, i, props, fps)
-  // Footage with only a caption is the last resort: the terms being said match the voice.
-  const terms = made && isCaptionOnly(made) ? termsCard(s, props, fps) : null
-  if (terms && fitsAt(shots, i, terms)) {
-    shots[i] = terms
-    return true
-  }
   if (made) {
     shots[i] = made
     return true
@@ -373,14 +286,7 @@ function replace(shots: TimedShot[], i: number, props: ReelProps, fps: number): 
   else {
     const clip = freeClip(probe, i, props)
     const tooLong = rest.frames > CAPTION_ONLY_MAX_S * fps
-    if (clip === null || tooLong || blankRun(probe, i) > BLANK_RUN_MAX_S * fps) {
-      const single = termsCard(s, props, fps, 1)
-      const near = [shots[i - 1], shots[i + 1]]
-      if (!single || near.some((n) => n && (lookKey(n) === lookKey(single) || echoes(n, single))))
-        return false
-      shots[i] = single
-      return true
-    }
+    if (clip === null || tooLong || blankRun(probe, i) > BLANK_RUN_MAX_S * fps) return false
     probe[i] = {
       ...rest,
       show: 'KeyPoint',
@@ -479,10 +385,11 @@ export function finalizeShots(input: TimedShot[], props: ReelProps, fps: number)
     shots.splice(i, 1, ...pieces)
     // Last piece first: a piece given away to its neighbours is removed, which only shifts later indexes.
     for (let k = pieces.length - 1; k >= 0; k -= 1) {
-      if (replace(shots, i + k, props, fps) || k === 0) continue
-      // Still footage: another clip (or another moment of one), never the same shot cut in two.
+      if (replace(shots, i + k, props, fps)) continue
+      // Still footage: another clip, never the same shot cut in two; out of clips, a new ambient look.
       const clip = freeClip(shots, i + k, props)
       if (clip) shots[i + k] = { ...shots[i + k]!, props: { text: '', sub: '', ...clip } }
+      else shots[i + k] = { ...shots[i + k]!, props: { text: '', sub: '', ambient: k + 1 } }
     }
   }
 
@@ -502,10 +409,8 @@ export function finalizeShots(input: TimedShot[], props: ReelProps, fps: number)
     const rest = { ...first, from: first.from + lead, frames: first.frames - lead }
     trial.splice(0, 1, { ...first, frames: lead }, rest)
     const clip = freeClip(trial, 1, props)
-    const terms = termsCard(rest, props, fps, 1)
     const made =
       repick(trial, 1, props, fps) ??
-      (terms && fitsAt(trial, 1, terms) ? terms : null) ??
       (clip
         ? {
             ...rest,
@@ -537,8 +442,17 @@ export function finalizeShots(input: TimedShot[], props: ReelProps, fps: number)
       const trial = shots.map((x) => ({ ...x }))
       trial.splice(i + 1, 1, ...pieces)
       let ok = true
-      for (let k = pieces.length - 1; k >= 0 && ok; k -= 1)
-        ok = replace(trial, i + 1 + k, props, fps)
+      for (let k = pieces.length - 1; k >= 0 && ok; k -= 1) {
+        if (replace(trial, i + 1 + k, props, fps)) continue
+        const at = i + 1 + k
+        const piece = trial[at]!
+        if (!isCaptionOnly(piece)) {
+          ok = false
+          continue
+        }
+        const clip = freeClip(trial, at, props)
+        trial[at] = { ...piece, props: { text: '', sub: '', ...(clip ?? { ambient: k + 1 }) } }
+      }
       if (ok) shots.splice(0, shots.length, ...trial)
       else shots.splice(i, 2, s)
     }
@@ -637,11 +551,11 @@ export function splitList(s: TimedShot, fps: number): TimedShot[] | null {
   if (s.props.layout !== undefined) return null
   const times = Array.isArray(s.props.times) ? (s.props.times as number[]) : []
   const len = s.frames / fps
-  if (s.show !== 'KeyPoint' || items.length < 2 || times.length !== items.length || len < 2.6)
+  if (s.show !== 'KeyPoint' || items.length < 4 || times.length !== items.length || len < 2.6)
     return null
   const ok = (k: number) => times[k]! - 0.1 >= 1.0 && len - (times[k]! - 0.1) >= 1.0
   const k = [...items.keys()]
-    .slice(1)
+    .slice(2, items.length - 1)
     .filter(ok)
     .sort((a, b) => Math.abs(times[a]! - len / 2) - Math.abs(times[b]! - len / 2))[0]
   if (k === undefined) return null
@@ -738,13 +652,11 @@ export function paceShots(input: TimedShot[], props: ReelProps, fps: number): Ti
       { ...s, from: s.from + lead, frames: s.frames - lead },
     )
     const clip = freeClip(trial, i + 1, props)
-    const terms = termsCard(trial[i + 1]!, props, fps, 1)
     const made =
       repick(trial, i + 1, props, fps) ??
-      (terms && fitsAt(trial, i + 1, terms) ? terms : null) ??
       (clip &&
       trial[i + 1]!.frames <= CAPTION_ONLY_MAX_S * fps &&
-      ![trial[i], trial[i + 2]].some((x) => x && isCaptionOnly(x))
+      blankRun(trial, i + 1) <= BLANK_RUN_MAX_S * fps
         ? {
             ...trial[i + 1]!,
             show: 'KeyPoint' as ScreenName,
@@ -756,6 +668,87 @@ export function paceShots(input: TimedShot[], props: ReelProps, fps: number): Ti
     trial[i + 1] = made
     shots.splice(0, shots.length, ...trial)
     need -= 1
+  }
+  return shots
+}
+
+/** All demo cuts together run about this long (the cuts add up to 3-5 s). */
+const DEMO_TOTAL_S = 4.6
+const GIVES = new Set<ScreenName>([
+  'KeyPoint',
+  'FigureZoom',
+  'ImageFull',
+  'ArticleHeadline',
+  'PaperPage',
+  'HNThread',
+  'RedditPost',
+  'YouTubePlayer',
+  'RepoPage',
+])
+
+/**
+ * The README demo is the product: all its cuts together play 3-4.6 s (see `RepoDemo`), taking the
+ * time from the shots around it that can spare it (never a stat, bars, a cue or the end card, and
+ * each keeps at least 1.2 s).
+ */
+export function stretchDemo(input: TimedShot[], fps: number, props?: ReelProps): TimedShot[] {
+  const shots = input.map((s) => ({ ...s }))
+  const demos = shots.filter((s) => s.show === 'RepoDemo')
+  const last = demos[demos.length - 1]
+  if (!last) return shots
+  const i = shots.indexOf(last)
+  const have = demos.reduce((n, s) => n + s.frames, 0)
+  const target = Math.round(Math.min(DEMO_MAX_S, Math.max(DEMO_MIN_S, DEMO_TOTAL_S)) * fps)
+  const keep = Math.round(MIN_PIECE_S * fps)
+  const spare = (n: TimedShot | undefined) =>
+    n && n.origin !== 'cue' && GIVES.has(n.show) && !Array.isArray(n.props.items)
+      ? Math.max(0, n.frames - keep)
+      : 0
+  let need = target - have
+  if (have > Math.round(DEMO_MAX_S * fps)) {
+    // Too long (the planner gave it 4 s on top of the hook cut): the last cut gives time back.
+    const give = Math.min(have - target, Math.max(0, last.frames - keep))
+    // A piece under 0.8 s reads as a glitch: leave a demo that is a hair too long.
+    if (give < Math.round(0.8 * fps)) return shots
+    const after = shots[i + 1]
+    const room = (n: TimedShot | undefined) =>
+      n && n.show !== 'EndCard' && !Array.isArray(n.props.times) && n.frames + give <= 4 * fps
+    if (give > 0 && after && after.origin !== 'cue' && room(after)) {
+      last.frames -= give
+      after.from -= give
+      after.frames += give
+    } else if (give > 0) {
+      // Nothing next to it can take the time (the end card, a stat): footage takes it.
+      const rest: TimedShot = {
+        ...last,
+        show: 'KeyPoint',
+        from: last.from + last.frames - give,
+        frames: give,
+        origin: 'planned',
+        props: { text: '', sub: '' },
+      }
+      last.frames -= give
+      const clip = props ? freeClip(shots, i, props) : null
+      rest.props = { text: '', sub: '', ...(clip ?? { ambient: 1 }) }
+      shots.splice(i + 1, 0, rest)
+    }
+    return shots
+  }
+  if (need <= 0) return shots
+  const next = shots[i + 1]
+  const fromNext = Math.min(need, spare(next))
+  if (next && fromNext > 0) {
+    next.from += fromNext
+    next.frames -= fromNext
+    last.frames += fromNext
+    need -= fromNext
+  }
+  const prev = shots[i - 1]
+  const fromPrev = Math.min(need, spare(prev))
+  if (prev && fromPrev > 0) {
+    prev.frames -= fromPrev
+    last.from -= fromPrev
+    last.frames += fromPrev
   }
   return shots
 }

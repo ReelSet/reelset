@@ -116,6 +116,41 @@ export function shellLines(code: string): string[] | null {
   return lines.map((l) => l.replace(/^\$\s*/, ''))
 }
 
+const SPOKEN_CMD =
+  /\b(?:run|try|use|type|paste|execute)\s+((?:dig|nslookup|host|whois|curl|wget|npx|npm|pnpm|yarn|pip3?|pipx|uv|brew|cargo|git|docker|openssl|ping|traceroute)\b(?:\s+[^\s]+)*)/i
+const SUBCOMMAND = /^(?:install|add|run|clone|pull|build|init|start|create|exec|test|i|dlx)$/i
+const FIRST_ARG_TOOLS = /^(?:npx|bunx|uvx)$/i
+
+/**
+ * The command a sentence tells you to run ("Run dig +short TXT _dmarc.example.com today."): the
+ * tool, then tokens that read as arguments (flags, record types, paths, URLs, names with dots or
+ * digits, the subcommand after a package manager) up to the first plain word that is not one
+ * ("today", "to"). Null when there is no argument at all.
+ */
+export function spokenCommand(text: string): string | null {
+  const m = SPOKEN_CMD.exec(text)
+  if (!m?.[1]) return null
+  const out: string[] = []
+  let ended = false
+  for (const raw of m[1].split(/\s+/)) {
+    if (ended) break
+    const word = raw.replace(/[.,;:!?]+$/, '')
+    if (!word) break
+    if (out.length > 0) {
+      const prev = out[out.length - 1]!
+      const special = /[-+./:_=@~\d]/.test(word) || /^[A-Z]{2,}$/.test(word)
+      const afterTool = out.length === 1 && (SUBCOMMAND.test(word) || FIRST_ARG_TOOLS.test(prev))
+      const afterVerb = out.length === 2 && SUBCOMMAND.test(prev) && /^[\w@./-]+$/.test(word)
+      const afterFlag = prev.startsWith('-') && /^[\w@./-]+$/.test(word)
+      if (!(special || afterTool || afterVerb || afterFlag)) break
+    }
+    out.push(word)
+    // A sentence end after a token ends the command.
+    if (raw !== word && /[.!?]$/.test(raw)) ended = true
+  }
+  return out.length >= 2 ? out.join(' ') : null
+}
+
 export function versusPair(text: string): [string, string] | null {
   const m =
     /\b([A-Z][\w.+-]*(?: [A-Z][\w.+-]*)?)\s+(?:vs\.?|versus|over|beats|instead of)\s+([A-Z][\w.+-]*(?: [A-Z][\w.+-]*)?)/.exec(

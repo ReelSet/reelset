@@ -58,6 +58,8 @@ export function Header({
           style={{
             marginTop: 18,
             width: W - SAFE.left - SAFE.right,
+            boxSizing: 'border-box',
+            paddingRight: 16,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',

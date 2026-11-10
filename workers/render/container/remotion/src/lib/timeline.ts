@@ -1,6 +1,6 @@
 import { cueTime } from './cues'
 import { headlineFrom } from './extract'
-import { assignBroll } from './broll'
+import { assignBroll, dropRepeatedClips } from './broll'
 import { groundShots } from './ground'
 import {
   DEMO_CUE,
@@ -14,13 +14,22 @@ import {
   type PlanState,
 } from './planner'
 import { enforceVariety } from './variety'
-import { finalizeShots, paceShots } from './finalize'
+import { applyHook } from './hook'
+import { capEndCard, limitPlates } from './plates'
+import { finalizeShots, paceShots, stretchDemo } from './finalize'
 import { repoCardSparse, withPrimarySource } from './sources'
 import { holdFor, tableFor } from './table'
 import { barProps, quantitiesOf, spokenIn, wordsIn } from './numbers'
 import { revealLists, spliceShots } from './lists'
 import { quantityValue } from './text-rules'
-import { easeTextRuns, fillEmpty, polishKeyPoints, settleEmpty, wordCueKeyPoints } from './polish'
+import {
+  easeTextRuns,
+  fillEmpty,
+  polishKeyPoints,
+  settleEmpty,
+  vetKeyPoints,
+  wordCueKeyPoints,
+} from './polish'
 import { completeCode } from './planner'
 import type { ReelProps, Scene, ScreenName, Shot, TimedScene, TimedShot } from './types'
 import { SCREEN_NAMES, SFX_NAMES } from './types'
@@ -210,19 +219,26 @@ function finish(shots: TimedShot[], from: number, end: number): TimedShot[] {
   })
 }
 
-/** Consecutive RepoDemo cuts continue the clip where the previous one stopped (looping if short). */
+/**
+ * Consecutive RepoDemo cuts continue the clip where the previous one stopped (looping if short). Two
+ * demo shots show one crop each (`part` 0, 1); a single one shows both, cut in the middle.
+ */
 export function withDemoOffsets(
   shots: TimedShot[],
   seconds: number | undefined,
   fps: number,
 ): TimedShot[] {
   if (!seconds || seconds <= 0) return shots
+  const count = shots.filter((s) => s.show === 'RepoDemo').length
   let played = 0
+  let n = 0
   return shots.map((s) => {
     if (s.show !== 'RepoDemo') return s
     const offset = played % seconds
     played += s.frames / fps
-    return { ...s, props: { ...s.props, offset: Math.round(offset * 100) / 100 } }
+    const part = count > 1 ? { part: n % 2 } : {}
+    n += 1
+    return { ...s, props: { ...s.props, ...part, offset: Math.round(offset * 100) / 100 } }
   })
 }
 
@@ -264,14 +280,20 @@ export function resolveShots(
   const compared = step('compare', compareStats(tabled, props, fps))
   const varied = step('variety', demoOnCue(enforceVariety(compared, props, fps), props, fps))
   const grounded = step('ground', groundShots(varied, props))
+  const hooked = step('hook', applyHook(grounded, props))
   const worded = step(
     'words',
-    fillEmpty(easeTextRuns(polishKeyPoints(grounded, props, fps), fps), props, fps),
+    fillEmpty(easeTextRuns(polishKeyPoints(hooked, props, fps), fps), props, fps),
   )
-  const backed = step('broll', settleEmpty(assignBroll(worded, props.broll), props, fps))
-  const final = step('final', finalizeShots(backed, props, fps))
-  const paced = step('pace', paceShots(final, props, fps))
-  return { shots: withDemoOffsets(paced, props.demo?.seconds, fps), warnings }
+  const vetted = step('vet', vetKeyPoints(worded, props, fps))
+  const backed = step('broll', settleEmpty(assignBroll(vetted, props.broll), props, fps))
+  const final = step('final', vetKeyPoints(finalizeShots(backed, props, fps), props, fps))
+  const paced = step(
+    'pace',
+    dropRepeatedClips(paceShots(stretchDemo(final, fps, props), props, fps)),
+  )
+  const plated = step('plates', capEndCard(limitPlates(paced), fps))
+  return { shots: withDemoOffsets(plated, props.demo?.seconds, fps), warnings }
 }
 
 /**

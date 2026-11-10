@@ -83,3 +83,15 @@ export function selectPromptChunks<T extends { text: string }>(chunks: readonly 
   }
   return out
 }
+
+export function parseFacts(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {}
+  const facts = (raw as { facts?: unknown }).facts
+  return facts && typeof facts === 'object' && !Array.isArray(facts)
+    ? (facts as Record<string, unknown>)
+    : {}
+}
+
+export function hasDemo(demo: unknown): boolean {
+  return !!demo && typeof demo === 'object' && 'url' in demo
+}

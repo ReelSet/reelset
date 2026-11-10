@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assignBroll } from './broll'
+import { assignBroll, dropRepeatedClips, repeatedClips } from './broll'
 import { barProps, withMeasure } from './numbers'
 import { fillEmpty, wordCueKeyPoints } from './polish'
 import { STATS_FLOOR, countSaid, sourceVariants } from './sources'
@@ -41,13 +41,23 @@ const covers = (shots: TimedShot[], total: number) => {
 
 describe('wordCueKeyPoints', () => {
   const text = "But MOPD is a heavy pipeline and often doesn't recover all domains evenly."
-  it('replaces a label the model gave with the claim of the sentence', () => {
+  it('never shows a claim that only repeats the captions under it', () => {
     const [out] = wordCueKeyPoints(
-      [shot(0, 90, 'KeyPoint', { text: 'Heavy pipeline' }, 'cue')],
+      [shot(0, 90, 'KeyPoint', { text: 'MOPD is a heavy pipeline' }, 'cue')],
       reel(text),
       FPS,
     )
-    expect(out!.props.text).toBe('MOPD is a heavy pipeline')
+    expect(out!.props.text).toBe('')
+    expect(out!.origin).toBe('planned')
+  })
+
+  it("keeps the script's own statement in sentence case when it adds something", () => {
+    const [out] = wordCueKeyPoints(
+      [shot(84, 90, 'KeyPoint', { text: 'experts guide the student' }, 'cue')],
+      reel(text),
+      FPS,
+    )
+    expect(out!.props.text).toBe('Experts guide the student')
     expect(out!.origin).toBe('cue')
   })
 
@@ -62,14 +72,15 @@ describe('wordCueKeyPoints', () => {
     expect(out!.props.value).toBe('12×')
   })
 
-  it('turns a cue that names things into the terms being said, lit as spoken', () => {
+  it('never turns a cue that names things into a card of keyword fragments', () => {
     const [out] = wordCueKeyPoints(
       [shot(0, 90, 'KeyPoint', { text: 'Linear parameter combination' }, 'cue')],
       reel('of student and expert parameters as one model'),
       FPS,
     )
-    expect(out!.props.items).toEqual(['expert parameters'])
-    expect(out!.origin).toBe('cue')
+    expect(out!.props.items).toBeUndefined()
+    expect(out!.props.terms).toBeUndefined()
+    expect(out!.props.text).toBe('')
   })
 
   it('frees a cue with nothing honest to say for the planner', () => {
@@ -216,8 +227,8 @@ describe('demoOnCue', () => {
   })
 })
 
-describe('b-roll reuse', () => {
-  it('gives an otherwise empty shot a used clip, later in the clip, never next to itself', () => {
+describe('b-roll uniqueness', () => {
+  it('never shows a clip twice: a shot that finds no free clip gets none', () => {
     const clips = [{ src: 'a.mp4', seconds: 6 }] as BrollClip[]
     const shots = [
       shot(0, 60, 'KeyPoint', { text: '', bg: 0 }),
@@ -227,8 +238,35 @@ describe('b-roll reuse', () => {
       shot(240, 60, 'KeyPoint', { text: '' }),
     ]
     const out = assignBroll(shots, clips)
-    expect(out[4]!.props.bg).toBe(0)
-    expect(out[4]!.props.bgAt).toBe(3)
+    expect(repeatedClips(out)).toEqual([])
+    expect(out[4]!.props.bg).toBeUndefined()
+    expect(out[4]!.props.bgAt).toBeUndefined()
+  })
+
+  it('gives every empty shot a clip of its own before any text shot', () => {
+    const clips = Array.from({ length: 3 }, (_, i) => ({
+      src: `${i}.mp4`,
+      seconds: 6,
+    })) as BrollClip[]
+    const shots = [
+      shot(0, 60, 'KeyPoint', { text: 'one two' }),
+      shot(60, 60, 'KeyPoint', { text: '' }),
+      shot(120, 60, 'KeyPoint', { text: '' }),
+      shot(180, 60, 'StatSlam', { value: '2%', label: 'y' }),
+    ]
+    const out = assignBroll(shots, clips)
+    expect(typeof out[1]!.props.bg).toBe('number')
+    expect(typeof out[2]!.props.bg).toBe('number')
+    expect(repeatedClips(out)).toEqual([])
+  })
+
+  it('drops a repeated clip as a last safety net', () => {
+    const out = dropRepeatedClips([
+      shot(0, 60, 'KeyPoint', { text: '', bg: 1 }),
+      shot(60, 60, 'KeyPoint', { text: 'a b', bg: 1 }),
+    ])
+    expect(out[0]!.props.bg).toBe(1)
+    expect(out[1]!.props.bg).toBeUndefined()
   })
 })
 

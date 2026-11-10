@@ -3,7 +3,9 @@ import { errorFields, type Logger } from '@reelset/core'
 export const PEXELS_SEARCH_URL = 'https://api.pexels.com/videos/search'
 export const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60_000
 export const HOURLY_REQUEST_BUDGET = 180
-export const MAX_REEL_CLIPS = 5
+/** Candidates sent per reel: every cutaway slot needs a clip of its own, and the container drops dark or blurry ones (about 40%), keeping up to 14. */
+export const MAX_REEL_CLIPS = 20
+export const PER_PAGE = 30
 const MIN_WIDTH = 1080
 const MIN_HEIGHT = 1920
 const MIN_SECONDS = 4
@@ -81,14 +83,16 @@ const ABSTRACT: [RegExp, string[]][] = [
   ],
 ]
 const SOURCE_DEFAULT: Record<string, string[]> = {
-  github: ['code on screen', 'keyboard typing'],
-  hn: ['keyboard typing', 'network cables'],
-  reddit: ['keyboard typing', 'code on screen'],
-  youtube: ['code on screen', 'server room'],
-  papers: ['abstract data visualization', 'circuit board'],
-  news: ['data center', 'network cables'],
+  github: ['code on screen', 'keyboard typing', 'terminal screen', 'circuit board'],
+  hn: ['network cables', 'server room', 'code on screen', 'data center'],
+  reddit: ['code on screen', 'network cables', 'server room', 'keyboard typing'],
+  youtube: ['code on screen', 'server room', 'circuit board', 'data center'],
+  papers: ['abstract data visualization', 'circuit board', 'digital particles', 'data center'],
+  news: ['data center', 'network cables', 'circuit board', 'server room'],
 }
-const FALLBACK = ['code on screen', 'keyboard typing']
+const FALLBACK = ['code on screen', 'keyboard typing', 'server room', 'circuit board']
+/** Fillers for a reel whose beats gave fewer terms than it has cutaway slots. */
+const EXTRA_TERMS = ['data center', 'circuit board', 'network cables', 'abstract technology']
 
 /** An abstract lowercase search phrase, or null when it looks like a product, person or brand. */
 export function cleanTerm(raw: unknown, title: string): string | null {
@@ -125,7 +129,7 @@ export function termsForBeat(
     .filter((t): t is string => t !== null)
   if (given.length > 0) return [...new Set(given)].slice(0, 2)
   const matched = ABSTRACT.filter(([re]) => re.test(beat.text)).flatMap(([, terms]) => terms)
-  if (matched.length > 0) return [...new Set(matched)].slice(0, 4)
+  if (matched.length > 0) return [...new Set(matched)].slice(0, 6)
   return SOURCE_DEFAULT[source ?? ''] ?? FALLBACK
 }
 
@@ -158,6 +162,64 @@ export function pickFile(files: readonly PexelsFile[]): PexelsFile | null {
   )
   ok.sort((a, b) => a.width! * a.height! - b.width! * b.height!)
   return ok[0] ?? null
+}
+
+const PEOPLE = new Set(
+  'woman women man men girl boy person people hand hands finger fingers businessman businesswoman businesspeople couple team colleagues coworkers employee employees student students child children kid kids teen teenager worker workers user customer programmer developer engineer professional face smiling holding using'.split(
+    ' ',
+  ),
+)
+const PEOPLE_PENALTY = 4
+
+/** Words that mean a search term was matched in the wrong world ("server" -> restaurant, "cables" -> cable cars). */
+const OFF_TOPIC = new Set(
+  'restaurant meal meals food waiter dinner coffee kitchen cars car urban city buildings building street bridge stone beach forest mountain landscape sunset ocean animal flower flowers wedding party baby calligraphy lunar year holiday christmas fashion market exchange stock stocks financial tablet'.split(
+    ' ',
+  ),
+)
+const OFF_TOPIC_PENALTY = 3
+
+/**
+ * Footage that is never a backdrop: it carries printed or readable text or props that read as
+ * something else (a vintage CRT, a dbx audio rack, playing cards, a newspaper), distracting under a caption.
+ */
+const UNUSABLE = new Set(
+  'crt vintage retro television tv radio vinyl turntable poker cards casino newspaper newspapers magazine book books audio mixer mixing amplifier speakers rack typewriter sign signage billboard calendar'.split(
+    ' ',
+  ),
+)
+
+export const isUsableSlug = (pageUrl: string): boolean =>
+  !slugWords(pageUrl).some((w) => UNUSABLE.has(w))
+
+/** Words of a Pexels page slug ("woman-typing-on-a-laptop-1234567"). */
+export function slugWords(pageUrl: string): string[] {
+  const slug = /\/video\/([^/]+)/.exec(pageUrl)?.[1] ?? ''
+  return slug
+    .toLowerCase()
+    .replace(/-\d+$/, '')
+    .split('-')
+    .filter((w) => w.length > 1)
+}
+
+/**
+ * How well a clip suits a term, lower is better: people-centric stock clichés ("woman typing on
+ * laptop") rank behind footage of the thing itself, a slug that names the term ranks first, and
+ * Pexels' own relevance order breaks ties.
+ */
+export function clipScore(clip: Pick<Cached, 'pageUrl' | 'seconds'>, term: string, rank: number) {
+  const words = slugWords(clip.pageUrl)
+  const people = new Set(words.filter((w) => PEOPLE.has(w))).size
+  const named = term.split(' ').filter((w) => words.some((x) => x.startsWith(w.slice(0, 5)))).length
+  const off = new Set(words.filter((w) => OFF_TOPIC.has(w))).size
+  const length = clip.seconds >= 6 && clip.seconds <= 25 ? 0 : 0.8
+  return (
+    Math.min(2, people) * PEOPLE_PENALTY +
+    Math.min(2, off) * OFF_TOPIC_PENALTY -
+    (off > 0 ? 0 : named * 2) +
+    length +
+    rank * 0.12
+  )
 }
 
 export function slimVideos(videos: readonly PexelsVideo[]): Cached[] {
@@ -214,7 +276,7 @@ export type PexelsDeps = {
 /** Cached (7 days) portrait search; stays inside the hourly request budget by serving cache only when it is spent. */
 export async function searchVideos(deps: PexelsDeps, term: string): Promise<Cached[]> {
   const now = deps.now?.() ?? Date.now()
-  const key = `cache/pexels/search-${await sha1(term)}.json`
+  const key = `cache/pexels/search-${PER_PAGE}-${await sha1(term)}.json`
   const hit = await readJson<{ at: number; videos: Cached[] }>(deps.cache, key)
   if (hit && now - hit.at < SEARCH_CACHE_TTL_MS) return hit.videos
 
@@ -227,7 +289,7 @@ export async function searchVideos(deps: PexelsDeps, term: string): Promise<Cach
   }
   await writeJson(deps.cache, RATE_KEY, { start: hourStart, count: count + 1 })
 
-  const url = `${PEXELS_SEARCH_URL}?${new URLSearchParams({ query: term, orientation: 'portrait', size: 'medium', per_page: '15' })}`
+  const url = `${PEXELS_SEARCH_URL}?${new URLSearchParams({ query: term, orientation: 'portrait', size: 'medium', per_page: String(PER_PAGE) })}`
   try {
     const res = await deps.fetch(url, { headers: { authorization: deps.apiKey } })
     if (!res.ok) {
@@ -246,8 +308,11 @@ export async function searchVideos(deps: PexelsDeps, term: string): Promise<Cach
 }
 
 /**
- * One clip per beat (at most 5 per reel), never the same clip twice in a reel and, across reels, the
- * least-used clip first (usage counts live in the cache bucket). Returns [] when nothing is found.
+ * Up to `MAX_REEL_CLIPS` distinct clips per reel, topic first: round one gives each beat a clip for
+ * its best term, later rounds add more per beat from its other terms (then generic tech terms) until
+ * every cutaway slot of a reel has a clip of its own. Never the same clip twice in a reel, nor two clips of one creator; across
+ * reels the least-used clip first (usage counts live in the cache bucket); people-centric stock
+ * clichés rank behind footage of the thing. Returns [] when nothing is found.
  */
 export async function pickBroll(
   deps: PexelsDeps,
@@ -256,36 +321,54 @@ export async function pickBroll(
 ): Promise<BrollPick[]> {
   const usage = (await readJson<Record<string, number>>(deps.cache, USAGE_KEY)) ?? {}
   const taken = new Set<number>()
-  const usedTerms = new Set<string>()
+  // One clip per creator: a stock set shot on one desk is the same footage twice to a viewer.
+  const creators = new Set<string>()
+  const usedTerms = new Map<string, number>()
   const picks: BrollPick[] = []
-  for (const [index, beat] of beats.entries()) {
-    if (picks.length >= MAX_REEL_CLIPS) break
-    // A term an earlier beat already used goes last, so the reel is not four keyboards.
-    const terms = termsForBeat(beat, ctx.source, ctx.title)
-    const ordered = [
-      ...terms.filter((t) => !usedTerms.has(t)),
-      ...terms.filter((t) => usedTerms.has(t)),
-    ]
-    for (const term of ordered) {
-      const found = (await searchVideos(deps, term))
-        .filter((v) => !taken.has(v.id) && v.seconds >= MIN_SECONDS && v.seconds <= MAX_SECONDS)
-        .map((v, rank) => ({ v, rank }))
-        .sort((a, b) => (usage[a.v.id] ?? 0) - (usage[b.v.id] ?? 0) || a.rank - b.rank)[0]?.v
-      if (!found) continue
-      taken.add(found.id)
-      usedTerms.add(term)
-      usage[found.id] = (usage[found.id] ?? 0) + 1
-      picks.push({
-        url: found.link,
-        id: found.id,
-        beat: index + 1,
-        seconds: Math.min(found.seconds, 6),
-        creator: found.creator,
-        creatorUrl: found.creatorUrl,
-        pageUrl: found.pageUrl,
-      })
-      break
+  const beatTerms = beats.map((beat) => termsForBeat(beat, ctx.source, ctx.title))
+  const take = async (term: string, index: number): Promise<boolean> => {
+    const found = (await searchVideos(deps, term))
+      .filter(
+        (v) =>
+          !taken.has(v.id) &&
+          !creators.has(v.creator) &&
+          isUsableSlug(v.pageUrl) &&
+          v.seconds >= MIN_SECONDS &&
+          v.seconds <= MAX_SECONDS,
+      )
+      .map((v, rank) => ({ v, score: (usage[v.id] ?? 0) * 1.5 + clipScore(v, term, rank) }))
+      .sort((a, b) => a.score - b.score)[0]?.v
+    if (!found) return false
+    taken.add(found.id)
+    creators.add(found.creator)
+    usedTerms.set(term, (usedTerms.get(term) ?? 0) + 1)
+    usage[found.id] = (usage[found.id] ?? 0) + 1
+    picks.push({
+      url: found.link,
+      id: found.id,
+      beat: index + 1,
+      seconds: Math.min(found.seconds, 6),
+      creator: found.creator,
+      creatorUrl: found.creatorUrl,
+      pageUrl: found.pageUrl,
+    })
+    return true
+  }
+  for (let round = 0; round < 10 && picks.length < MAX_REEL_CLIPS; round += 1) {
+    let added = false
+    for (const [index, terms] of beatTerms.entries()) {
+      if (picks.length >= MAX_REEL_CLIPS) break
+      const pool = round < 3 ? terms : [...terms, ...EXTRA_TERMS]
+      // A term already used goes last, so the reel is not four keyboards.
+      const ordered = [...pool].sort((a, b) => (usedTerms.get(a) ?? 0) - (usedTerms.get(b) ?? 0))
+      for (const term of ordered) {
+        if (await take(term, index)) {
+          added = true
+          break
+        }
+      }
     }
+    if (!added) break
   }
   if (picks.length > 0) await writeJson(deps.cache, USAGE_KEY, usage)
   deps.log.info({ picks: picks.length, beats: beats.length }, 'b-roll picked')

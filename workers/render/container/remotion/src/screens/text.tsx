@@ -10,10 +10,12 @@ import { Pop, Rise, easeOut, useSpring } from '../fx'
 import { fitText } from '../lib/text'
 import { accentIndex } from '../lib/emphasis'
 import { listSize } from '../lib/lists'
-import { fitWords, styleOf, typeset } from '../lib/typeset'
+import { fitWords, displayTitle, styleOf, typeset } from '../lib/typeset'
+import { PLATE_FULL_H, PLATE_H, plateFact, textPlan } from '../lib/fill'
+import { endName, endSource, endSubtitle } from '../lib/endcard'
 import { SourceChip } from '../Marks'
 import { COLOR, CONTENT_TOP, CONTENT_W, H, LOW_TOP, SAFE, W, ZONE_H } from '../theme'
-import { Chip, Page, prop, useBackdrop, type ScreenProps } from './ui'
+import { Chip, Page, Photo, imageAt, prop, useBackdrop, type ScreenProps } from './ui'
 
 /** Domain strip under a key point: where this came from. */
 function DomainMark({ ctx, topPad }: Pick<ScreenProps, 'ctx' | 'topPad'>) {
@@ -216,9 +218,163 @@ function ListPills({ frames, ctx, props, topPad }: ScreenProps) {
 }
 
 export function KeyPoint(screen: ScreenProps) {
+  if (screen.props.hook === true) return <HookHeadline {...screen} />
   if (Array.isArray(screen.props.items) && screen.props.items.length > 0)
     return <ListCard {...screen} />
   return <TextPoint {...screen} />
+}
+
+/**
+ * The item itself under a key point: its source chip, its title and, when the facts have one, a big
+ * number (stars, points, upvotes, views). It fills what a short statement leaves empty, with real
+ * material about the story rather than decoration.
+ */
+function ContextPlate({
+  ctx,
+  big = false,
+  count = true,
+}: {
+  ctx: ScreenProps['ctx']
+  big?: boolean
+  count?: boolean
+}) {
+  const fact = count ? plateFact(ctx.source, ctx.facts) : null
+  // A repo's release or commit title is not a name: the plate shows the repo itself.
+  const title = ctx.source === 'github' ? endName(ctx) : displayTitle(ctx.title)
+  const longest = Math.max(...title.split(/\s+/).map((w) => w.length))
+  const titleSize = big ? (fact && longest > 9 ? 54 : 68) : 44
+  return (
+    <Rise
+      delay={6}
+      style={{
+        width: '100%',
+        height: big ? PLATE_FULL_H : PLATE_H,
+        boxSizing: 'border-box',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 36,
+        padding: big ? '0 52px' : '0 40px',
+        borderRadius: 36,
+        background: 'rgba(255,255,255,0.06)',
+        border: `2px solid ${COLOR.line}`,
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <SourceChip source={ctx.source} label={ctx.sourceLabel} size={big ? 2 : 1.5} />
+        <div
+          style={{
+            fontSize: titleSize,
+            fontWeight: 800,
+            lineHeight: 1.12,
+            letterSpacing: '-0.025em',
+            marginTop: big ? 36 : 22,
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: big ? 6 : 3,
+            overflow: 'hidden',
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{ fontSize: big ? 40 : 32, fontWeight: 600, color: COLOR.muted, marginTop: 18 }}
+        >
+          {ctx.domain.length > 36 ? `${ctx.domain.slice(0, 35)}…` : ctx.domain}
+        </div>
+      </div>
+      {fact ? (
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div
+            style={{
+              fontSize: big ? 170 : 104,
+              fontWeight: 900,
+              letterSpacing: '-0.05em',
+              lineHeight: 1,
+              color: COLOR.accent,
+            }}
+          >
+            {fact.value}
+          </div>
+          <div
+            style={{
+              fontSize: big ? 40 : 30,
+              fontWeight: 800,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: COLOR.muted,
+              marginTop: 8,
+            }}
+          >
+            {fact.label}
+          </div>
+        </div>
+      ) : null}
+    </Rise>
+  )
+}
+
+/** The reel's first screen when it has nothing else real to open on: the headline, huge, over the story's image or footage. */
+function HookHeadline({ frames, ctx, props }: ScreenProps) {
+  const label = typeset(prop<string>(props, 'text', '')).toUpperCase()
+  const words = label.split(' ')
+  const img = typeof props.bgImage === 'number' ? imageAt(ctx, { image: props.bgImage }) : undefined
+  const size = fitWords(
+    label,
+    { width: CONTENT_W, height: ZONE_H - 40 },
+    { min: 72, max: 230, upper: true, lineHeight: 1.0 },
+  )
+  const accent = accentIndex(words)
+  return (
+    <Page frames={frames} bleed>
+      {img ? <Photo image={img} frames={frames} backdropOnly /> : null}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(to bottom, rgba(9,9,11,0.55) 0%, rgba(9,9,11,0.25) 45%, rgba(9,9,11,0.7) 100%)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: SAFE.left,
+          right: SAFE.right,
+          top: CONTENT_TOP,
+          height: ZONE_H,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            fontSize: size,
+            fontWeight: 900,
+            lineHeight: 1.0,
+            letterSpacing: '-0.04em',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {words.map((w, i) => (
+            <Pop
+              key={i}
+              delay={i * 2}
+              style={{
+                display: 'inline-block',
+                marginRight: '0.2em',
+                color: i === accent ? COLOR.accent : COLOR.text,
+                textShadow: '0 6px 40px rgba(0,0,0,0.55)',
+              }}
+            >
+              {w}
+            </Pop>
+          ))}
+        </div>
+      </div>
+    </Page>
+  )
 }
 
 function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
@@ -233,20 +389,42 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
   const style = styleOf(typeof props.text === 'string' ? props.text : '')
   // One casing for every key point in a reel: sentence case (layouts differ by alignment only).
   const upper = false
-  const size = quote
-    ? fitText(
-        text,
-        { width: CONTENT_W, height: ZONE_H - topPad - (sub ? 180 : 40) },
-        { min: 64, max: 78, charWidth: 0.66, lineHeight: 1.02 },
-      )
-    : fitWords(
-        text,
-        { width: CONTENT_W - 8, height: ZONE_H - topPad - (sub ? 180 : 40) },
-        { min: 44, max: 200, upper, lineHeight: 1.04 },
-      )
+  const clip = useBackdrop()
+  const bare = props.bare === true
+  const plan = !quote && !clip && text && !bare ? textPlan(text, sub, topPad) : null
+  const size = plan
+    ? plan.size
+    : bare && text && !quote && !clip
+      ? textPlan(text, sub, topPad, false).size
+      : quote
+        ? fitText(
+            text,
+            { width: CONTENT_W, height: ZONE_H - topPad - (sub ? 180 : 40) },
+            { min: 64, max: 78, charWidth: 0.66, lineHeight: 1.02 },
+          )
+        : fitWords(
+            text,
+            { width: CONTENT_W - 8, height: ZONE_H - topPad - (sub ? 180 : 40) },
+            { min: 44, max: 200, upper, lineHeight: 1.04 },
+          )
   // The whole phrase is on screen within ~0.2 s, so no frame ever shows half an idea.
   const per = words.length > 1 ? Math.min(2, Math.floor(6 / (words.length - 1))) : 0
-  const clip = useBackdrop()
+  if (!text && !quote && !clip) {
+    return (
+      <Page frames={frames} topPad={topPad}>
+        <div
+          style={{
+            height: ZONE_H - topPad,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          }}
+        >
+          <ContextPlate ctx={ctx} big count={props.noCount !== true} />
+        </div>
+      </Page>
+    )
+  }
   if (!text && !quote) {
     return (
       <Page frames={frames} topPad={topPad}>
@@ -309,6 +487,7 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
             borderRadius: 7,
             marginBottom: 44,
             alignSelf: style === 2 ? 'flex-end' : style === 1 ? 'center' : 'flex-start',
+            marginRight: style === 2 ? 14 : 0,
           }}
         />
         {quote ? (
@@ -373,44 +552,32 @@ function TextPoint({ frames, ctx, props, topPad }: ScreenProps) {
             {sub}
           </Rise>
         ) : null}
+        {plan ? (
+          <div style={{ marginTop: 44 }}>
+            <ContextPlate ctx={ctx} count={props.noCount !== true} />
+          </div>
+        ) : null}
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: LOW_TOP - CONTENT_TOP - topPad + 30,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          fontSize: 40,
-          fontWeight: 700,
-          color: COLOR.muted,
-        }}
-      >
-        <i style={{ width: 14, height: 14, borderRadius: 7, background: COLOR.accent }} />
-        {ctx.domain.length > 40 ? `${ctx.domain.slice(0, 39)}…` : ctx.domain}
-      </div>
+      {plan ? null : (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: LOW_TOP - CONTENT_TOP - topPad + 30,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            fontSize: 40,
+            fontWeight: 700,
+            color: COLOR.muted,
+          }}
+        >
+          <i style={{ width: 14, height: 14, borderRadius: 7, background: COLOR.accent }} />
+          {ctx.domain.length > 40 ? `${ctx.domain.slice(0, 39)}…` : ctx.domain}
+        </div>
+      )}
     </Page>
   )
-}
-
-/** What the reel was about, by name: the repo, the paper's short name, else the source title. */
-export function endName(ctx: ScreenProps['ctx']): string {
-  const r = ctx.facts.repo
-  if (r?.owner && r.name) return `${r.owner}/${r.name}`
-  if (ctx.demo?.repo) return ctx.demo.repo
-  const head = /^([^:]{2,24}):\s/.exec(ctx.title)?.[1]
-  if (ctx.source === 'papers' && head) return head
-  // The hook already showed the full title: the end card names the story in its short form.
-  return ctx.headline?.trim() || ctx.title
-}
-
-/** Where the reel came from, as one line: "github.com/owner/repo", "arxiv.org", the article's site. */
-export function endSource(ctx: ScreenProps['ctx']): string {
-  const r = ctx.facts.repo
-  const repo = r?.owner && r.name ? `${r.owner}/${r.name}` : ctx.demo?.repo
-  if (ctx.source === 'github' && repo) return `github.com/${repo}`
-  return ctx.domain
 }
 
 /**
@@ -420,7 +587,7 @@ export function endSource(ctx: ScreenProps['ctx']): string {
 export function EndCard({ frames, ctx, topPad }: ScreenProps) {
   const pulse = useSpring(20, 8, 0.5)
   const name = typeset(endName(ctx))
-  const sub = name === ctx.title || name === ctx.headline?.trim() ? '' : ctx.title
+  const sub = typeset(endSubtitle(ctx))
   // "owner/repo" may break after the slash, never inside a word.
   const longest = Math.max(...name.split(/[\s/]+/).map((w) => w.length + 1))
   const size = Math.min(

@@ -5,6 +5,37 @@ export const BG_SCREENS = new Set<ScreenName>(['KeyPoint', 'StatSlam', 'Compare'
 
 export const BG_OPACITY = 0.4
 
+const CAPTION_PIECE_S = 2.5
+const SPARE_CLIPS = 2
+const FRAME_RATE = 30
+
+/** Clip indexes that more than one shot shows (always empty for a valid plan). */
+export function repeatedClips(shots: readonly Pick<TimedShot, 'props'>[]): number[] {
+  const seen = new Set<number>()
+  const dup = new Set<number>()
+  for (const s of shots) {
+    const bg = s.props.bg
+    if (typeof bg !== 'number') continue
+    if (seen.has(bg)) dup.add(bg)
+    seen.add(bg)
+  }
+  return [...dup]
+}
+
+/** Safety net: a clip already shown by an earlier shot is dropped from a later one. */
+export function dropRepeatedClips(shots: TimedShot[]): TimedShot[] {
+  const seen = new Set<number>()
+  return shots.map((s) => {
+    const bg = s.props.bg
+    if (typeof bg !== 'number') return s
+    if (!seen.has(bg)) {
+      seen.add(bg)
+      return s
+    }
+    return { ...s, props: { ...s.props, bg: undefined } }
+  })
+}
+
 /**
  * Gives eligible shots a `bg` clip index. Each clip is used once per reel; a clip made for a beat
  * goes to a shot of that beat when one is free, and the clips spread over the reel rather than
@@ -28,7 +59,13 @@ export function assignBroll(
     .filter((i) => i >= 0)
   const free = Math.max(0, clips.length - taken.size)
   const forced = must.slice(0, free)
-  const n = Math.min(free - forced.length, eligible.length)
+  // An empty shot held past 2.9 s is cut into pieces that each need a clip of their own.
+  const pieces = must.reduce(
+    (n, i) => n + Math.max(0, Math.ceil(shots[i]!.frames / (CAPTION_PIECE_S * FRAME_RATE)) - 1),
+    0,
+  )
+  // Two clips stay free for the passes after this one (a cut that needs footage, the hook's second shot).
+  const n = Math.max(0, Math.min(free - forced.length - pieces - SPARE_CLIPS, eligible.length))
   const spread =
     n > 0
       ? Array.from(
@@ -46,25 +83,6 @@ export function assignBroll(
     taken.add(ci)
     bg.set(at, ci)
   }
-  const reuse = new Map<number, number>()
-  const near = (i: number, ci: number) =>
-    shots.some(
-      (s, k) =>
-        Math.abs(k - i) <= 3 && (s.props.bg === ci || bg.get(k) === ci || reuse.get(k) === ci),
-    )
-  for (const at of must.filter((i) => !bg.has(i))) {
-    const ci = clips.findIndex((_, k) => !near(at, k))
-    if (ci >= 0) reuse.set(at, ci)
-  }
-  if (bg.size === 0 && reuse.size === 0) return shots
-  return shots.map((s, i) =>
-    bg.has(i)
-      ? { ...s, props: { ...s.props, bg: bg.get(i) } }
-      : reuse.has(i)
-        ? { ...s, props: { ...s.props, bg: reuse.get(i), bgAt: REUSE_OFFSET_S } }
-        : s,
-  )
+  if (bg.size === 0) return shots
+  return shots.map((s, i) => (bg.has(i) ? { ...s, props: { ...s.props, bg: bg.get(i) } } : s))
 }
-
-/** A clip shown a second time (only for an otherwise empty shot) starts this far in, so it looks different. */
-export const REUSE_OFFSET_S = 3
