@@ -17,6 +17,7 @@ import {
   postQueue,
   publishedReels,
   readAccount,
+  readCheckError,
 } from '@/server/admin/instagram'
 import { mediaBaseUrl } from '@/server/env'
 import { getDb } from '@/server/db'
@@ -36,8 +37,9 @@ export default async function InstagramPage({ searchParams }: Props) {
   const itemParam = z.guid().safeParse(Array.isArray(sp.item) ? sp.item[0] : sp.item)
   const mediaBase = mediaBaseUrl()
 
-  const [account, reels, queue, composer] = await Promise.all([
+  const [account, checkError, reels, queue, composer] = await Promise.all([
     readAccount(db),
+    readCheckError(db),
     publishedReels(db, page.offset),
     postQueue(db),
     itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
@@ -68,7 +70,12 @@ export default async function InstagramPage({ searchParams }: Props) {
         <AutoRefresh renderedAt={now.toISOString()} />
       </div>
 
-      <AccountCard account={account} configured={configured} returnTo={returnTo} />
+      <AccountCard
+        account={account}
+        checkError={checkError}
+        configured={configured}
+        returnTo={returnTo}
+      />
 
       {itemParam.success && !composer ? (
         <Empty>That reel is not available to post (it needs a finished render).</Empty>

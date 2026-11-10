@@ -119,6 +119,7 @@ export {
   failStuckPosts,
   getEncryptedSession,
   getIgAccount,
+  getIgCheckError,
   markDeleted,
   markPostFailed,
   markPosted,
@@ -126,4 +127,6 @@ export {
   restoreAfterDeleteFailure,
   setEncryptedSession,
   setIgAccount,
+  setIgCheckError,
+  type IgCheckError,
 } from './repos/instagram-post.repo'

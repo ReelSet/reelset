@@ -48,7 +48,7 @@ describe('worker client', () => {
       await checkInstagramAccount(cfg(async () => new Response('no', { status: 404 }))),
     ).toEqual({
       ok: false,
-      message: 'Poster answered 404',
+      message: 'The Instagram service answered 404',
     })
     expect(await checkInstagramAccount(cfg(async () => Response.json({ nope: 1 })))).toMatchObject({
       ok: false,
@@ -59,6 +59,9 @@ describe('worker client', () => {
           throw new Error('boom')
         }),
       ),
-    ).toEqual({ ok: false, message: 'Could not reach the poster' })
+    ).toEqual({
+      ok: false,
+      message: 'Could not reach the Instagram service. It may still be deploying or offline.',
+    })
   })
 })
