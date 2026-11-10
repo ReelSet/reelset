@@ -20,6 +20,7 @@ log = logging.getLogger("reel.instagram")
 
 MAX_VIDEO_BYTES = 100 * 1024 * 1024
 DOWNLOAD_TIMEOUT_SECONDS = 120
+DOWNLOAD_USER_AGENT = "reelset-render/2"
 CLIP_DELAY_RANGE = [1, 3]
 ERROR_MESSAGE_MAX = 200
 
@@ -218,13 +219,21 @@ def login(
 def download_video(url: str, workdir: Path) -> Path:
     validate_video_url(url)
     dest = workdir / "reel.mp4"
-    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as res, open(dest, "wb") as out:
-        size = 0
-        while chunk := res.read(256 * 1024):
-            size += len(chunk)
-            if size > MAX_VIDEO_BYTES:
-                raise InstagramError("too_large", "video is larger than 100 MB", 422)
-            out.write(chunk)
+    # media.reelset.app sits behind Cloudflare, which answers 403 to the default Python-urllib agent.
+    request = urllib.request.Request(url, headers={"User-Agent": DOWNLOAD_USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as res, open(dest, "wb") as out:
+            size = 0
+            while chunk := res.read(256 * 1024):
+                size += len(chunk)
+                if size > MAX_VIDEO_BYTES:
+                    raise InstagramError("too_large", "video is larger than 100 MB", 422)
+                out.write(chunk)
+    except InstagramError:
+        raise
+    except Exception as err:
+        log.error("video download failed err=%s", type(err).__name__)
+        raise InstagramError("download_failed", f"could not download the reel video ({short_message(err)})", 502) from err
     log.info("downloaded video bytes=%d", size)
     return dest
 

@@ -224,3 +224,23 @@ class ExclusiveTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DownloadTests(unittest.TestCase):
+    def test_sends_a_user_agent_and_reports_http_errors(self):
+        import tempfile
+        import urllib.error
+        from unittest import mock
+
+        seen = {}
+
+        def fake_urlopen(request, timeout):
+            seen["agent"] = request.get_header("User-agent")
+            raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, None)
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("urllib.request.urlopen", fake_urlopen):
+            with self.assertRaises(instagram.InstagramError) as ctx:
+                instagram.download_video("https://media.reelset.app/reels/a/b.mp4", Path(tmp))
+        self.assertEqual(seen["agent"], instagram.DOWNLOAD_USER_AGENT)
+        self.assertEqual(ctx.exception.code, "download_failed")
+        self.assertIn("403", ctx.exception.message)
