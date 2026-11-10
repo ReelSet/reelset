@@ -209,7 +209,7 @@ describe('processRenderJob', () => {
     const result = await processRenderJob(deps, body, 2)
 
     expect(result).toEqual({ action: 'retry', delaySeconds: 60 })
-    expect(store.calls).toEqual(['rendering'])
+    expect(store.calls).toEqual(['rendering', 'retry_pending'])
     expect(rec.transitions).toEqual([])
   })
 
@@ -281,6 +281,14 @@ describe('processRenderJob', () => {
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'retry', delaySeconds: 30 })
   })
 
+  it('releases the render row while a busy retry waits so the stuck reaper skips it', async () => {
+    const busy = () => new FakeContainer({ renderStatus: 409, renderBody: { error: 'busy' } })
+    const { deps, store } = setup({ containers: [busy(), busy()] })
+    await processRenderJob(deps, body, 1)
+    expect(store.calls).toContain('retry_pending')
+    expect([...store.renders.values()].map((r) => r.status)).toEqual(['queued'])
+  })
+
   it('retries on an R2 upload failure and still cleans up the container job', async () => {
     const media = new FakeMedia()
     media.failPuts = true
@@ -350,7 +358,7 @@ describe('processRenderJob', () => {
 
       expect(result).toEqual({ action: 'retry', delaySeconds: 30 })
       expect(media.puts).toEqual([])
-      expect(store.calls).toEqual(['rendering'])
+      expect(store.calls).toEqual(['rendering', 'retry_pending'])
       expect(rec.transitions).toEqual([])
       expect(path(container)).toEqual(['POST /render', 'DELETE /render/JOB'])
     },

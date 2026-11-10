@@ -360,6 +360,20 @@ async function finishItem(
   log.info('item rendered')
 }
 
+/** A render waiting for a queue retry is not running, so the stuck reaper must not fail it. */
+async function releaseRenderForRetry(
+  deps: ConsumerDeps,
+  renderKey: string | null,
+  log: Logger,
+): Promise<void> {
+  if (!renderKey) return
+  try {
+    await deps.store.markRetryPending(renderKey)
+  } catch (err) {
+    log.warn(errorFields(err), 'could not release render for retry (non-fatal)')
+  }
+}
+
 async function handleFailure(
   deps: ConsumerDeps,
   itemId: string,
@@ -369,6 +383,7 @@ async function handleFailure(
   log: Logger,
 ): Promise<JobResult> {
   if (!decision.terminal) {
+    await releaseRenderForRetry(deps, progress.renderKey, log)
     log.warn({ delaySeconds: decision.retryDelaySeconds }, 'scheduling retry')
     return { action: 'retry', delaySeconds: decision.retryDelaySeconds }
   }

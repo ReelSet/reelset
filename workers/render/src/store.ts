@@ -59,6 +59,7 @@ export interface RenderStore {
   markRendering(renderKey: string): Promise<void>
   markDone(renderKey: string, done: RenderDone): Promise<void>
   markFailed(renderKey: string, error: string): Promise<void>
+  markRetryPending(renderKey: string): Promise<void>
 }
 
 export type StuckRender = { renderId: string; itemId: string }
@@ -198,6 +199,15 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           finished_at: sql`now()`,
         })
         .where('render_key', '=', renderKey)
+        .execute()
+    },
+
+    async markRetryPending(renderKey) {
+      await db
+        .updateTable('render')
+        .set({ status: 'queued', finished_at: null })
+        .where('render_key', '=', renderKey)
+        .where('status', '=', 'rendering')
         .execute()
     },
 
