@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { queuedPostEtas } from '@reelset/core'
 import { z } from 'zod'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { mediaUrl } from '@/lib/media'
@@ -15,6 +16,7 @@ import {
   REELS_PAGE_SIZE,
   composerReel,
   postQueue,
+  lastPostedAt,
   publishedReels,
   readAccount,
   readCheckError,
@@ -37,13 +39,18 @@ export default async function InstagramPage({ searchParams }: Props) {
   const itemParam = z.guid().safeParse(Array.isArray(sp.item) ? sp.item[0] : sp.item)
   const mediaBase = mediaBaseUrl()
 
-  const [account, checkError, reels, queue, composer] = await Promise.all([
+  const [account, checkError, reels, rawQueue, lastPosted, composer] = await Promise.all([
     readAccount(db),
     readCheckError(db),
     publishedReels(db, page.offset),
     postQueue(db),
+    lastPostedAt(db),
     itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
   ])
+  const queuedOldestFirst = rawQueue.filter((r) => r.status === 'queued').reverse()
+  const etas = queuedPostEtas(queuedOldestFirst.length, lastPosted, now)
+  const etaById = new Map(queuedOldestFirst.map((r, i) => [r.id, etas[i] ?? null]))
+  const queue = rawQueue.map((r) => ({ ...r, etaAt: etaById.get(r.id) ?? null }))
   const configured = workerConfigFromEnv() !== null
   const gridHref = (id: string) =>
     `${pageHref(PATH, {}, page.page)}${page.page > 1 ? '&' : '?'}item=${id}#compose`
@@ -135,7 +142,12 @@ export default async function InstagramPage({ searchParams }: Props) {
         {queue.length === 0 ? (
           <Empty>No posts yet. Select a reel below to compose one.</Empty>
         ) : (
-          <QueueList rows={queue} returnTo={returnTo} hrefFor={(id) => `/admin?item=${id}`} />
+          <QueueList
+            rows={queue}
+            now={now}
+            returnTo={returnTo}
+            hrefFor={(id) => `/admin?item=${id}`}
+          />
         )}
       </Section>
 

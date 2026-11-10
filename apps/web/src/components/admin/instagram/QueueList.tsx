@@ -15,14 +15,22 @@ export type QueueRow = {
   created_at: Date | string
   posted_at: Date | string | null
   delete_requested_at: Date | string | null
+  etaAt?: Date | null
+}
+
+function etaLabel(at: Date, now: Date): string {
+  const minutes = Math.ceil((at.getTime() - now.getTime()) / 60_000)
+  return minutes <= 1 ? 'Goes out any moment now' : `Goes out in about ${minutes} min`
 }
 
 export function QueueList({
   rows,
+  now,
   returnTo,
   hrefFor,
 }: {
   rows: QueueRow[]
+  now: Date
   returnTo: string
   hrefFor: (itemId: string) => string
 }) {
@@ -50,6 +58,14 @@ export function QueueList({
                 {row.posted_at ? 'posted ' : 'queued '}
                 <Ago at={new Date(row.posted_at ?? row.created_at).toISOString()} />
               </p>
+              {row.status === 'queued' && row.etaAt ? (
+                <p className="mt-0.5 text-xs text-muted">
+                  {etaLabel(row.etaAt, now)} (posts are spaced 10 min apart)
+                </p>
+              ) : null}
+              {row.status === 'posting' ? (
+                <p className="mt-0.5 text-xs text-info">Uploading to Instagram now</p>
+              ) : null}
               {row.error ? <p className="mt-0.5 text-xs text-danger">{row.error}</p> : null}
             </div>
             <div className="flex items-center gap-3">

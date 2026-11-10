@@ -74,3 +74,30 @@ export function gapRemainingMs(
   if (!lastAttemptAt) return 0
   return Math.max(0, lastAttemptAt.getTime() + minGapMinutes * 60_000 - now.getTime())
 }
+
+export const INSTAGRAM_CRON_MINUTES = 5
+
+function nextCronTick(at: Date, cronMinutes: number): Date {
+  const step = cronMinutes * 60_000
+  return new Date(Math.ceil(at.getTime() / step) * step)
+}
+
+/** Estimated publish times for queued posts in order: gap after the last real post, picked up by the cron. */
+export function queuedPostEtas(
+  queuedCount: number,
+  lastPostedAt: Date | null,
+  now: Date,
+  minGapMinutes = INSTAGRAM_MIN_GAP_MINUTES,
+  cronMinutes = INSTAGRAM_CRON_MINUTES,
+): Date[] {
+  const etas: Date[] = []
+  let previous = lastPostedAt
+  for (let i = 0; i < queuedCount; i++) {
+    const wait = gapRemainingMs(previous, now, minGapMinutes)
+    const eta =
+      wait === 0 && i === 0 ? now : nextCronTick(new Date(now.getTime() + wait), cronMinutes)
+    etas.push(eta)
+    previous = eta
+  }
+  return etas
+}
