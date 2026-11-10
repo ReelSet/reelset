@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { INSTAGRAM_CAPTION_MAX_CHARS, INSTAGRAM_HASHTAG_MAX } from '@reelset/core'
+import { INSTAGRAM_CAPTION_MAX_CHARS, INSTAGRAM_HASHTAG_MAX } from '@/lib/instagram/limits'
 import { checkCaption, normalizeCaption } from '@/lib/instagram/caption'
 import { ConfirmForm } from './ConfirmForm'
 import { PhoneFrame } from './PhoneFrame'
