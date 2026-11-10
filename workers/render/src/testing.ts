@@ -72,6 +72,11 @@ export class FakeStore implements RenderStore {
         done,
       })
   }
+  async markRetryPending(key: string) {
+    this.calls.push('retry_pending')
+    const row = this.renders.get(key)
+    if (row?.status === 'rendering') row.status = 'queued'
+  }
   async markFailed(key: string, error: string) {
     this.calls.push(`failed:${error}`)
     const row = this.renders.get(key)
