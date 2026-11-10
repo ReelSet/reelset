@@ -1,4 +1,4 @@
-import type { IgAccount } from '@reelset/core'
+import type { IgAccount, IgCheckError } from '@reelset/core'
 import { Ago } from '@/components/admin/pipeline/Elapsed'
 import { button, buttonPrimary, input } from '@/components/admin/ui'
 import { SubmitButton } from '@/components/admin/SubmitButton'
@@ -9,15 +9,21 @@ const DOT = { ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger', muted: 'bg-fain
 
 export function AccountCard({
   account,
+  checkError,
   configured,
   returnTo,
 }: {
   account: IgAccount | null
+  checkError: IgCheckError | null
   configured: boolean
   returnTo: string
 }) {
   const view = describeAccount(account, configured)
   const proxy = proxyLabel(account)
+  const lastError =
+    checkError && (!account || Date.parse(checkError.at) > Date.parse(account.checkedAt))
+      ? checkError
+      : null
   return (
     <section
       aria-label="Instagram account"
@@ -55,6 +61,12 @@ export function AccountCard({
           </form>
         ) : null}
       </div>
+
+      {lastError ? (
+        <p role="alert" className="mt-3 rounded bg-danger/10 p-2.5 text-xs text-danger">
+          Last check failed <Ago at={lastError.at} />: {lastError.message}
+        </p>
+      ) : null}
 
       {view.canConnect && account && account.state !== 'connected' ? (
         <form

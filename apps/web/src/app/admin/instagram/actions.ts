@@ -1,5 +1,6 @@
 'use server'
 
+import { setIgCheckError } from '@reelset/core'
 import { z } from 'zod'
 import { accountFlash } from '@/lib/instagram/account'
 import {
@@ -50,11 +51,21 @@ export async function deletePostAction(formData: FormData): Promise<void> {
   })
 }
 
+async function rememberCheck(
+  result: { ok: true } | { ok: false; message: string },
+  log: { warn: (o: object, m: string) => void },
+): Promise<void> {
+  const error = result.ok ? null : { message: result.message, at: new Date().toISOString() }
+  if (error) log.warn({ reason: error.message }, 'instagram account call failed')
+  await setIgCheckError(getDb(), error)
+}
+
 export async function checkAccountAction(formData: FormData): Promise<void> {
-  await runAdminAction(formData, 'instagram-check', async () => {
+  await runAdminAction(formData, 'instagram-check', async ({ log }) => {
     const worker = workerConfigFromEnv()
     if (!worker) return NO_WORKER
     const result = await checkInstagramAccount(worker)
+    await rememberCheck(result, log)
     return result.ok ? accountFlash(result.value) : { ok: false, message: result.message }
   })
 }
@@ -62,13 +73,14 @@ export async function checkAccountAction(formData: FormData): Promise<void> {
 const codeSchema = z.string().regex(/^\d{6,8}$/)
 
 export async function connectAccountAction(formData: FormData): Promise<void> {
-  await runAdminAction(formData, 'instagram-connect', async () => {
+  await runAdminAction(formData, 'instagram-connect', async ({ log }) => {
     const worker = workerConfigFromEnv()
     if (!worker) return NO_WORKER
     const raw = String(formData.get('code') ?? '').replace(/\s+/g, '')
     const code = raw ? codeSchema.safeParse(raw) : null
     if (code && !code.success) return { ok: false, message: 'The 2FA code is 6 digits' }
     const result = await connectInstagramAccount(worker, code?.data)
+    await rememberCheck(result, log)
     return result.ok ? accountFlash(result.value) : { ok: false, message: result.message }
   })
 }

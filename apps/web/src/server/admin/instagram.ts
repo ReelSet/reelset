@@ -4,6 +4,7 @@ import {
   Source,
   assertPostTransition,
   getIgAccount,
+  getIgCheckError,
   type Database,
   type Logger,
 } from '@reelset/core'
@@ -137,6 +138,7 @@ export async function lastAttemptAt(db: Database): Promise<Date | null> {
 }
 
 export const readAccount = (db: Database) => getIgAccount(db)
+export const readCheckError = (db: Database) => getIgCheckError(db)
 
 export async function queueInstagramPost(
   db: Database,

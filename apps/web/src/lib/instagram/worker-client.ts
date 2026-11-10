@@ -30,13 +30,16 @@ async function call<T>(
       signal: AbortSignal.timeout(timeoutMs),
       cache: 'no-store',
     })
-    if (!res.ok) return { ok: false, message: `Poster answered ${res.status}` }
+    if (!res.ok) return { ok: false, message: `The Instagram service answered ${res.status}` }
     const parsed = schema.safeParse(await res.json().catch(() => null))
     return parsed.success
       ? { ok: true, value: parsed.data }
-      : { ok: false, message: 'Poster sent an unexpected answer' }
+      : { ok: false, message: 'The Instagram service sent an unexpected answer' }
   } catch {
-    return { ok: false, message: 'Could not reach the poster' }
+    return {
+      ok: false,
+      message: 'Could not reach the Instagram service. It may still be deploying or offline.',
+    }
   }
 }
 

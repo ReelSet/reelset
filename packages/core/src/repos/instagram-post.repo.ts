@@ -13,6 +13,9 @@ import type { Logger } from '../lib/logger'
 
 export const IG_ACCOUNT_KEY = 'ig_account'
 export const IG_SESSION_KEY = 'ig_session_enc'
+export const IG_CHECK_ERROR_KEY = 'ig_check_error'
+
+export type IgCheckError = { message: string; at: string }
 
 export type ClaimedPost = Selectable<
   Pick<InstagramPost, 'id' | 'item_id' | 'video_key' | 'caption' | 'media_pk' | 'attempts'>
@@ -149,3 +152,18 @@ export async function getEncryptedSession(db: Database): Promise<string | null> 
 
 export const setEncryptedSession = (db: Database, blob: string) =>
   putSetting(db, IG_SESSION_KEY, blob)
+
+export async function getIgCheckError(db: Database): Promise<IgCheckError | null> {
+  const row = await db
+    .selectFrom('app_setting')
+    .select('value')
+    .where('key', '=', IG_CHECK_ERROR_KEY)
+    .executeTakeFirst()
+  const v = row?.value as Partial<IgCheckError> | null | undefined
+  return v && typeof v.message === 'string' && typeof v.at === 'string'
+    ? { message: v.message, at: v.at }
+    : null
+}
+
+export const setIgCheckError = (db: Database, error: IgCheckError | null) =>
+  putSetting(db, IG_CHECK_ERROR_KEY, error)
