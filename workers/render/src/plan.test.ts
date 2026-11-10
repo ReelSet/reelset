@@ -6,6 +6,7 @@ import {
   upgradeBatchSize,
   classifyFailure,
   collectImageUrls,
+  containerTitle,
   deadLetterGrowing,
   decideRenderAction,
   failureRateExceeded,
@@ -254,5 +255,23 @@ describe('primarySource', () => {
     expect(primarySource('reddit', 'https://github.com/')).toBe('reddit')
     expect(primarySource(null, null)).toBeNull()
     expect(sourceLabel(primarySource('reddit', 'https://github.com/a/b'))).toBe('GitHub')
+  })
+})
+
+describe('containerTitle', () => {
+  it('keeps titles within the container limit', () => {
+    expect(containerTitle('short title')).toBe('short title')
+    expect(containerTitle('a'.repeat(200))).toHaveLength(200)
+  })
+
+  it('clips long titles on a word boundary with an ellipsis', () => {
+    const out = containerTitle(`${'word '.repeat(60)}end`)
+    expect(out.length).toBeLessThanOrEqual(200)
+    expect(out.endsWith('\u2026')).toBe(true)
+    expect(out.endsWith(' \u2026')).toBe(false)
+  })
+
+  it('hard clips a title with no spaces', () => {
+    expect(containerTitle('x'.repeat(300))).toHaveLength(200)
   })
 })
