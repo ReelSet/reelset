@@ -1,4 +1,4 @@
-import { INSTAGRAM_CAPTION_MAX_CHARS, INSTAGRAM_HASHTAG_MAX } from '@reelset/core'
+import { INSTAGRAM_CAPTION_MAX_CHARS, INSTAGRAM_HASHTAG_MAX } from '@/lib/instagram/limits'
 import { z } from 'zod'
 
 export const BRAND_HASHTAGS = ['#reelset', '#developers'] as const

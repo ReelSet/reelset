@@ -2,7 +2,10 @@
 
 import { useId, useRef } from 'react'
 import { SubmitButton } from '@/components/admin/SubmitButton'
-import { button } from '@/components/admin/ui'
+
+// Duplicated from admin/ui.tsx, which pulls server-only modules into any client component that imports it.
+const button =
+  'inline-flex items-center rounded-md border border-line-strong bg-raised px-2.5 py-1 text-xs transition hover:bg-hover active:scale-95'
 
 // A button that opens a native modal dialog; the form only submits from the dialog's confirm button.
 export function ConfirmForm({
