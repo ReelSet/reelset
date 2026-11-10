@@ -5,6 +5,7 @@ import { ProfileSources } from '@/components/profile/ProfileSources'
 import { ProfileTopics } from '@/components/profile/ProfileTopics'
 import { ClockIcon, HomeIcon } from '@/components/ui/icons'
 import { Wordmark } from '@/components/ui/Logo'
+import { CommunityRows } from '@/components/ui/SocialLinks'
 import { buildLoginUrl } from '@/lib/auth/return-url'
 import { getOptionalUser } from '@/server/auth'
 import { getDb } from '@/server/db'
@@ -101,6 +102,10 @@ export default async function ProfilePage() {
             →
           </span>
         </a>
+      </Section>
+
+      <Section title="Community" hint="Reelset is open source. Ideas and PRs welcome." delay={300}>
+        <CommunityRows />
       </Section>
 
       <form action="/auth/logout" method="post" className="mt-12">
