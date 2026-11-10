@@ -129,6 +129,18 @@ class _Silence:
         return self.n
 
 
+class EncodeTests(unittest.TestCase):
+    def test_levels_narration_and_keeps_native_rate(self):
+        import numpy as np
+
+        with mock.patch.object(kokoro_tts.subprocess, "run") as run:
+            kokoro_tts.encode_mp3(np.zeros(240), "/tmp/n.mp3")
+        command = run.call_args.args[0]
+        self.assertIn(kokoro_tts.LEVEL_FILTER, command)
+        self.assertEqual(command[command.index("-ar", command.index("-af")) + 1], "24000")
+        self.assertIn("kokoro-v1.0.fp16.onnx", kokoro_tts.MODEL_FILE)
+
+
 class KokoroSynthesisTests(unittest.TestCase):
     def synth(self, engine, text="Hello world. MOPD works, really."):
         path = os.path.join(tempfile.mkdtemp(), "n.mp3")

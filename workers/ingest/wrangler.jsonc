@@ -26,7 +26,9 @@
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "cf0f4b14f2394a58a23e8241137c45a4" }],
   "services": [{ "binding": "RENDER", "service": "reelset-render" }],
   "vars": {
-    "LLM_PROVIDER": "gemini",
+    "LLM_PROVIDER": "anthropic",
+    "LLM_MODEL": "claude-haiku-5-5",
+    "LLM_EFFORT": "medium",
     "GEMINI_MODEL": "gemini-3.1-flash-lite",
     "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",
     "LOG_LEVEL": "info",

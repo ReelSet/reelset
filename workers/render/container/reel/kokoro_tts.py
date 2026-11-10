@@ -12,7 +12,7 @@ logging.getLogger("phonemizer").setLevel(logging.ERROR)
 VOICE = "af_heart"
 LANGUAGE = "en-us"
 MODEL_DIR = os.environ.get("KOKORO_MODEL_DIR", "/opt/kokoro")
-MODEL_FILE = "kokoro-v1.0.int8.onnx"
+MODEL_FILE = "kokoro-v1.0.fp16.onnx"
 VOICES_FILE = "voices-v1.0.bin"
 SAMPLE_RATE = 24_000
 INTRA_OP_THREADS = 2
@@ -24,6 +24,7 @@ MIN_SPEED = 1.0
 MAX_AUDIO_SECONDS = 58.0
 FIT_HEADROOM_SECONDS = 1.0
 MP3_BITRATE = "128k"
+LEVEL_FILTER = "loudnorm=I=-15:TP=-1.5:LRA=11"
 ENCODE_TIMEOUT_SECONDS = 60
 
 
@@ -90,7 +91,7 @@ def encode_mp3(audio, audio_path: str) -> None:
     pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
     command = [
         "ffmpeg", "-y", "-loglevel", "error", "-f", "s16le", "-ar", str(SAMPLE_RATE), "-ac", "1",
-        "-i", "pipe:0", "-c:a", "libmp3lame", "-b:a", MP3_BITRATE, audio_path,
+        "-i", "pipe:0", "-af", LEVEL_FILTER, "-ar", str(SAMPLE_RATE), "-c:a", "libmp3lame", "-b:a", MP3_BITRATE, audio_path,
     ]
     try:
         subprocess.run(command, input=pcm, check=True, capture_output=True, timeout=ENCODE_TIMEOUT_SECONDS)
