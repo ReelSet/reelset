@@ -101,11 +101,11 @@ export default async function InstagramPage({ searchParams }: Props) {
             draftCaption={composer.draftCaption}
             username={account?.username ?? null}
             returnTo={returnTo}
-            blockedReason={
-              blockedReason ??
-              (notConnected
+            blockedReason={blockedReason}
+            notice={
+              notConnected
                 ? 'Instagram is not connected. The post waits in the queue until you connect.'
-                : null)
+                : null
             }
             queueAction={queuePostAction}
           />

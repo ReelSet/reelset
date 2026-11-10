@@ -15,6 +15,7 @@ type Props = {
   username: string | null
   returnTo: string
   blockedReason: string | null
+  notice: string | null
   queueAction: (formData: FormData) => void | Promise<void>
 }
 
@@ -38,6 +39,7 @@ export function Composer({
   username,
   returnTo,
   blockedReason,
+  notice,
   queueAction,
 }: Props) {
   const [caption, setCaption] = useState(draftCaption)
@@ -58,7 +60,7 @@ export function Composer({
             ref={textarea}
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
-            rows={14}
+            rows={9}
             spellCheck
             aria-invalid={invalid}
             aria-describedby="ig-caption-help"
@@ -87,7 +89,7 @@ export function Composer({
           ) : null}
         </div>
 
-        {blockedReason ? <p className="text-xs text-warn">{blockedReason}</p> : null}
+        {blockedReason || notice ? <p className="text-xs text-warn">{blockedReason ?? notice}</p> : null}
 
         <ConfirmForm
           action={queueAction}
