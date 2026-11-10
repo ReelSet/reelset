@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { itemTimes, listIn, revealLists, listPieces, listSize } from './lists'
+import { CONTENT_W } from '../theme'
+import {
+  itemTimes,
+  kickerSize,
+  listIn,
+  listPieces,
+  listSize,
+  listTextWidth,
+  revealLists,
+} from './lists'
 import type { ReelProps, TimedShot, Word } from './types'
 
 const words = (text: string, start = 0, step = 0.4): Word[] =>
@@ -148,5 +157,24 @@ describe('long lists', () => {
     expect(cards.length).toBe(2)
     expect(cards[0]!.props.layout).toBeUndefined()
     expect(cards[1]!.props.layout).toBe(1)
+  })
+})
+
+describe('list fitting inside the safe zone', () => {
+  it('leaves room for the bullet and the right safe edge', () => {
+    expect(listTextWidth(CONTENT_W)).toBeLessThan(CONTENT_W - 52)
+  })
+
+  it('never lets the widest word run past the item column', () => {
+    const width = listTextWidth(CONTENT_W)
+    const size = listSize(['team', 'urgency', 'refund status'], width, 900)
+    expect(7 * 0.64 * size).toBeLessThanOrEqual(width)
+  })
+
+  it('shrinks a long kicker to one line within the content width', () => {
+    const kicker = 'TICKET NEEDS THREE ANSWERS:'
+    const px = kickerSize(kicker, CONTENT_W)
+    expect(kicker.length * px * 0.72).toBeLessThanOrEqual(CONTENT_W)
+    expect(kickerSize('Image models like', CONTENT_W)).toBe(46)
   })
 })

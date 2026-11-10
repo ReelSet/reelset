@@ -1,4 +1,4 @@
-import { EMBEDDING_DIMENSIONS, reelScriptSchema, type Logger } from '@reelset/core'
+import { EMBEDDING_DIMENSIONS, reelScriptSchema, spokenChars, type Logger } from '@reelset/core'
 import { z } from 'zod'
 import { MAX_TLDR_CHARS } from '../config'
 import { fetchJson } from '../http'
@@ -244,7 +244,26 @@ export function repairModelOutput(
 
 export type ParsedOutput = { ok: true; value: GeneratedContent } | { ok: false; reason: string }
 
-export type NarrationLimits = { min?: number; max?: number }
+export type NarrationLimits = { min?: number; max?: number; maxSpokenChars?: number }
+
+function narrationRejection(
+  script: { hook: string; beats: readonly { text: string }[]; outro: string },
+  limits: NarrationLimits,
+): string | null {
+  const words = narrationWordCount(script)
+  const max = limits.max ?? MAX_NARRATION_WORDS
+  const range = limits.min !== undefined ? `${limits.min} to ${max}` : `at most ${max}`
+  if (words > max) return `narration is ${words} words, over ${max}; write ${range} words total`
+  if (limits.min !== undefined && words < limits.min) {
+    return `narration is ${words} words, under ${limits.min}; write ${range} words total`
+  }
+  if (limits.maxSpokenChars === undefined) return null
+  const spoken = spokenChars(
+    [script.hook, ...script.beats.map((b) => b.text), script.outro].join(' '),
+  )
+  if (spoken <= limits.maxSpokenChars) return null
+  return `narration takes too long to say (${spoken} spoken characters, over ${limits.maxSpokenChars}); long numbers are read digit by digit, so say them with at most 3 significant digits ("about 0.998" or "99.8 percent") and cut words`
+}
 
 export function parseModelOutput(
   text: string,
@@ -270,20 +289,8 @@ export function parseModelOutput(
       .join('; ')
     return { ok: false, reason: `JSON did not match the required schema: ${issues}` }
   }
-  const words = narrationWordCount(parsed.data.script)
-  const max = limits.max ?? MAX_NARRATION_WORDS
-  if (words > max) {
-    return {
-      ok: false,
-      reason: `narration is ${words} words, over ${max}; write 110 to 125 words total`,
-    }
-  }
-  if (limits.min !== undefined && words < limits.min) {
-    return {
-      ok: false,
-      reason: `narration is ${words} words, under ${limits.min}; write 110 to 125 words total`,
-    }
-  }
+  const reason = narrationRejection(parsed.data.script, limits)
+  if (reason) return { ok: false, reason }
   const topics = [...new Set(parsed.data.topics.map((t) => t.toLowerCase()))]
   return { ok: true, value: { ...parsed.data, topics } }
 }

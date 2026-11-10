@@ -2,12 +2,13 @@ FROM node:22-bookworm-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 DEBIAN_FRONTEND=noninteractive
 
-# python: tts (edge-tts, kokoro), transcripts, youtube search, orchestration. ffmpeg: remux + poster. ghostscript: EPS paper figures. The rest: chrome-headless-shell.
+# fonts-noto-cjk (OFL) backs Chinese/Japanese/Korean text; only Regular and Bold are kept so the image grows by about 40 MB. python: tts (edge-tts, kokoro), transcripts, youtube search, orchestration. ffmpeg: remux + poster. ghostscript: EPS paper figures. The rest: chrome-headless-shell.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 python3-venv ffmpeg ghostscript fonts-dejavu-core fontconfig ca-certificates \
+        python3 python3-venv ffmpeg ghostscript fonts-dejavu-core fonts-noto-cjk fontconfig ca-certificates \
         libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 libxrandr2 libxkbcommon-dev \
         libxfixes3 libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2 \
+    && find /usr/share/fonts/opentype/noto -type f ! -name 'NotoSansCJK-Regular.ttc' ! -name 'NotoSansCJK-Bold.ttc' -delete \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -f
 

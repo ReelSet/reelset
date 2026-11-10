@@ -21,6 +21,7 @@ import {
   selectPromptChunks,
 } from '../../workers/ingest/src/pipeline/decide'
 import { parseModelOutput } from '../../workers/ingest/src/pipeline/gemini'
+import { NARRATION_LIMITS } from '../../workers/ingest/src/pipeline/process'
 import { paperAssetsPrompt, resolvePaperShots } from '../../workers/ingest/src/pipeline/paper-shots'
 import {
   PROMPT_VERSION,
@@ -158,7 +159,7 @@ async function one(slug: string, itemId: string) {
     })
     const cost = claudeCostUsd(res.usage)
     totalCost += cost
-    const parsed = parseModelOutput(res.text, promptIds, sourceText, { min: 110, max: 125 })
+    const parsed = parseModelOutput(res.text, promptIds, sourceText, NARRATION_LIMITS)
     let outcome = 'accepted'
     if (!parsed.ok) {
       rejection = parsed.reason

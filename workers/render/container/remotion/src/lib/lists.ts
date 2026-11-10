@@ -201,6 +201,22 @@ export function spliceShots(shots: TimedShot[], made: TimedShot[], fps: number):
  * Type size for a list card: as large as fits (at most 120 px), items may wrap between words but a
  * word never breaks or crosses the frame, and the rows fit `height`.
  */
+export const LIST_BULLET_W = 52
+export const LIST_EDGE_SLACK = 56
+const KICKER_MAX = 46
+const KICKER_MIN = 30
+const KICKER_CHAR_EM = 0.72
+
+/** Width left for item text beside the bullet, kept clear of the right safe edge. */
+export const listTextWidth = (contentWidth: number): number =>
+  contentWidth - LIST_BULLET_W - LIST_EDGE_SLACK
+
+/** Kicker font size that keeps the uppercase kicker on one line inside `width`. */
+export function kickerSize(kicker: string, width: number): number {
+  const fit = Math.floor(width / (Math.max(1, kicker.length) * KICKER_CHAR_EM))
+  return Math.max(KICKER_MIN, Math.min(KICKER_MAX, fit))
+}
+
 export function listSize(items: readonly string[], width: number, height: number): number {
   const charW = 0.64
   const words = items.flatMap((i) => i.split(/\s+/))

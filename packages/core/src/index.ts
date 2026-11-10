@@ -11,6 +11,12 @@ export {
   isVisibleInFeed,
   nextStage,
 } from './domain/item-status'
+export {
+  AURA_CHARS_PER_SECOND,
+  MAX_SPOKEN_CHARS,
+  estimateSpeechSeconds,
+  spokenChars,
+} from './domain/speech'
 export { contentHash, renderKey, sha256Hex, type RenderKeyInput } from './domain/hash'
 export {
   EMBEDDING_DIMENSIONS,

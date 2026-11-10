@@ -496,6 +496,35 @@ describe('aura-2 narration', () => {
     expect(sent.script.beats[0].text).toContain('Third point')
   })
 
+  it('shortens twice when the first retry is still over the cap, then keeps aura', async () => {
+    const script = {
+      ...longScript,
+      beats: [
+        { ...longScript.beats[0]!, text: 'A one. A two. A three. A four. A five. A six.' },
+        { text: 'B one. B two. B three. B four.', visual: { type: 'title', title: 'Two' } },
+        { text: 'C one. C two.', visual: { type: 'title', title: 'Three' } },
+      ],
+    }
+    const { deps, containers } = setup({ store: new FakeStore(makeItem({ script })) })
+    deps.voice = 'aura2-hera'
+    const ai = speakingAi([75, 62, 54])
+    deps.aura = { ai, speaker: 'hera' }
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    expect(ai.novaCalls).toBe(3)
+    expect(sent.narration).toBeDefined()
+    expect(sent.voice).toBe('aura2-hera')
+  })
+
+  it('sends long decimals to aura and the container as short numbers', async () => {
+    const script = { ...longScript, hook: 'Billing gets 0.9982666969299316 here.' }
+    const { deps, containers } = setup({ store: new FakeStore(makeItem({ script })) })
+    deps.aura = { ai: speakingAi(), speaker: 'hera' }
+    await processRenderJob(deps, body, 1)
+    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    expect(sent.script.hook).toBe('Billing gets 0.998 here.')
+  })
+
   it('goes straight to edge-tts when nothing can be shortened', async () => {
     const { deps, containers } = setup()
     deps.edgeVoice = 'en-US-AriaNeural'

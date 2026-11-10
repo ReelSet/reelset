@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseModelOutput } from '../src/pipeline/gemini'
+import { NARRATION_LIMITS } from '../src/pipeline/process'
 import { SYSTEM_PROMPT, STYLE_GUIDE } from '../src/pipeline/prompt'
 import { readableKeyPoint, repairShots } from '../src/pipeline/shots'
 
@@ -39,17 +40,33 @@ describe('hook engineering rules in the prompt', () => {
 describe('narration word window', () => {
   it('rejects scripts outside the configured window with an instruction', () => {
     const short = parseModelOutput(JSON.stringify(script(10)), undefined, '', {
-      min: 110,
-      max: 125,
+      min: 100,
+      max: 112,
     })
     expect(short.ok).toBe(false)
-    if (!short.ok) expect(short.reason).toMatch(/under 110/)
+    if (!short.ok) expect(short.reason).toMatch(/under 100/)
     const long = parseModelOutput(JSON.stringify(script(50)), undefined, '', { min: 10, max: 60 })
     expect(long.ok).toBe(false)
     if (!long.ok) expect(long.reason).toMatch(/over 60/)
     expect(
-      parseModelOutput(JSON.stringify(script(55)), undefined, '', { min: 110, max: 125 }).ok,
+      parseModelOutput(JSON.stringify(script(50)), undefined, '', { min: 100, max: 112 }).ok,
     ).toBe(true)
+  })
+
+  const tight = { ...NARRATION_LIMITS, maxSpokenChars: 560 }
+
+  it('rejects a script whose long decimals would be read digit by digit', () => {
+    const long = script(48)
+    long.script.beats[0]!.text = `${words(38)} 0.9982666969299316 and 0.0010246571619063616 and 0.0007087149424478412`
+    const r = parseModelOutput(JSON.stringify(long), undefined, '', tight)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/too long to say.*3 significant digits/)
+  })
+
+  it('accepts the same facts when spoken as short numbers', () => {
+    const ok = script(48)
+    ok.script.beats[0]!.text = `${words(44)} 0.998 and 0.001`
+    expect(parseModelOutput(JSON.stringify(ok), undefined, '', tight).ok).toBe(true)
   })
 
   it('keeps valid beat keyPoints through the schema', () => {

@@ -9,7 +9,7 @@ import {
 import { Pop, Rise, easeOut, useSpring } from '../fx'
 import { fitText } from '../lib/text'
 import { accentIndex } from '../lib/emphasis'
-import { listSize } from '../lib/lists'
+import { kickerSize, listSize, listTextWidth } from '../lib/lists'
 import { fitWords, displayTitle, styleOf, typeset } from '../lib/typeset'
 import { PLATE_FULL_H, PLATE_H, plateFact, textPlan } from '../lib/fill'
 import { endName, endSource, endSubtitle } from '../lib/endcard'
@@ -54,7 +54,8 @@ function ListCard({ frames, ctx, props, topPad }: ScreenProps) {
   const t = frame / fps
   const said = times.filter((x) => x <= t + 0.05).length
   const current = Math.max(0, said - 1)
-  const size = listSize(items, CONTENT_W - 60, ZONE_H - topPad - (kicker ? 120 : 0))
+  const size = listSize(items, listTextWidth(CONTENT_W), ZONE_H - topPad - (kicker ? 120 : 0))
+  const kickerPx = kickerSize(kicker, CONTENT_W)
   if (props.layout === 1) return <ListPills {...{ frames, ctx, props, topPad }} />
   return (
     <Page frames={frames} topPad={topPad}>
@@ -69,12 +70,13 @@ function ListCard({ frames, ctx, props, topPad }: ScreenProps) {
         {kicker ? (
           <div
             style={{
-              fontSize: 46,
+              fontSize: kickerPx,
               fontWeight: 800,
               letterSpacing: '0.04em',
               textTransform: 'uppercase',
               color: COLOR.muted,
               marginBottom: 34,
+              maxWidth: CONTENT_W,
             }}
           >
             {kicker}
@@ -119,6 +121,8 @@ function ListCard({ frames, ctx, props, topPad }: ScreenProps) {
                   letterSpacing: '-0.035em',
                   lineHeight: 1,
                   color: on ? COLOR.accent : COLOR.text,
+                  minWidth: 0,
+                  maxWidth: listTextWidth(CONTENT_W),
                   overflowWrap: 'normal',
                 }}
               >

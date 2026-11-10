@@ -9,6 +9,10 @@ export const AURA_CHUNK_CHARS = 1500
 export const AURA_AI_ATTEMPTS = 2
 export const KOKORO_VOICE = 'af_heart'
 export const MAX_NARRATION_SECONDS = 58
+export const SHORTEN_MARGIN_SECONDS = 5
+export const MAX_SHORTEN_ATTEMPTS = 2
+const MIN_BEATS_AFTER_SHORTEN = 3
+const SPOKEN_SIGNIFICANT_DIGITS = 3
 export const AURA_SPEAKERS = [
   'amalthea',
   'andromeda',
@@ -378,40 +382,91 @@ function cueText(cue: string): string {
     .replace(/[^a-z0-9]+/g, '')
 }
 
+const LONG_DECIMAL = /\d+\.\d{4,}/g
+
+function speakDecimal(match: string): string {
+  const rounded = Number(Number(match).toPrecision(SPOKEN_SIGNIFICANT_DIGITS))
+  const text = String(rounded)
+  return Number.isFinite(rounded) && !text.includes('e') ? text : match
+}
+
+/** Rewrites decimals with 4+ fraction digits to 3 significant digits: Aura reads long digit strings one digit at a time. */
+export function speakableNumbers(script: ReelScript): ReelScript {
+  const fix = (text: string) => text.replace(LONG_DECIMAL, speakDecimal)
+  return {
+    ...script,
+    hook: fix(script.hook),
+    outro: fix(script.outro),
+    beats: script.beats.map((beat) => ({
+      ...beat,
+      text: fix(beat.text),
+      ...(beat.shots ? { shots: beat.shots.map((shot) => ({ ...shot, at: fix(shot.at) })) } : {}),
+    })),
+  }
+}
+
+type Sentences = string[]
+
+function longestCuttable(sentences: Sentences[]): number {
+  let pick = -1
+  let best = 0
+  sentences.forEach((s, i) => {
+    const w = wordCount(s.join(' '))
+    if (s.length >= 2 && w > best) {
+      best = w
+      pick = i
+    }
+  })
+  return pick
+}
+
+function longestBeatAfterFirst(sentences: Sentences[]): number {
+  let pick = -1
+  let best = 0
+  sentences.forEach((s, i) => {
+    const w = wordCount(s.join(' '))
+    if (i > 0 && w > best) {
+      best = w
+      pick = i
+    }
+  })
+  return pick
+}
+
 /**
- * Drops the last sentence of the longest multi-sentence beats until the narration is about
- * `ratio` of its length. Hook and outro are untouched. Returns null if nothing can be cut.
+ * Cuts the narration to about `ratio` of its length: trailing sentences of the longest multi-sentence
+ * beats first, then whole beats (never the first, never below 3 beats). Hook and outro are untouched.
+ * Returns null if nothing can be cut.
  */
 export function shortenScript(script: ReelScript, ratio: number): ReelScript | null {
   const total = wordCount(narrationText(script))
   const target = Math.floor(total * Math.min(0.95, Math.max(0.3, ratio)))
-  const sentences = script.beats.map((b) =>
+  const sentences: Sentences[] = script.beats.map((b) =>
     b.text
       .trim()
       .split(/(?<=[.!?])\s+/)
       .filter(Boolean),
   )
+  const kept = script.beats.map((_, i) => i)
   let words = total
   let changed = false
   while (words > target) {
-    let pick = -1
-    let best = 0
-    sentences.forEach((s, i) => {
-      const w = wordCount(s.join(' '))
-      if (s.length >= 2 && w > best) {
-        best = w
-        pick = i
-      }
-    })
-    if (pick < 0) break
-    const dropped = sentences[pick]!.pop()!
-    words -= wordCount(dropped)
+    const pick = longestCuttable(sentences)
+    if (pick >= 0) {
+      words -= wordCount(sentences[pick]!.pop()!)
+    } else if (sentences.length > MIN_BEATS_AFTER_SHORTEN) {
+      const drop = longestBeatAfterFirst(sentences)
+      words -= wordCount(sentences[drop]!.join(' '))
+      sentences.splice(drop, 1)
+      kept.splice(drop, 1)
+    } else break
     changed = true
   }
   if (!changed) return null
   return {
     ...script,
-    beats: script.beats.map((beat, i) => {
+    beats: kept.map((original, i) => {
+      const beat = script.beats[original]!
       const text = sentences[i]!.join(' ')
       const spoken = text.toLowerCase().replace(/[^a-z0-9]+/g, '')
       const shots = beat.shots?.filter((s) => spoken.includes(cueText(s.at)))

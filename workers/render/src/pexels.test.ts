@@ -7,12 +7,14 @@ import {
   cleanTerm,
   pickBroll,
   pickFile,
+  rememberReel,
   searchVideos,
   slimVideos,
   slugWords,
   termsForBeat,
   type Cache,
 } from './pexels'
+import { RECENT_REELS_WINDOW, queryFor } from './broll-relevance'
 import { silentLog } from './testing'
 
 class MemCache implements Cache {
@@ -42,9 +44,10 @@ const video = (id: number, duration = 10, files = [file(1080, 1920)], slug = 'cl
 })
 
 function fakeFetch(map: Record<string, unknown[]>) {
+  const byQuery = Object.fromEntries(Object.entries(map).map(([term, v]) => [queryFor(term), v]))
   return vi.fn(async (url: string) => {
     const q = new URL(url).searchParams.get('query') ?? ''
-    return new Response(JSON.stringify({ videos: map[q] ?? [] }), { status: 200 })
+    return new Response(JSON.stringify({ videos: byQuery[q] ?? [] }), { status: 200 })
   })
 }
 
@@ -215,7 +218,7 @@ describe('pickBroll', () => {
     const picks = await pickBroll({ apiKey: 'k', fetch, cache, log: silentLog }, mail, ctx)
     expect(picks.slice(0, 2).map((p) => p.id)).toEqual([1, 3])
     const queries = fetch.mock.calls.map((c) => new URL(c[0]).searchParams.get('query'))
-    expect(queries[1]).toBe('envelope letters')
+    expect(queries[1]).toBe(queryFor('envelope letters'))
   })
 
   it('prefers clips used less in earlier reels', async () => {
@@ -317,5 +320,81 @@ describe('clip ranking', () => {
     const person = { pageUrl: 'https://www.pexels.com/video/a-man-using-a-laptop-1/', seconds: 10 }
     const thing = { pageUrl: 'https://www.pexels.com/video/server-room-corridor-2/', seconds: 10 }
     expect(clipScore(thing, 'server room', 3)).toBeLessThan(clipScore(person, 'server room', 0))
+  })
+})
+
+describe('relevance and diversity', () => {
+  const ctx = { source: 'hn', title: 'Some story' }
+  const beats = [{ text: 'x', broll: ['network cables'] }]
+  const run = async (videos: unknown[], cache = new MemCache(), b = beats, now?: () => number) =>
+    pickBroll(
+      {
+        apiKey: 'k',
+        fetch: fakeFetch({ 'network cables': videos, 'server room': [], 'data center': [] }),
+        cache,
+        log: silentLog,
+        now,
+      },
+      b,
+      ctx,
+    )
+
+  it('searches a concrete scene instead of the ambiguous phrase', async () => {
+    const fetch = fakeFetch({})
+    await pickBroll({ apiKey: 'k', fetch, cache: new MemCache(), log: silentLog }, beats, ctx)
+    const queries = fetch.mock.calls.map((c) => new URL(c[0]).searchParams.get('query'))
+    expect(queries[0]).toBe('ethernet cable')
+    expect(queries).not.toContain('network cables')
+  })
+
+  it.each([
+    ['cable car', 'cable-car-over-the-city'],
+    ['tram', 'tram-with-cables-overhead'],
+    ['woman with child', 'woman-with-child-near-network-cables'],
+    ['soldering', 'soldering-an-electronic-circuit-board'],
+    ['stock chart', 'stock-chart-on-computer-screen'],
+    ['dark hallway', 'dark-hallway-with-cables'],
+    ['cable-stayed bridge', 'driving-on-a-modern-cable-stayed-bridge'],
+    ['gym', 'focused-gym-workout-with-cable-machine'],
+  ])('rejects %s', async (_name, slug) => {
+    expect(await run([video(1, 10, [file(1080, 1920)], slug)])).toEqual([])
+  })
+
+  it('rejects a described clip that names neither the term nor a tech scene', async () => {
+    expect(await run([video(1, 10, [file(1080, 1920)], 'person-wearing-plaster-mask')])).toEqual([])
+    expect(await run([video(2, 10, [file(1080, 1920)], 'ocean-waves-at-sunset')])).toEqual([])
+  })
+
+  it('accepts an on-topic described clip', async () => {
+    const picks = await run([
+      video(1, 10, [file(1080, 1920)], 'ethernet-cables-plugged-into-router'),
+    ])
+    expect(picks.map((p) => p.id)).toEqual([1])
+  })
+
+  it('picks fresh clips ahead of those used by the last reels', async () => {
+    const cache = new MemCache()
+    const slug = 'ethernet-cables-in-a-router'
+    const old = [video(1, 10, [file(1080, 1920)], slug), video(2, 10, [file(1080, 1920)], slug)]
+    expect((await run(old, cache)).map((p) => p.id).sort()).toEqual([1, 2])
+    const fresh = [...old, video(3, 10, [file(1080, 1920)], slug)]
+    const later = () => Date.now() + 8 * 24 * 3_600_000
+    const second = await run(fresh, cache, beats, later)
+    expect(second[0]!.id).toBe(3)
+  })
+
+  it('reuses a recent clip when nothing fresh is left', async () => {
+    const cache = new MemCache()
+    const pool = [video(1, 10, [file(1080, 1920)], 'ethernet-cables-in-a-router')]
+    await run(pool, cache)
+    expect((await run(pool, cache)).map((p) => p.id)).toEqual([1])
+  })
+
+  it('remembers only the last reels and does not store a repeat of the newest twice', () => {
+    const pick = (id: number) => ({ id }) as never
+    let recent: number[][] = []
+    for (let i = 1; i <= RECENT_REELS_WINDOW + 2; i++) recent = rememberReel(recent, [pick(i)])
+    expect(recent).toHaveLength(RECENT_REELS_WINDOW)
+    expect(rememberReel(recent, [pick(RECENT_REELS_WINDOW + 2)])).toEqual(recent)
   })
 })

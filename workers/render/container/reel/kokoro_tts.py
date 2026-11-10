@@ -23,6 +23,8 @@ FIT_MAX_SPEED = 1.25
 MIN_SPEED = 1.0
 MAX_AUDIO_SECONDS = 58.0
 FIT_HEADROOM_SECONDS = 1.0
+MAX_FIT_RENDERS = 3
+PAUSE_FRACTION_GUESS = 0.2
 MP3_BITRATE = "128k"
 LEVEL_FILTER = "loudnorm=I=-15:TP=-1.5:LRA=11"
 ENCODE_TIMEOUT_SECONDS = 60
@@ -79,9 +81,26 @@ def initial_speed() -> float:
     return min(PREFERRED_MAX_SPEED, max(MIN_SPEED, TARGET_WPM / BASE_WPM))
 
 
-def refit_speed(speed: float, seconds: float) -> float | None:
-    """Faster speed that brings measured narration under the cap, or None past what stays intelligible."""
-    needed = speed * seconds / (MAX_AUDIO_SECONDS - FIT_HEADROOM_SECONDS)
+def refit_speed(measured: list) -> float | None:
+    """Speed that brings narration under the cap given (speed, seconds) renders, or None past what stays intelligible.
+
+    Pauses do not shrink with speed, so time is modelled as pause + speech / speed: one render assumes a
+    pessimistic pause share, two renders solve it exactly.
+    """
+    target = MAX_AUDIO_SECONDS - FIT_HEADROOM_SECONDS
+    speed, seconds = measured[-1]
+    pause = seconds * PAUSE_FRACTION_GUESS
+    speech_at_speed = seconds - pause
+    if len(measured) >= 2:
+        (s1, t1), (s2, t2) = measured[-2], measured[-1]
+        slope = (t1 - t2) / (1 / s1 - 1 / s2) if s1 != s2 else 0.0
+        if slope > 0:
+            pause = max(0.0, t2 - slope / s2)
+            speech_at_speed = slope / s2
+    room = target - pause
+    if room <= 0:
+        return None
+    needed = max(speed * speech_at_speed / room, speed * 1.02)
     return needed if needed <= FIT_MAX_SPEED else None
 
 
@@ -120,14 +139,14 @@ def synthesize(text: str, audio_path: str, engine=None) -> list:
             raise KokoroError("no phonemes for narration")
         speed = initial_speed()
         audio, timings, seconds = _render(engine, phonemes, speed)
-        if seconds > MAX_AUDIO_SECONDS:
-            faster = refit_speed(speed, seconds)
+        measured = [(speed, seconds)]
+        while seconds > MAX_AUDIO_SECONDS:
+            faster = refit_speed(measured) if len(measured) < MAX_FIT_RENDERS else None
             if faster is None:
-                raise KokoroError(f"narration is {seconds:.1f}s, too long even when sped up")
+                raise KokoroError(f"narration is {seconds:.1f}s at speed {speed:.2f}, over the cap")
             speed = faster
             audio, timings, seconds = _render(engine, phonemes, speed)
-            if seconds > MAX_AUDIO_SECONDS:
-                raise KokoroError(f"narration is {seconds:.1f}s at speed {speed:.2f}, over the cap")
+            measured.append((speed, seconds))
         if not timings:
             raise KokoroError("model returned no phoneme timings")
     except KokoroError:
