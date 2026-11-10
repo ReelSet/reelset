@@ -47,20 +47,22 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 
 Chain: Aura-2 + Nova-3 (Workers AI, `tts_provider=aura2`) -> Kokoro in the container -> edge-tts. Any Aura failure falls back on the same delivery. Settings: `tts_provider` accepts `edge` (default), `aura2`, `kokoro` (no database change; it is a JSON value in `app_setting`).
 
-- Kokoro files are baked into the image at build: `ADD --checksum=sha256:...` of `kokoro-v1.0.int8.onnx` (114 MB, sha256 `ae315a79...ee9c`) and `voices-v1.0.bin` (28 MB, `bca610b8...bf7d`) from `github.com/thewh1teagle/kokoro-onnx` release `model-files-v1.1` into `/opt/kokoro` (`KOKORO_MODEL_DIR`). The build needs outbound access to GitHub; a hash mismatch fails the build. Python deps (`kokoro-onnx`, `onnxruntime`, `numpy`, `espeakng-loader`, `phonemizer`) are pinned in `container/requirements.txt`; wheels exist for linux x86_64 (manylinux_2_28) and aarch64.
-- Local smoke (v8 paper script, ttsEngine kokoro, Docker Desktop arm64, 2 CPUs): image 3.24 GB vs 2.95 GB for v18 (venv layer +26 MB, model layers +142 MB); model load 2.3 s once per process; synthesis 27 s wall for 57.4 s of audio (two passes: 1.15 then 1.25 to fit under 58 s); container RSS about 1 GB during the render. Not measured on the Cloudflare x86_64 `standard-3` instance.
+- Kokoro files are baked into the image at build: `ADD --checksum=sha256:...` of `kokoro-v1.0.fp16.onnx` (164 MB, sha256 `f3a290d3...ac96`) and `voices-v1.0.bin` (28 MB, `bca610b8...bf7d`) from `github.com/thewh1teagle/kokoro-onnx` release `model-files-v1.1` into `/opt/kokoro` (`KOKORO_MODEL_DIR`). The build needs outbound access to GitHub; a hash mismatch fails the build. Python deps (`kokoro-onnx`, `onnxruntime`, `numpy`, `espeakng-loader`, `phonemizer`) are pinned in `container/requirements.txt`; wheels exist for linux x86_64 (manylinux_2_28) and aarch64.
+- Why fp16, not int8: int8 loses 6-7 dB of 6-11.5 kHz energy against fp32 (muffled narration); fp16 matches fp32 (-13.7 vs -13.9 dB HF ratio). Use the v1.1 fp16 file: the v1.0 fp16 file has no `duration` output, so there are no phoneme timings and Kokoro raises. Caveat: onnxruntime 1.31.1 on linux aarch64 returns all-NaN audio for fp16 (works on macOS arm64 and linux x86_64, the Cloudflare target); on an arm64 Docker host Kokoro therefore fails over to edge-tts. Verify Kokoro locally with `--platform linux/amd64`.
+- Level: `encode_mp3` applies `loudnorm=I=-15:TP=-1.5` (raw Kokoro is about -26.6 LUFS, Aura about -14.6); `reel/mix.py` still normalizes the voice to -16 LUFS and masters to -14, so the mix sees the same level for every engine.
+- Local smoke (v14 paper script, 110 tokens, linux/amd64 under emulation, 2 CPUs): 57.0 s of audio, -16.4 LUFS, 110 timed words for 110 tokens, 52.6 s wall (two passes), 24 kHz mono 128k mp3. Model load about 2-3 s once per process; container RSS about 1 GB. Not measured on the Cloudflare `standard-3` instance. Image 3.35 GB.
 - Rollback: set `tts_provider` to `edge` (the worker then sends `ttsEngine: edge` and Kokoro never runs). A missing or unloadable model only makes Kokoro raise, and edge-tts takes over for that render.
 
 ## Switching the script LLM to Claude Haiku 5.5
 
-The committed default stays `LLM_PROVIDER=gemini` (its credits are depleted: HTTP 402 pauses the pipeline). Switching production is a manual call:
+Production runs `LLM_PROVIDER=anthropic` (Gemini credits were depleted: HTTP 402 paused the pipeline); the code default is still `gemini`. The switch was:
 
 ```bash
 cd workers/ingest
 unset CLOUDFLARE_API_TOKEN
 wrangler secret put CLAUDE_API_KEY          # paste the key from reelset/.env.local
-# in wrangler.jsonc vars: "LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5" (optional "LLM_EFFORT": "medium")
+# in wrangler.jsonc vars: "LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5", "LLM_EFFORT": "medium" (committed; production runs this)
 wrangler deploy
 ```
 
-Roll back by setting `LLM_PROVIDER` back to `gemini`. Embeddings and image vetting keep using `GEMINI_API_KEY` either way, so those need Gemini credits regardless. Offline check without touching the database: `npx tsx --env-file=.env.local scripts/maintenance/gen-claude-samples.ts <outDir> <slug>=<itemId> ... [--effort low|medium|high] [--dry]` (live Claude calls, writes script, usage, cost and brief per item as JSON; `--dry` only writes the prompt). Regenerating stored scripts: `LLM_PROVIDER=anthropic scripts/maintenance/regen-scripts.ts`.
+Roll back by setting `LLM_PROVIDER` back to `gemini` in `workers/ingest/wrangler.jsonc` and redeploying. Embeddings and image vetting keep using `GEMINI_API_KEY` either way, so those need Gemini credits regardless. Offline check without touching the database: `npx tsx --env-file=.env.local scripts/maintenance/gen-claude-samples.ts <outDir> <slug>=<itemId> ... [--effort low|medium|high] [--dry]` (live Claude calls, writes script, usage, cost and brief per item as JSON; `--dry` only writes the prompt). Regenerating stored scripts: `LLM_PROVIDER=anthropic scripts/maintenance/regen-scripts.ts`.

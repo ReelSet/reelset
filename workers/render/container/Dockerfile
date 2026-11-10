@@ -18,9 +18,9 @@ COPY requirements.txt .
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
 ENV PATH="/opt/venv/bin:$PATH"
 
-# kokoro tts fallback: int8 model + voices from the model-files-v1.1 release, pinned by sha256 (weights Apache-2.0).
+# kokoro tts fallback: fp16 model + voices from the model-files-v1.1 release (int8 muffles 6-11 kHz; v1.0 fp16 lacks the duration output), pinned by sha256 (weights Apache-2.0).
 ARG KOKORO_RELEASE=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1
-ADD --chmod=0644 --checksum=sha256:ae315a79b623f244700e4afb9246c46a26066782e049ba174bf3ba433970ee9c ${KOKORO_RELEASE}/kokoro-v1.0.int8.onnx /opt/kokoro/kokoro-v1.0.int8.onnx
+ADD --chmod=0644 --checksum=sha256:f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96 ${KOKORO_RELEASE}/kokoro-v1.0.fp16.onnx /opt/kokoro/kokoro-v1.0.fp16.onnx
 ADD --chmod=0644 --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d ${KOKORO_RELEASE}/voices-v1.0.bin /opt/kokoro/voices-v1.0.bin
 ENV KOKORO_MODEL_DIR=/opt/kokoro
 
