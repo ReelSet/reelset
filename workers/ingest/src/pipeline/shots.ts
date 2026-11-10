@@ -121,7 +121,11 @@ function groundShotLabels(props: Obj, show: string, text: string, ledger: Ledger
   return true
 }
 
-export type RepairContext = { sourceText?: string; claims?: readonly string[] }
+export type RepairContext = {
+  sourceText?: string
+  claims?: readonly string[]
+  candidates?: string[]
+}
 
 /** "12 times" / "12x" -> "12×". */
 export const displayValue = (raw: string): string =>
@@ -137,12 +141,61 @@ const sentenceWith = (text: string, cue: string): string => {
   )
 }
 
+const END_WORDS = new Set(
+  'a an the of to in on for with as than that and or but is are was were be by at from into over under about via vs'.split(
+    ' ',
+  ),
+)
+
 /**
- * Key point text must be a complete idea (text-rules `validKeyPoint`); an invalid one is replaced by
- * a short claim or a noun chunk of the cue's sentence, else the shot is dropped.
+ * A key point the model wrote as a statement: sentence case, 3 to 8 words, ending on a content
+ * word, and not just a slice of the narration (it must add something the voice does not say).
+ */
+export function readableKeyPoint(text: unknown, narration = ''): string | null {
+  if (typeof text !== 'string') return null
+  const clean = text.replace(/\s+/g, ' ').trim().replace(/[.]+$/, '')
+  const tokens = clean.split(' ').filter(Boolean)
+  if (tokens.length < 3 || tokens.length > 8) return null
+  if (!/^[\p{Lu}\d]/u.test(clean)) return null
+  if (/[,;:]$/.test(clean)) return null
+  if (END_WORDS.has(norm(tokens[tokens.length - 1] ?? ''))) return null
+  const flat = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+  if (flat(narration).includes(flat(clean))) return null
+  const stem = (w: string) => norm(w).replace(/(?:es|s|ed|ing)$/, '')
+  const spoken = new Set(narration.split(/\s+/).map(stem))
+  if (tokens.every((t) => spoken.has(stem(t)))) return null
+  const spokenCaps = new Set(
+    narration
+      .split(/\s+/)
+      .filter((w) => /^\p{Lu}/u.test(w))
+      .map(norm),
+  )
+  const invented = tokens.slice(1).some((t) => /^\p{Lu}\p{Ll}/u.test(t) && !spokenCaps.has(norm(t)))
+  if (invented) return null
+  return clean
+}
+
+/**
+ * Key point text should be a readable statement (readableKeyPoint). Otherwise the beat's own
+ * keyPoints candidates are tried, then the older noun-chunk repair (text-rules `validKeyPoint`),
+ * else the shot is dropped.
  */
 function repairKeyPoint(props: Obj, text: string, cue: string, ctx: RepairContext): boolean {
   if (typeof props.text !== 'string' || props.quote) return true
+  const statement = readableKeyPoint(props.text, text)
+  if (statement) {
+    props.text = statement
+    return true
+  }
+  const candidate = ctx.candidates?.shift()
+  if (candidate) {
+    props.text = candidate
+    return true
+  }
   const fixed = keyPointText({
     given: props.text,
     claims: ctx.claims,
@@ -154,6 +207,20 @@ function repairKeyPoint(props: Obj, text: string, cue: string, ctx: RepairContex
   return true
 }
 
+/** Keeps at most 2 grounded, readable, non-literal key point candidates on the beat. */
+export function repairKeyPointCandidates(beat: Obj, facts: ReadonlySet<number>): string[] {
+  const narration = typeof beat.text === 'string' ? beat.text : ''
+  const kept = Array.isArray(beat.keyPoints)
+    ? beat.keyPoints
+        .map((k) => readableKeyPoint(k, narration))
+        .filter((k): k is string => k !== null && propIsGrounded(k, facts))
+        .slice(0, 2)
+    : []
+  if (kept.length > 0) beat.keyPoints = kept
+  else delete beat.keyPoints
+  return [...kept]
+}
+
 /** A stat value is one real quantity; a number the beat says only as a name or version (RTX 5090, PyTorch 2.15) is not. */
 function repairStatValue(props: Obj, text: string): boolean {
   if (typeof props.value !== 'string') return false
@@ -163,8 +230,18 @@ function repairStatValue(props: Obj, text: string): boolean {
   const digits = /\d[\d,]*(?:\.\d+)?/.exec(value)?.[0] ?? ''
   if (digits && text.includes(digits) && !findQuantities(text).some((q) => q.value === v))
     return false
-  props.value = value
+  props.value = restoreSign(value, text)
   return true
+}
+
+/** A value the narration says as negative ("-261.18", "minus 15") keeps its sign. */
+function restoreSign(value: string, text: string): string {
+  if (/^[-−+]/.test(value)) return value
+  const digits = /\d[\d,]*(?:\.\d+)?/.exec(value)?.[0]
+  if (!digits) return value
+  const escaped = digits.replace(/[.,]/g, (c) => `\\${c}`)
+  const negative = new RegExp(`(?:[-−]\\s?|\\b(?:minus|negative)\\s+)${escaped}`, 'i')
+  return negative.test(text) ? `-${value}` : value
 }
 
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -184,19 +261,29 @@ export function completeCodeLines(code: string, sourceText = ''): string | null 
   return lines.join('\n')
 }
 
+/** Models sometimes write "show": {"type": "KeyPoint"} instead of the plain screen name. */
+function withPlainShow(shot: Obj): Obj {
+  const show = shot.show
+  if (!isObj(show)) return shot
+  const name = [show.type, show.name, show.screen].find((v) => typeof v === 'string')
+  return name ? { ...shot, show: name } : shot
+}
+
 export function repairShots(
   beat: Obj,
   facts: ReadonlySet<number>,
   ledger: Ledger = new Map(),
   ctx: RepairContext = {},
 ): void {
+  ctx = { ...ctx, candidates: repairKeyPointCandidates(beat, facts) }
   if (!Array.isArray(beat.shots)) {
     delete beat.shots
     return
   }
   const text = typeof beat.text === 'string' ? beat.text : ''
   const kept: Obj[] = []
-  for (const raw of beat.shots) {
+  for (const item of beat.shots) {
+    const raw = isObj(item) ? withPlainShow(item) : item
     if (!isObj(raw) || typeof raw.show !== 'string') continue
     const cue = typeof raw.cue === 'string' ? raw.cue : raw.at
     if (typeof cue !== 'string' || FILLER_CUES.has(cue.trim().toLowerCase().split('#')[0] ?? ''))

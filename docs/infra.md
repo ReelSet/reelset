@@ -40,5 +40,19 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 ## Still to do
 
 - Vercel project for `apps/web` + env vars + domains `reelset.app`, `admin.reelset.app`
-- Secrets: `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
+- Secrets: `GEMINI_API_KEY` (embeddings, image vetting, and scripts while `LLM_PROVIDER=gemini`), `CLAUDE_API_KEY` (scripts when `LLM_PROVIDER=anthropic`), `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
 - Fill `HYPERDRIVE` id in both `wrangler.jsonc` files, then `wrangler deploy` ingest + render
+
+## Switching the script LLM to Claude Haiku 5.5
+
+The committed default stays `LLM_PROVIDER=gemini` (its credits are depleted: HTTP 402 pauses the pipeline). Switching production is a manual call:
+
+```bash
+cd workers/ingest
+unset CLOUDFLARE_API_TOKEN
+wrangler secret put CLAUDE_API_KEY          # paste the key from reelset/.env.local
+# in wrangler.jsonc vars: "LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5" (optional "LLM_EFFORT": "medium")
+wrangler deploy
+```
+
+Roll back by setting `LLM_PROVIDER` back to `gemini`. Embeddings and image vetting keep using `GEMINI_API_KEY` either way, so those need Gemini credits regardless. Offline check without touching the database: `npx tsx --env-file=.env.local scripts/maintenance/gen-claude-samples.ts <outDir> <slug>=<itemId> ... [--effort low|medium|high] [--dry]` (live Claude calls, writes script, usage, cost and brief per item as JSON; `--dry` only writes the prompt). Regenerating stored scripts: `LLM_PROVIDER=anthropic scripts/maintenance/regen-scripts.ts`.

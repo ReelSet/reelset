@@ -37,6 +37,8 @@ def build_props(
         in_beat = [s for s in shots or [] if start - 1e-6 <= s["t"] < end]
         if in_beat:
             scene["shots"] = in_beat
+        if beat.key_points:
+            scene["keyPoints"] = list(beat.key_points)
         scenes.append(scene)
     scenes.append({"kind": "outro", "start": spans[-1][0], "end": spans[-1][1], "text": req.outro})
 
@@ -70,6 +72,9 @@ def build_props(
             "src": f"job/{d['file']}", "seconds": round(d["seconds"], 2),
             "width": d["width"], "height": d["height"], "repo": d["repo"],
         }  # fmt: skip
+        for key in ("static", "focus", "content"):
+            if d.get(key) is not None:
+                props["demo"][key] = d[key]
     return props
 
 

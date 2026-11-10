@@ -6,7 +6,9 @@ import { resolveShots, totalFrames, headlineEnd, headlineOf } from './timeline'
 import type { BrollClip, ReelProps } from './types'
 
 const FPS = 30
-const clip = (n: number): BrollClip => ({ src: `job/broll${n}.mp4`, seconds: 5, beat: n })
+const clip = (n: number): BrollClip => ({ src: `job/broll${n}.mp4`, seconds: 5, beat: (n % 3) + 1 })
+/** The worker sends up to 12 distinct clips per reel. */
+const clips = (n = 12) => Array.from({ length: n }, (_, i) => clip(i + 1))
 const rich = (over: Partial<ReelProps> = {}) =>
   sampleReel({
     images: [
@@ -15,7 +17,7 @@ const rich = (over: Partial<ReelProps> = {}) =>
       { src: 'job/img3.jpg', kind: 'screenshot', width: 1280, height: 800 },
       { src: 'job/img4.jpg', kind: 'figure', width: 900, height: 600, alt: 'Figure 2: more' },
     ],
-    broll: [clip(1), clip(2), clip(3), clip(4)],
+    broll: clips(),
     ...over,
   })
 const run = (p: ReelProps) => resolveShots(p, FPS, totalFrames(p.durationSeconds, FPS))
@@ -36,7 +38,7 @@ describe('chunkSpan', () => {
 
 describe('planner', () => {
   it('covers every frame with no gaps and no hold over 4s', () => {
-    const p = sampleReel({ broll: [clip(1), clip(2), clip(3)] })
+    const p = sampleReel({ broll: clips() })
     const { shots } = run(p)
     const total = totalFrames(p.durationSeconds, FPS)
     expect(shots[0]!.from).toBe(0)
@@ -79,7 +81,11 @@ describe('planner', () => {
     const times = shots.filter((s) => img.has(s.show)).map((s) => s.from / FPS)
     expect(times.length).toBeGreaterThan(1)
     const used = shots.filter((s) => img.has(s.show)).map((s) => s.props.image)
-    expect(new Set(used).size).toBe(used.length)
+    // A picture is shown once; a figure may return once in another crop.
+    for (const i of new Set(used)) {
+      const n = used.filter((u) => u === i).length
+      expect(n).toBeLessThanOrEqual(p.images![i as number]!.kind === 'figure' ? 2 : 1)
+    }
     let prev = 0
     for (const t of times) {
       expect(t - prev).toBeLessThan(15)
@@ -139,7 +145,7 @@ describe('beat sheet cues', () => {
   })
 
   it('fills a cue shot held over 4s', () => {
-    const p = sampleReel({ broll: [clip(1), clip(2), clip(3)] })
+    const p = sampleReel({ broll: clips() })
     const beat = p.scenes[2] as Extract<ReelProps['scenes'][number], { kind: 'beat' }>
     p.scenes[2] = { ...beat, shots: [{ at: 'It', show: 'KeyPoint' }] }
     const { shots } = run(p)

@@ -32,7 +32,15 @@ export function violates(
   state: PlanState,
   props: ReelProps,
   ahead: readonly TimedShot[] = [],
+  cueStatsLeft = 0,
 ): boolean {
+  if (
+    shot.origin === 'planned' &&
+    shot.show === 'StatSlam' &&
+    (state.uses[varietyKey(shot.show, shot.props)] ?? 0) + cueStatsLeft >= capFor(shot.show)
+  ) {
+    return true
+  }
   if (shot.origin === 'planned' && ahead.some((a) => a.origin === 'cue' && a.show === shot.show)) {
     return true
   }
@@ -93,7 +101,14 @@ export function enforceVariety(shots: TimedShot[], props: ReelProps, fps: number
       Array.isArray(shot.props.items) ||
       Array.isArray(shot.props.times) ||
       (shot.origin === 'cue' && claimCue(shot, props, state))
-    if (i > 0 && !fixed && violates(shot, state, props, shots.slice(i + 1, i + NO_REPEAT_WITHIN))) {
+    const cueStatsLeft = shots
+      .slice(i + 1)
+      .filter((s) => s.origin === 'cue' && s.show === 'StatSlam').length
+    if (
+      i > 0 &&
+      !fixed &&
+      violates(shot, state, props, shots.slice(i + 1, i + NO_REPEAT_WITHIN), cueStatsLeft)
+    ) {
       const scene = props.scenes[shot.sceneIndex]
       const start = shot.from / fps
       const chunk = { start, end: (shot.from + shot.frames) / fps }
@@ -104,7 +119,10 @@ export function enforceVariety(shots: TimedShot[], props: ReelProps, fps: number
         picked && picked.show !== shot.show && !(picked.show === 'EndCard' && i < shots.length - 1)
           ? { ...shot, show: picked.show, props: picked.props, origin: 'planned' as const }
           : null
-      if (next && !violates(next, state, props, shots.slice(i + 1, i + NO_REPEAT_WITHIN))) {
+      if (
+        next &&
+        !violates(next, state, props, shots.slice(i + 1, i + NO_REPEAT_WITHIN), cueStatsLeft)
+      ) {
         cur = { ...next, sfx: sfxFor(next.show, i, state.history[state.history.length - 1]) }
       } else {
         const prev = out[out.length - 1]

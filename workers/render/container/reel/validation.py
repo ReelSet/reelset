@@ -24,8 +24,23 @@ MAX_HEADLINE_WORDS = 7
 SFX_NAMES = ("whoosh", "pop", "tick", "ding", "hit", "riser", "swoosh")
 CUE_RE = re.compile(r"^[^\s#]{1,40}(#[1-9])?$")
 MAX_SHOTS_PER_BEAT = 6
-MAX_BROLL = 8
+MAX_BROLL = 20
 DEMO_KINDS = ("gif", "mp4", "webm")
+
+
+MAX_KEY_POINTS = 2
+MAX_KEY_POINT_CHARS = 70
+
+
+def _validate_key_points(raw) -> list:
+    """Optional fallback statements for a beat; invalid entries are dropped, never fatal."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw:
+        if isinstance(item, str) and 3 <= len(item.strip()) <= MAX_KEY_POINT_CHARS:
+            out.append(" ".join(item.split()))
+    return out[:MAX_KEY_POINTS]
 
 
 @dataclass(frozen=True)
@@ -33,6 +48,7 @@ class Beat:
     text: str
     visual: dict
     shots: list = field(default_factory=list)
+    key_points: list = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -244,6 +260,7 @@ def validate_render_request(payload) -> RenderRequest:
                 text=_text(raw, "text", 220),
                 visual=_validate_visual(raw.get("visual")),
                 shots=_validate_shots(raw.get("shots")),
+                key_points=_validate_key_points(raw.get("keyPoints")),
             )
         )
 
@@ -373,7 +390,7 @@ def _https_url(value, what: str) -> str:
 
 
 def _validate_broll(value) -> list:
-    """Optional stock clips chosen by the worker: [{url, beat?, seconds?, creator?, creatorUrl?, pageUrl?}]."""
+    """Optional stock clips chosen by the worker: [{url, id?, beat?, seconds?, creator?, creatorUrl?, pageUrl?}]."""
     if value is None:
         return []
     if not isinstance(value, list) or len(value) > MAX_BROLL:
@@ -383,6 +400,9 @@ def _validate_broll(value) -> list:
         if not isinstance(raw, dict):
             _bad("broll entry must be an object")
         entry = {"url": _https_url(raw.get("url"), "broll.url")}
+        clip_id = raw.get("id")
+        if isinstance(clip_id, int) and not isinstance(clip_id, bool) and clip_id > 0:
+            entry["id"] = clip_id
         beat = raw.get("beat")
         if isinstance(beat, int) and not isinstance(beat, bool) and 0 <= beat <= 20:
             entry["beat"] = beat

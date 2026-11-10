@@ -5,6 +5,7 @@ import {
   keyPhraseIn,
   salientPhrase,
   shellLines,
+  spokenCommand,
   versusPair,
 } from './extract'
 
@@ -52,5 +53,25 @@ describe('text helpers', () => {
     expect(salientPhrase('It holds 256 experts per layer')).toContain('256')
     expect(salientPhrase('the quick Kubernetes upgrade')).toContain('Kubernetes')
     expect(keyPhraseIn('Gaussian Spacing Normalization fixes it')).toBeTruthy()
+  })
+})
+
+describe('spokenCommand', () => {
+  it('takes the command a sentence tells you to run, up to the first plain word', () => {
+    expect(
+      spokenCommand('Run dig +short TXT _dmarc.example.com today. No output means none.'),
+    ).toBe('dig +short TXT _dmarc.example.com')
+    expect(spokenCommand('Run npx fizgig to try it.')).toBe('npx fizgig')
+    expect(spokenCommand('Run pip install torch then restart.')).toBe('pip install torch')
+    expect(spokenCommand('Try npm i -g foo.')).toBe('npm i -g foo')
+    expect(spokenCommand('Run git clone https://github.com/a/b and cd in.')).toBe(
+      'git clone https://github.com/a/b',
+    )
+  })
+
+  it('needs an argument and a verb that tells you to run it', () => {
+    expect(spokenCommand('Run dig and see.')).toBeNull()
+    expect(spokenCommand('We run git constantly.')).toBeNull()
+    expect(spokenCommand('The fix is one DNS record.')).toBeNull()
   })
 })

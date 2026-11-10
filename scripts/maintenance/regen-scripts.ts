@@ -1,10 +1,10 @@
 import { sql } from 'kysely'
 import { contentHash, createDb, createLogger, recordSpend } from '@reelset/core'
-import {
-  createLlmClient,
-  llmCostUsd,
-  parseModelOutput,
-} from '../../workers/ingest/src/pipeline/gemini'
+import { parseModelOutput } from '../../workers/ingest/src/pipeline/gemini'
+import { createLlm, llmCostFor } from '../../workers/ingest/src/pipeline/llm'
+import { NARRATION_LIMITS } from '../../workers/ingest/src/pipeline/process'
+import { buildSourceBrief } from '../../workers/ingest/src/pipeline/brief'
+import { parseExtraTexts, parseFacts } from '../../workers/ingest/src/pipeline/decide'
 import { selectPromptChunks } from '../../workers/ingest/src/pipeline/decide'
 import {
   PROMPT_VERSION,
@@ -17,7 +17,8 @@ import { narrationWordCount } from '../../workers/ingest/src/pipeline/shots'
 // Usage: regen-scripts.ts [--apply] [--limit N] [--concurrency N] [--ids id1,id2]
 // Regenerates reel scripts (headline + shots) with the current PROMPT_VERSION for items in the feed.
 // Status is untouched, so the old reel stays live; the render cron re-renders on the new content hash.
-// Dry run unless --apply (still calls Gemini, writes nothing).
+// Dry run unless --apply (still calls the LLM, writes nothing).
+// Provider: LLM_PROVIDER=anthropic (CLAUDE_API_KEY, LLM_MODEL) or gemini (GEMINI_API_KEY).
 const arg = (name: string) => {
   const i = process.argv.indexOf(name)
   return i > 0 ? process.argv[i + 1] : undefined
@@ -30,10 +31,15 @@ const ATTEMPTS = 3
 
 const log = createLogger({ app: 'regen-scripts', level: 'warn' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 2 })
-const model = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
-const llm = createLlmClient(process.env.GEMINI_API_KEY!, model, log)
+const { client: llm, provider, model } = createLlm(process.env, log)
 
-type Row = { id: string; title: string; kind: string; canonical_url: string }
+type Row = {
+  id: string
+  title: string
+  kind: string
+  canonical_url: string
+  canonical_key: string
+}
 
 async function regen(item: Row): Promise<'ok' | 'failed'> {
   const chunks = (
@@ -50,14 +56,38 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
       url: string
       title: string | null
       body: string | null
+      raw: unknown
+      author: string | null
+      score: number | null
+      num_comments: number | null
+      published_at: Date
     }>`
-      select source, external_id, url, title, body from mention where item_id = ${item.id}`.execute(
-      db,
-    )
+      select source, external_id, url, title, body, raw, author, score, num_comments, published_at
+      from mention where item_id = ${item.id}`.execute(db)
   ).rows
   const promptChunks = selectPromptChunks(chunks)
   const promptIds = new Set(promptChunks.map((c) => c.id))
+  const brief = buildSourceBrief({
+    kind: item.kind,
+    title: item.title,
+    canonicalKey: item.canonical_key,
+    canonicalUrl: item.canonical_url,
+    mentions: mentions.map((m) => ({
+      source: m.source,
+      url: m.url,
+      title: m.title,
+      body: m.body,
+      author: m.author,
+      score: m.score,
+      numComments: m.num_comments,
+      publishedAt: m.published_at,
+      facts: parseFacts(m.raw),
+      extraTexts: parseExtraTexts(m.raw),
+      externalId: m.external_id,
+    })),
+  })
   const sourceText = [
+    brief.facts,
     item.title,
     item.canonical_url,
     ...mentions.map((m) => `${m.url} ${m.title ?? ''}`),
@@ -80,6 +110,7 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
         canonicalUrl: item.canonical_url,
         chunks: promptChunks,
         imageUrls,
+        brief: brief.text,
         rejection,
       }),
     })
@@ -89,13 +120,13 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
         {
           category: 'llm',
           units: res.usage.inputTokens + res.usage.outputTokens,
-          costUsd: llmCostUsd(res.usage),
-          meta: { model, itemId: item.id, attempt, kind: 'regen-script' },
+          costUsd: llmCostFor(provider, res.usage),
+          meta: { model, provider, itemId: item.id, attempt, kind: 'regen-script' },
         },
         log,
       )
     }
-    const parsed = parseModelOutput(res.text, promptIds, sourceText)
+    const parsed = parseModelOutput(res.text, promptIds, sourceText, NARRATION_LIMITS)
     if (!parsed.ok) {
       rejection = parsed.reason
       continue
@@ -143,7 +174,7 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
 try {
   const items = (
     await sql<Row>`
-      select i.id, i.title, i.kind, i.canonical_url from item i
+      select i.id, i.title, i.kind, i.canonical_url, i.canonical_key from item i
       where i.status = 'rendered'
         and i.prompt_version is distinct from ${PROMPT_VERSION}
         and exists (select 1 from render r where r.item_id = i.id and r.status = 'done' and r.video_key is not null)

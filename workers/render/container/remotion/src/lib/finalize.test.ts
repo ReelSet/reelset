@@ -6,11 +6,9 @@ import {
   isCallToAction,
   lookKey,
   mergeRepeats,
-  coordinated,
   heldUntil,
   paceShots,
   splitList,
-  termsCard,
 } from './finalize'
 import { sameIdea } from './ideas'
 import type { BrollClip, ReelProps, TimedShot, Word } from './types'
@@ -193,25 +191,6 @@ describe('finalizeShots', () => {
   })
 })
 
-describe('terms card', () => {
-  it('lights the things being named, in spoken order, when two or more are said', () => {
-    const text =
-      'by treating a linear combination of student and expert parameters as one differentiable model'
-    const card = termsCard(shot(0, 110, 'KeyPoint', { text: '' }), reel(text), FPS)!
-    expect(card.props.items).toEqual(expect.arrayContaining(['expert parameters']))
-    expect((card.props.items as string[]).length).toBeGreaterThanOrEqual(2)
-    const times = card.props.times as number[]
-    expect([...times].sort((a, b) => a - b)).toEqual(times)
-  })
-
-  it('offers nothing for a span over 4 s or without two terms', () => {
-    expect(termsCard(shot(0, 150, 'KeyPoint', { text: '' }), reel(TEXT), FPS)).toBeNull()
-    expect(
-      termsCard(shot(0, 60, 'KeyPoint', { text: '' }), reel('and then it was'), FPS),
-    ).toBeNull()
-  })
-})
-
 describe('paceShots', () => {
   it('reaches the pace with new picks, never a second copy of the same look or number', () => {
     const shots = [
@@ -232,36 +211,27 @@ describe('paceShots', () => {
   })
 })
 
-describe('terms and splits', () => {
-  it('never offers a number as a term and keeps a coordinated head whole', () => {
-    const text = 'it now takes twenty minutes on eight gigabytes of memory'
-    const card = termsCard(shot(0, 100, 'KeyPoint', { text: '' }), reel(text), FPS, 1)
-    for (const item of (card?.props.items as string[] | undefined) ?? [])
-      expect(item).not.toMatch(/twenty|eight/)
-    expect(
-      coordinated(
-        'linear combination of student',
-        'linear combination of student and expert parameters',
-      ),
-    ).toBe('linear combination')
-    expect(coordinated('source of supervision', 'a source of supervision, guiding')).toBe(
-      'source of supervision',
-    )
-  })
-
+describe('splits and holds', () => {
   it('splits a long list card where an item is said, the second card in the other layout', () => {
     const s = shot(0, 120, 'KeyPoint', {
-      items: ['spoofing', 'phishing', 'business email compromise'],
+      items: ['spoofing', 'phishing', 'business email compromise', 'domain abuse'],
       kicker: 'DMARC prevents',
-      times: [0.2, 0.9, 2.1],
+      times: [0.2, 0.9, 2.1, 2.6],
     })
     const [a, b] = splitList(s, FPS)!
     expect(a!.props.items).toEqual(['spoofing', 'phishing'])
-    expect(b!.props.items).toEqual(['business email compromise'])
+    expect(b!.props.items).toEqual(['business email compromise', 'domain abuse'])
     expect(b!.props.layout).toBe(1)
-    expect(b!.props.times).toEqual([0.1])
+    expect(b!.props.times).toEqual([0.1, 0.6])
     expect(a!.frames + b!.frames).toBe(120)
     expect(splitList({ ...s, frames: 60 }, FPS)).toBeNull()
+    // Never a card of one item: a list is split only into halves of two or more.
+    expect(
+      splitList(
+        { ...s, props: { ...s.props, items: ['a', 'b', 'c'], times: [0.2, 0.9, 2.1] } },
+        FPS,
+      ),
+    ).toBeNull()
     expect(splitList(b!, FPS)).toBeNull()
   })
 

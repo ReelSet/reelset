@@ -159,7 +159,7 @@ describe('parseModelOutput with shots', () => {
 
 describe('prompt', () => {
   it('is versioned and lists every screen and sfx the renderer knows', () => {
-    expect(PROMPT_VERSION).toBe('reel-v4')
+    expect(PROMPT_VERSION).toBe('reel-v5')
     for (const name of SCREEN_NAMES) expect(SYSTEM_PROMPT).toContain(`${name}:`)
     for (const name of SFX_NAMES) expect(SYSTEM_PROMPT).toContain(name)
     expect(SYSTEM_PROMPT).toContain('110 to 125 words')

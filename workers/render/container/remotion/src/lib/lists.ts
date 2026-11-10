@@ -62,6 +62,8 @@ export function listIn(sentence: string): SpokenList | null {
     if (short && nameLike(middle[0]!)) last = last.split(' ')[0]!
     const items = [first.item, ...middle, last]
     if (items.length < 3) continue
+    // A bare number is a quantity of the next item ("94 pictures"), not a list entry.
+    if (items.some((it) => !/\p{L}/u.test(it))) continue
     // The words that introduce the items ("image models like"), never a whole clause.
     const kicker = claimTokensOf(first.head).slice(-4).join(' ')
     return { kicker: kicker.charAt(0).toUpperCase() + kicker.slice(1), items }

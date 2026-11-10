@@ -7,6 +7,10 @@ export interface Env {
   RENDER_JOBS: Queue<RenderJobMessage>
   RENDER: Fetcher
   GEMINI_API_KEY: string
+  CLAUDE_API_KEY?: string
+  LLM_PROVIDER?: string
+  LLM_MODEL?: string
+  LLM_EFFORT?: string
   GEMINI_MODEL?: string
   GEMINI_EMBEDDING_MODEL?: string
   GITHUB_TOKEN?: string

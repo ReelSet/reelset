@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -23,7 +24,7 @@ class ValidateMediaTests(unittest.TestCase):
     def test_rejects_bad_media(self):
         for extra in (
             {"broll": [{"url": "http://videos.pexels.com/a.mp4"}]},
-            {"broll": [{"url": "https://videos.pexels.com/a.mp4"}] * 9},
+            {"broll": [{"url": "https://videos.pexels.com/a.mp4"}] * 21},
             {"demo": {"url": "https://x.com/a.gif", "kind": "avi", "repo": "a/b"}},
             {"demo": {"url": "https://x.com/a.gif", "kind": "gif", "repo": "not a repo"}},
         ):
@@ -75,6 +76,27 @@ class CollectBrollTests(unittest.TestCase):
         self.assertIn("-an", ran[0])
         self.assertEqual(ran[0][ran[0].index("-t") + 1], "6.00")
 
+    def test_clips_that_look_alike_are_dropped_and_the_first_is_kept(self):
+        def download(url, dest):
+            open(dest, "wb").write(b"x")
+            return True
+
+        def run(cmd):
+            open(cmd[-1], "wb").write(b"y")
+
+        sigs = {"broll0.mp4": 0b1010, "broll1.mp4": 0b1011, "broll2.mp4": (1 << 40) - 1, "broll3.mp4": None}
+        clips = [{"url": f"https://videos.pexels.com/{i}.mp4"} for i in range(4)]
+        with tempfile.TemporaryDirectory() as d:
+            out = media.collect_broll(clips, d, download, run, signature=lambda path, s: sigs[os.path.basename(path)])
+        self.assertEqual([c["file"] for c in out], ["broll0.mp4", "broll2.mp4", "broll3.mp4"])
+
+    def test_dhash_tells_a_desk_from_a_gradient(self):
+        w, h = media.SIGNATURE_SIZE
+        ramp = [x * 20 for _ in range(h) for x in range(w)]
+        noisy = [(37 * (i % 7) + 11 * (i % 5)) % 256 for i in range(w * h)]
+        self.assertEqual(media.look_distance(media.dhash(ramp), media.dhash(list(ramp))), 0)
+        self.assertGreater(media.look_distance(media.dhash(ramp), media.dhash(noisy)), media.SAME_LOOK_BITS)
+
     def test_a_crashing_ffmpeg_never_raises(self):
         def run(cmd):
             raise RenderError("ffmpeg_failed", "boom")
@@ -84,6 +106,71 @@ class CollectBrollTests(unittest.TestCase):
                 [{"url": "https://videos.pexels.com/ok.mp4"}], d, lambda u, p: open(p, "wb").write(b"x") or True, run
             )
         self.assertEqual(out, [])
+
+
+def _synthetic(path, source, seconds=2):
+    import subprocess
+
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", source, "-t", str(seconds), "-pix_fmt", "yuv420p", path],
+        check=True,
+    )
+
+
+class ClipQualityTests(unittest.TestCase):
+    def test_thresholds(self):
+        self.assertIsNone(media.assess_clip([60, 62, 58], [4, 5, 6]))
+        self.assertIn("too dark", media.assess_clip([29, 30, 28], [9, 9, 9]))
+        self.assertIn("too blurry", media.assess_clip([90, 90, 90], [1.2, 1.5, 1.4]))
+        self.assertIsNone(media.assess_clip([38.5, 38.5], [1.9, 1.9]))
+        self.assertIn("too dark", media.assess_clip([37.9], [9]))
+
+    def test_one_odd_frame_does_not_decide(self):
+        self.assertIsNone(media.assess_clip([20, 70, 72, 71, 70], [4, 4, 4, 4, 4]))
+
+    def test_a_scan_that_could_not_run_keeps_the_clip(self):
+        self.assertIsNone(media.assess_clip([], []))
+
+    def test_parses_signalstats_output(self):
+        err = "[Parsed_metadata_5 @ 0x1] frame:0 pts:0 pts_time:0\n[x] lavfi.signalstats.YAVG=52.3\nlavfi.signalstats.YAVG=51.9\n"
+        self.assertEqual(media.parse_metric(err), [52.3, 51.9])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg not installed")
+    def test_synthetic_frames_dark_blurry_and_sharp(self):
+        with tempfile.TemporaryDirectory() as d:
+            cases = {
+                "sharp": "testsrc2=s=720x1280:r=30",
+                "blurry": "testsrc2=s=720x1280:r=30,gblur=sigma=14",
+                "dark": "color=c=0x101010:s=720x1280:r=30",
+            }
+            reasons = {}
+            for name, source in cases.items():
+                path = os.path.join(d, f"{name}.mp4")
+                _synthetic(path, source)
+                reasons[name] = media.clip_problem(path, 2)
+        self.assertIsNone(reasons["sharp"])
+        self.assertIn("blurry", reasons["blurry"])
+        self.assertIn("dark", reasons["dark"])
+
+    def test_collect_drops_rejected_clips_and_says_why(self):
+        def download(url, dest):
+            open(dest, "wb").write(b"x")
+            return True
+
+        def run(cmd):
+            open(cmd[-1], "wb").write(b"y")
+
+        clips = [
+            {"url": "https://videos.pexels.com/dark.mp4", "id": 1},
+            {"url": "https://videos.pexels.com/fine.mp4", "id": 2},
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertLogs("reel.media", level="INFO") as logs:
+                out = media.collect_broll(
+                    clips, d, download, run, problem=lambda path, s: "too dark (luma 20.0 < 38)" if "broll0" in path else None
+                )
+        self.assertEqual([c["file"] for c in out], ["broll1.mp4"])
+        self.assertTrue(any("rejected id=1" in line and "too dark" in line for line in logs.output))
 
 
 class CollectDemoTests(unittest.TestCase):
@@ -100,7 +187,7 @@ class CollectDemoTests(unittest.TestCase):
                 lambda u, p: open(p, "wb").write(b"gif") or True, run,
                 lambda p: {"seconds": 4.0, "width": 1280, "height": 720},
             )
-            self.assertEqual(out, {"file": "demo.mp4", "repo": "a/b", "seconds": 4.0, "width": 1280, "height": 720})
+            self.assertEqual(out, {"file": "demo.mp4", "repo": "a/b", "seconds": 4.0, "width": 1280, "height": 720, "static": False})
         self.assertIn("libx264", cmds[0])
 
     def test_failures_and_stills_return_none(self):
@@ -159,6 +246,19 @@ class PropsMediaTests(unittest.TestCase):
         self.assertEqual(out["demo"]["repo"], "a/b")
         self.assertEqual(out["images"][0]["caption"], "Fig 1")
         self.assertEqual(out["images"][0]["focus"], {"x": 0.3, "y": 0.4})
+
+    def test_beat_key_points_reach_the_scenes(self):
+        payload = good_payload()
+        beats = payload["script"]["beats"]
+        beats[0] = {**beats[0], "keyPoints": [" Same  likeness, less time ", "ab", 7, "x" * 90, "Second claim here", "Third"]}
+        req = validation.validate_render_request(payload)
+        from reel.timing import Word, allocate_segments
+
+        words = [Word(w, i * 0.4, i * 0.4 + 0.3) for i, w in enumerate(req.narration_text().split())]
+        spans = allocate_segments(req.narration_segments(), words, words[-1].end + 0.2)
+        out = props.build_props(req, words, spans, 12.0, {"audio": "narration.mp3"})
+        self.assertEqual(out["scenes"][1]["keyPoints"], ["Same likeness, less time", "Second claim here"])
+        self.assertNotIn("keyPoints", out["scenes"][2])
 
 
 if __name__ == "__main__":
@@ -243,6 +343,76 @@ class DemoWindowTests(unittest.TestCase):
         seconds = float(cmds[0][cmds[0].index("-t") + 1])
         self.assertGreaterEqual(start, 30.0)
         self.assertLessEqual(seconds, media.MAX_DEMO_SECONDS)
+
+
+class KeepCapTests(unittest.TestCase):
+    def test_keeps_at_most_fourteen_usable_clips_in_order(self):
+        def download(url, dest):
+            open(dest, "wb").write(b"x")
+            return True
+
+        def run(cmd):
+            open(cmd[-1], "wb").write(b"y")
+
+        clips = [{"url": f"https://videos.pexels.com/{i}.mp4", "id": i + 1} for i in range(20)]
+        with tempfile.TemporaryDirectory() as d:
+            out = media.collect_broll(clips, d, download, run, problem=lambda path, s: "too dark" if "broll1." in path else None)
+        self.assertEqual(len(out), media.MAX_KEPT_CLIPS)
+        self.assertNotIn("broll1.mp4", [c["file"] for c in out])
+        self.assertEqual(out[0]["file"], "broll0.mp4")
+
+
+class DemoMotionTests(unittest.TestCase):
+    # Two equally detailed slides: a static form for 8 s, then a gallery filling in for 8 s.
+    DETAIL = [(t / 2, 4.5) for t in range(2, 34)]
+    MOTION = [(t / 2, 0.001 if t < 18 else 0.02) for t in range(2, 34)]
+
+    def test_parses_motion_samples(self):
+        stderr = "frame:0 pts:0 pts_time:0\nlavfi.scene_score=0.000000\nframe:1 pts:1 pts_time:0.5\nlavfi.scene_score=0.028085\n"
+        self.assertEqual(media.parse_motion(stderr), [(0.0, 0.0), (0.5, 0.028085)])
+
+    def test_picks_the_stretch_where_things_move_not_the_static_form(self):
+        start, seconds = media.pick_demo_window(self.DETAIL, motion=self.MOTION)
+        self.assertGreaterEqual(start, 8.0)
+        self.assertLessEqual(seconds, media.MAX_DEMO_SECONDS)
+        self.assertFalse(media.is_static(self.MOTION, start, seconds))
+
+    def test_without_motion_it_still_picks_by_detail(self):
+        self.assertIsNotNone(media.pick_demo_window(self.DETAIL))
+
+    def test_a_demo_that_barely_changes_is_static(self):
+        flat = [(t / 2, 0.0008) for t in range(2, 34)]
+        start, seconds = media.pick_demo_window(self.DETAIL, motion=flat)
+        self.assertTrue(media.is_static(flat, start, seconds))
+        self.assertFalse(media.is_static([], 0, 5))
+
+    def test_text_region_finds_the_dense_cell_and_content_extent(self):
+        w, h = 90, 60
+        gray = [0] * (w * h)
+        for y in range(40, 56):
+            for x in range(10, 40):
+                gray[y * w + x] = 255 if (x + y) % 2 else 0
+        region = media.text_region(gray, w, h)
+        self.assertEqual(region["focus"], {"x": 0.167, "y": 0.833})
+        self.assertLess(region["content"]["x1"], 0.55)
+        self.assertGreater(region["content"]["x0"], 0.05)
+
+    def test_collect_demo_reports_static_and_region(self):
+        def run(cmd):
+            open(cmd[-1], "wb").write(b"mp4")
+
+        flat = [(t / 2, 0.0008) for t in range(2, 34)]
+        with tempfile.TemporaryDirectory() as d:
+            out = media.collect_demo(
+                {"url": "https://github.com/a/b/raw/main/demo.mp4", "kind": "mp4", "repo": "a/b"}, d,
+                lambda u, p: open(p, "wb").write(b"mp4") or True, run,
+                lambda p: {"seconds": 6.0, "width": 1280, "height": 720},
+                cuts=lambda p: [], duration=lambda p: 30.0, detail=lambda p: self.DETAIL, motion=lambda p: flat,
+                region=lambda p, t: {"focus": {"x": 0.5, "y": 0.2}, "content": {"x0": 0.06, "x1": 0.9}},
+            )
+        self.assertTrue(out["static"])
+        self.assertEqual(out["focus"], {"x": 0.5, "y": 0.2})
+        self.assertEqual(out["content"]["x0"], 0.06)
 
 
 class _Resp:

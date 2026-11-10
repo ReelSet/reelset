@@ -1,7 +1,9 @@
 import { related } from './ideas'
+import { isSetupNumber } from './ground'
+import { showable } from './caption-echo'
 import { isBrandImage } from './images'
 import { styleOf } from './typeset'
-import { keyPhraseIn, sentences, shellLines, versusPair } from './extract'
+import { keyPhraseIn, sentences, shellLines, spokenCommand, versusPair } from './extract'
 import { barProps, namesOf, quantitiesOf, sentenceFor, spokenIn } from './numbers'
 import {
   SOURCE_SCREENS,
@@ -47,8 +49,8 @@ export type PlanState = {
 }
 
 export const CAP_PER_SCREEN = 2
-/** Any one image (hero, figure, screenshot) appears once: shown again, in any crop, it reads as a repeat. */
-export const imageCap = (_img: ReelImage | undefined): number => 1
+/** A hero image or screenshot appears once; a wide figure may return once in a different crop. */
+export const imageCap = (img: ReelImage | undefined): number => (img?.kind === 'figure' ? 2 : 1)
 export const NO_REPEAT_WITHIN = 3
 /** Longest a shot may be stretched when nothing new is left to show (QA limit is 4 s). */
 export const FOLD_MAX_S = 3.5
@@ -67,6 +69,15 @@ export function givenKeyPoint(props: ReelProps, text: unknown, sub: unknown = ''
     allowParticipleStart: true,
   })
 }
+/** The beat's own readable statements (script `keyPoints`) that are valid claims, in the model's order. */
+export function beatKeyPoints(props: ReelProps, scene: Scene | undefined): string[] {
+  if (!scene || scene.kind !== 'beat') return []
+  return (scene.keyPoints ?? []).flatMap((k) => {
+    const t = givenKeyPoint(props, k)
+    return t ? [t] : []
+  })
+}
+
 /** KeyPoint layouts look different (left, uppercase, right), so each counts as its own look; source cards count per variant. */
 export function varietyKey(show: ScreenName, props: Record<string, unknown>): string {
   const bg = typeof props.bg === 'number' ? `+bg${props.bg}` : ''
@@ -91,13 +102,13 @@ export function identityOf(show: ScreenName, props: Record<string, unknown>): st
         return `KeyPoint/list/${JSON.stringify(props.items)}/${JSON.stringify(props.times)}`
       return props.quote
         ? `KeyPoint/q/${norm(props.quote)}`
-        : `KeyPoint/${norm(props.text)}/${typeof props.bg === 'number' ? props.bg : ''}${typeof props.bgAt === 'number' ? `@${props.bgAt}` : ''}`
+        : `KeyPoint/${norm(props.text)}/${typeof props.bg === 'number' ? props.bg : ''}`
     case 'StatSlam':
       return `StatSlam/${quantityValue(String(props.value ?? '')) ?? norm(props.value)}`
     case 'CodeBlock':
-      return `CodeBlock/${norm(props.code)}`
+      return `Code/${norm(props.code)}`
     case 'Terminal':
-      return `Terminal/${JSON.stringify(props.lines ?? [])}`
+      return `Code/${norm(Array.isArray(props.lines) ? props.lines.join(' ') : '')}`
     case 'TableScreen':
       return `TableScreen/${norm(props.ref)}/${props.hi}/${props.col}${props.plain ? '/plain' : ''}`
     case 'ImageFull':
@@ -329,11 +340,11 @@ export function sfxFor(show: ScreenName, index: number, prev: ScreenName | undef
   return index % 2 === 0 ? 'whoosh' : 'pop'
 }
 
-/** Least-used stock clip (each at most twice), or null when none is left. */
+/** A stock clip the reel has not used yet (each plays once), or null when none is left. */
 export function nextClip(props: ReelProps, state: PlanState): number | null {
   const n = props.broll?.length ?? 0
   let best: number | null = null
-  let fewest = 2
+  let fewest = 1
   for (let i = 0; i < n; i += 1) {
     const used = state.bgTaken.filter((b) => b === i).length
     if (used < fewest) {
@@ -359,8 +370,12 @@ export function pickShot(
   const text = textOf(props.words, chunk) || ('text' in scene ? scene.text : '')
   const sceneText = 'text' in scene ? scene.text : ''
   const visual = scene.kind === 'beat' ? scene.visual : undefined
+  // A figure's second crop never follows another figure closely: that reads as the same screen twice.
+  const figureNear = state.history.slice(-NO_REPEAT_WITHIN - 1).includes('FigureZoom')
   const images = usableImages(props.images, state.thumbUsed, props).filter(
-    (i) => (state.imageUses[i] ?? 0) < imageCap(props.images?.[i]),
+    (i) =>
+      (state.imageUses[i] ?? 0) < imageCap(props.images?.[i]) &&
+      !(figureNear && props.images?.[i]?.kind === 'figure' && (state.imageUses[i] ?? 0) > 0),
   )
   const prev = state.history[state.history.length - 1]
   const cands: Candidate[] = []
@@ -384,7 +399,12 @@ export function pickShot(
       (a, b) => (state.imageUses[a] ?? 0) - (state.imageUses[b] ?? 0),
     )[0]!
     const img = props.images![idx]!
-    const score = imageDue ? 12 : 0.6 + (isFirstInScene && scene.kind === 'hook' ? 8 : 0)
+    // A figure belongs to the beat that talks about it.
+    const about =
+      img.kind === 'figure' &&
+      related(`${img.alt ?? ''} ${img.caption ?? ''}`, `${text} ${sceneText}`)
+    const score =
+      (imageDue ? 12 : 0.6 + (isFirstInScene && scene.kind === 'hook' ? 8 : 0)) + (about ? 6 : 0)
     for (const show of imageScreens(
       props.source,
       img,
@@ -443,7 +463,9 @@ export function pickShot(
     const v = quantityValue(raw)
     return v !== null && !state.statValues.has(v) && !state.reserved.has(`value/${v}`)
   }
-  const nums = spokenIn(sceneText, text).filter((q) => fresh(q.raw) && q.label)
+  const nums = spokenIn(sceneText, text).filter(
+    (q) => fresh(q.raw) && q.label && !isSetupNumber(q.raw, q.label, sceneText),
+  )
   const beatNums = quantitiesOf(sceneText)
   const visualSaid =
     visual?.type === 'stat' &&
@@ -451,7 +473,12 @@ export function pickShot(
   const visualNow =
     visual?.type === 'stat' &&
     (!visualSaid || nums.some((q) => quantityValue(q.raw) === quantityValue(visual.value)))
-  if (visual?.type === 'stat' && visualNow && fresh(visual.value)) {
+  if (
+    visual?.type === 'stat' &&
+    visualNow &&
+    fresh(visual.value) &&
+    !isSetupNumber(visual.value, visual.label, sceneText)
+  ) {
     add('StatSlam', { value: visual.value, label: visual.label }, isFirstInScene ? 9 : 3)
   } else if (nums[0]) {
     add('StatSlam', { value: nums[0].raw, label: nums[0].label }, 7)
@@ -480,11 +507,15 @@ export function pickShot(
   const pair = versusPair(text) ?? versusPair(sceneText)
   if (pair) add('Compare', { left: pair[0], right: pair[1] }, 4.5)
 
+  const command = spokenCommand(sceneText)
   if (visual?.type === 'code') {
     const sh = shellLines(visual.code)
     const code = completeCode(visual.code)
     if (sh) add('Terminal', { lines: sh }, isFirstInScene ? 9 : 3)
     else if (code) add('CodeBlock', { code, language: visual.language }, isFirstInScene ? 9 : 3)
+  } else if (command && new RegExp(`\\b${command.split(' ')[0]}\\b`, 'i').test(text)) {
+    // The sentence says "Run dig +short TXT _dmarc.example.com": show that command typed out.
+    add('Terminal', { lines: [command] }, 8)
   } else if (
     props.source === 'github' &&
     /\b(install|clone|run|command|cli|npx|npm|pip|terminal|setup)\b/i.test(text)
@@ -519,17 +550,18 @@ export function pickShot(
       isFirstInScene ? 8 : 3,
     )
   }
-  const [kp, kp2] = keyPointFor(props, sceneText, text, state, undefined, 2)
+  const taken = new Set([...state.keyTexts, ...state.reservedTexts].map((t) => t.toLowerCase()))
+  const [kp, kp2] = [
+    ...keyPointFor(props, sceneText, text, state, undefined, 3),
+    ...beatKeyPoints(props, scene).filter((t) => !taken.has(t.toLowerCase())),
+  ]
+    .map((t) => t.replace(/^(["'“‘(]*)(\p{Ll})/u, (_, q: string, c: string) => q + c.toUpperCase()))
+    .filter((t) => showable(t, text))
   const bg = nextClip(props, state)
-  if (kp) {
-    add('KeyPoint', { text: kp, sub: '' }, 1.6)
-    if (bg !== null) add('KeyPoint', { text: kp, sub: '', bg }, 1.55)
-  }
+  if (kp) add('KeyPoint', { text: kp, sub: '' }, 1.6)
   if (kp2) add('KeyPoint', { text: kp2, sub: '' }, 1.5)
-  if (bg !== null) {
-    if (nums[0]) add('StatSlam', { value: nums[0].raw, label: nums[0].label, bg }, 4.8)
-    if (!kp) add('KeyPoint', { text: '', sub: '', bg }, 1.2)
-  }
+  // Footage under a claim or stat is assigned later (`assignBroll`), after every empty shot has its clip.
+  if (bg !== null && !kp) add('KeyPoint', { text: '', sub: '', bg }, 1.2)
 
   let best: Candidate | undefined
   for (const c of cands) {
@@ -593,6 +625,10 @@ export function register(
       state.statValues.add(v)
       release(state, `value/${v}`)
     }
+    // "94.7% ... was 80.9%": the number the label compares with is on screen too.
+    const partner = /(?: · | )(?:was|from) (\S+)/.exec(String(shotProps.label ?? ''))?.[1]
+    const pv = partner ? quantityValue(partner) : null
+    if (pv !== null) state.statValues.add(pv)
   }
   if (show === 'KeyPoint' && typeof shotProps.text === 'string') {
     state.reservedTexts.delete(shotProps.text.toLowerCase())

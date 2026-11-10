@@ -34,6 +34,10 @@ describe('listIn', () => {
     expect(list!.kicker.split(' ').length).toBeLessThanOrEqual(4)
   })
 
+  it('ignores a run whose item is only a number, since that is a count', () => {
+    expect(listIn('The test used 94 pictures, Muon, and 70 epochs of training.')).toBeNull()
+  })
+
   it('ignores two-item phrases and clauses', () => {
     expect(listIn('It runs on consumer GPUs, down to eight gigabytes.')).toBeNull()
     expect(listIn('Fizgig trains, fixes and explores LoRAs.')).toBeNull()

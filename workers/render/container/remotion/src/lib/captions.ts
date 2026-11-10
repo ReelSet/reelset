@@ -3,6 +3,45 @@ import type { Word } from './types'
 
 const BREAK = /[.?!,;:]$/
 
+const FUNCTION_WORD =
+  /^(?:a|an|the|of|to|in|on|for|and|with|by|at|from|is|are|was|as|than|that|it|its|not|just|but|so|if|into|one)$/i
+const bare = (w: Word) => w.text.replace(/[^\p{L}\p{N}]/gu, '')
+
+/**
+ * A page never ends on a function word ("of 49 for", "a time") unless a clause ends there: the word
+ * starts the next page. A page that is only a short number or word ("1.", "90%.") takes the word
+ * before it. Pages stay within one word and a few characters over their budget.
+ */
+function reflow(pages: Word[][], maxWords: number, maxChars: number): Word[][] {
+  const fits = (page: Word[]) =>
+    page.length <= maxWords + 1 && page.map((w) => w.text).join(' ').length <= maxChars + 6
+  for (let i = 0; i < pages.length - 1; i += 1) {
+    const page = pages[i]!
+    const last = page[page.length - 1]!
+    const next = [last, ...pages[i + 1]!]
+    if (
+      page.length >= 2 &&
+      !BREAK.test(last.text) &&
+      FUNCTION_WORD.test(bare(last)) &&
+      fits(next)
+    ) {
+      pages[i] = page.slice(0, -1)
+      pages[i + 1] = next
+    }
+  }
+  for (let i = 1; i < pages.length; i += 1) {
+    const page = pages[i]!
+    const prev = pages[i - 1]!
+    const last = prev[prev.length - 1]!
+    const short = page.length === 1 && bare(page[0]!).length <= 3
+    if (short && prev.length >= 2 && !BREAK.test(last.text) && fits([last, ...page])) {
+      pages[i - 1] = prev.slice(0, -1)
+      pages[i] = [last, ...page]
+    }
+  }
+  return pages.filter((p) => p.length > 0)
+}
+
 export function toPages(words: readonly Word[], maxWords = 4, maxChars = 26): Word[][] {
   const pages: Word[][] = []
   let page: Word[] = []
@@ -19,7 +58,7 @@ export function toPages(words: readonly Word[], maxWords = 4, maxChars = 26): Wo
     }
   }
   if (page.length > 0) pages.push(page)
-  return pages
+  return reflow(pages, maxWords, maxChars)
 }
 
 /** A word's aligned end can run into the pause after it; a page never lingers on that silence. */

@@ -9,6 +9,7 @@
     "dev": "wrangler dev"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
     "@reelset/core": "*",
     "kysely": "^0.29.8",
     "zod": "^4.6.7"

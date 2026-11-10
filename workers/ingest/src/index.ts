@@ -9,7 +9,8 @@ import { createFirecrawlFallback } from './firecrawl'
 import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { handleMessage } from './pipeline/consumer'
-import { createEmbedder, createLlmClient } from './pipeline/gemini'
+import { createEmbedder } from './pipeline/gemini'
+import { createLlm } from './pipeline/llm'
 import { createDbVetCache, createGeminiVetter, downloadForVet } from './pipeline/image-vet'
 import type { ProcessDeps } from './pipeline/process'
 import { createTranscriptClient } from './pipeline/transcript'
@@ -115,11 +116,13 @@ export default {
       batch.retryAll()
       return
     }
+    const llm = createLlm(env, log)
+    log.info({ provider: llm.provider, model: llm.model }, 'llm selected')
     await withDb(env, log, async (db) => {
       const deps: ProcessDeps = {
         db,
         log,
-        llm: createLlmClient(env.GEMINI_API_KEY, env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL, log),
+        llm: llm.client,
         embedder: createEmbedder(
           env.GEMINI_API_KEY,
           env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
@@ -131,7 +134,8 @@ export default {
           ? createFirecrawlFallback({ apiKey: env.FIRECRAWL_API_KEY, db, log })
           : undefined,
         renderQueue: env.RENDER_JOBS,
-        geminiModel: env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
+        llmModel: llm.model,
+        llmProvider: llm.provider,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
         alertWebhookUrl: env.ALERT_WEBHOOK_URL,
         githubToken: env.GITHUB_TOKEN,

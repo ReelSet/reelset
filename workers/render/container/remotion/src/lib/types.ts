@@ -46,7 +46,16 @@ export type Shot = {
 
 export type Scene =
   | { kind: 'hook'; start: number; end: number; text: string; shots?: Shot[] }
-  | { kind: 'beat'; start: number; end: number; text: string; visual: Visual; shots?: Shot[] }
+  | {
+      kind: 'beat'
+      start: number
+      end: number
+      text: string
+      visual: Visual
+      shots?: Shot[]
+      /** The model's readable statements for this beat (3-8 words), used when a shot has no text of its own. */
+      keyPoints?: string[]
+    }
   | { kind: 'outro'; start: number; end: number; text: string; shots?: Shot[] }
 
 export type ImageKind = 'og' | 'thumbnail' | 'figure' | 'screenshot' | 'avatar'
@@ -69,6 +78,11 @@ export type ReelDemo = {
   width?: number
   height?: number
   repo: string
+  /** The chosen stretch barely moves (a form): the screen zooms into its text instead of panning. */
+  static?: boolean
+  /** Densest readable region (0-1) and the horizontal extent of the UI, from the container. */
+  focus?: { x: number; y: number }
+  content?: { x0: number; x1: number }
 }
 
 /** Real item metadata, all optional. A screen only shows a number that is present here or in the script. */

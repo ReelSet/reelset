@@ -28,7 +28,10 @@ const ramp = (frame: number, frames: number) =>
     easing: cubic,
   })
 
-/** How a shot arrives. Moving kinds slide over the previous shot, which the Reel keeps underneath. */
+/**
+ * How a shot arrives. Moving kinds slide over the previous shot, which the Reel keeps underneath;
+ * they stay opaque (a fade would show both shots' text at once, a ghosted double).
+ */
 export function Transition({
   kind,
   children,
@@ -40,10 +43,11 @@ export function Transition({
   let style: CSSProperties = {}
   let flash = 0
   if (kind === 'punch') {
-    style = { transform: `scale(${1 + 0.1 * (1 - ramp(frame, 6))})` }
+    // Scales in from slightly smaller: content never travels past the 11% safe line on its way in.
+    style = { transform: `scale(${0.96 + 0.04 * ramp(frame, 6)})` }
     flash = interpolate(frame, [0, 4], [0.16, 0], { extrapolateRight: 'clamp' })
   } else if (kind === 'cut') {
-    style = { transform: `scale(${1 + 0.03 * (1 - ramp(frame, 5))})` }
+    style = { transform: `scale(${0.985 + 0.015 * ramp(frame, 5)})` }
   } else if (kind === 'slide') {
     const p = ramp(frame, TRANSITION_FRAMES.slide)
     style = {
@@ -55,11 +59,10 @@ export function Transition({
     style = {
       transform: `translateX(${(1 - p) * 640}px) scale(${1 + 0.06 * (1 - p)})`,
       filter: p < 1 ? `blur(${(1 - p) * 22}px)` : undefined,
-      opacity: Math.min(1, 0.35 + p * 1.4),
     }
   } else if (kind === 'rise') {
     const p = ramp(frame, TRANSITION_FRAMES.rise)
-    style = { transform: `translateY(${(1 - p) * 220}px)`, opacity: Math.min(1, p * 2) }
+    style = { transform: `translateY(${(1 - p) * 220}px)` }
   }
   return (
     <AbsoluteFill style={style}>

@@ -1,6 +1,7 @@
-import { isCallToAction, termsCard } from './finalize'
+import { HOOK_FIRST_MAX_S, isCallToAction } from './finalize'
+import { showable } from './caption-echo'
 import { findQuantities, quantityValue } from './text-rules'
-import { FOLD_MAX_S, MAX_HOLD_S, givenKeyPoint, keyPointFor } from './planner'
+import { FOLD_MAX_S, MAX_HOLD_S, beatKeyPoints, givenKeyPoint, keyPointFor } from './planner'
 import { spokenIn, wordsIn } from './numbers'
 import { tableFor } from './table'
 import type { ReelProps, TimedShot } from './types'
@@ -16,6 +17,13 @@ const listWordsOf = (shots: readonly TimedShot[]): string[] =>
   )
 
 type Picker = { used: Set<string>; others: string[]; listWords: string[] }
+
+/** The captions on screen during a shot (a word said just before the cut is still on screen). */
+const captionsOf = (shot: TimedShot, props: ReelProps, fps: number): string =>
+  wordsIn(props.words, shot.from / fps - 1, (shot.from + shot.frames) / fps)
+
+const capFirst = (t: string) =>
+  t.replace(/^(["'“‘(]*)(\p{Ll})/u, (_, q: string, c: string) => q + c.toUpperCase())
 
 /** Key point text for a shot (the model's claim, else a claim of what is said), or ''. */
 function wordShot(shot: TimedShot, props: ReelProps, fps: number, pick: Picker): string {
@@ -33,7 +41,19 @@ function wordShot(shot: TimedShot, props: ReelProps, fps: number, pick: Picker):
     3,
     str(shot.props.sub),
   )
-  return options.find((t) => !repeatsList(t, pick.listWords) && !isCallToAction(t)) ?? ''
+  const window = captionsOf(shot, props, fps)
+  const beatPoints = beatKeyPoints(props, scene)
+  return (
+    [...options, ...beatPoints]
+      .map(capFirst)
+      .find(
+        (t) =>
+          !avoid.has(t.toLowerCase()) &&
+          !repeatsList(t, pick.listWords) &&
+          !isCallToAction(t) &&
+          showable(t, window),
+      ) ?? ''
+  )
 }
 
 const repeatsList = (text: string, items: readonly string[]) =>
@@ -68,17 +88,20 @@ export function wordCueKeyPoints(shots: TimedShot[], props: ReelProps, fps: numb
   const pick: Picker = { used: new Set(), others: [], listWords: listWordsOf(shots) }
   return shots.map((shot) => {
     if (shot.show !== 'KeyPoint' || shot.origin !== 'cue' || shot.props.quote) return shot
-    if (Array.isArray(shot.props.items)) return shot
+    if (Array.isArray(shot.props.items) || shot.props.hook) return shot
     const stat = statFor(shot, props, fps, shown)
     if (stat) return stat
     const given = givenKeyPoint(props, shot.props.text, shot.props.sub)
+    const window = captionsOf(shot, props, fps)
     const own =
-      given && !repeatsList(given, pick.listWords) && !isCallToAction(given) ? given : null
+      given &&
+      !repeatsList(given, pick.listWords) &&
+      !isCallToAction(given) &&
+      showable(capFirst(given), window)
+        ? capFirst(given)
+        : null
     const text = own && !pick.used.has(own.toLowerCase()) ? own : wordShot(shot, props, fps, pick)
     if (!text) {
-      // A cue that names things ("Linear parameter combination") lights them as they are said.
-      const terms = termsCard(shot, props, fps, 1)
-      if (terms) return { ...terms, origin: 'cue' }
       return { ...shot, origin: 'planned', props: { text: '', sub: '' } }
     }
     pick.used.add(text.toLowerCase())
@@ -97,7 +120,7 @@ export function polishKeyPoints(shots: TimedShot[], props: ReelProps, fps: numbe
   for (const shot of shots) {
     if (shot.show !== 'KeyPoint' || shot.origin !== 'cue' || shot.props.quote) continue
     const t = givenKeyPoint(props, shot.props.text, shot.props.sub)
-    if (t) reserved.set(shot, t)
+    if (t && showable(capFirst(t), captionsOf(shot, props, fps))) reserved.set(shot, capFirst(t))
   }
   const shown = new Set(
     shots.flatMap((s) => {
@@ -107,7 +130,13 @@ export function polishKeyPoints(shots: TimedShot[], props: ReelProps, fps: numbe
   )
   const pick: Picker = { used: new Set(), others: [], listWords: listWordsOf(shots) }
   return shots.map((shot) => {
-    if (shot.show !== 'KeyPoint' || shot.props.quote || Array.isArray(shot.props.items)) return shot
+    if (
+      shot.show !== 'KeyPoint' ||
+      shot.props.quote ||
+      Array.isArray(shot.props.items) ||
+      shot.props.hook
+    )
+      return shot
     const stat = statFor(shot, props, fps, shown)
     if (stat) return stat
     const own = reserved.get(shot)
@@ -179,9 +208,10 @@ export function fillEmpty(shots: TimedShot[], props: ReelProps, fps: number): Ti
           ? tableFor(table, shot, props, fps)
           : null
       if (focused) return { ...shot, show: 'TableScreen', props: focused }
-      const fig = figures.find((i) => figureUses(i) < 1)
-      const nextShow = shots[shots.indexOf(shot) + 1]?.show
-      if (fig !== undefined && prev?.show !== 'FigureZoom' && nextShow !== 'FigureZoom') {
+      const fig = figures.find((i) => figureUses(i) < 2)
+      const at = shots.indexOf(shot)
+      const near = [...out.slice(-3), ...shots.slice(at + 1, at + 4)]
+      if (fig !== undefined && !near.some((n) => n.show === 'FigureZoom')) {
         const variant = 2 + figureUses(fig)
         return { ...shot, show: 'FigureZoom', props: { image: fig, variant } }
       }
@@ -204,7 +234,7 @@ export function fillEmpty(shots: TimedShot[], props: ReelProps, fps: number): Ti
         (next.show === 'KeyPoint' && str(next.props.text)))
     const prevOk = prev && prev.show !== 'EndCard'
     const canNext = nextOk ? Math.max(0, max - next.frames) : 0
-    const canPrev = prevOk ? Math.max(0, max - prev.frames) : 0
+    const canPrev = prevOk ? Math.max(0, roomOf(out, prev, max, fps) - prev.frames) : 0
     const keep = Math.round(1.2 * fps)
     if (canNext + canPrev > 0) {
       let toNext = Math.min(canNext, shot.frames)
@@ -233,7 +263,9 @@ export function fillEmpty(shots: TimedShot[], props: ReelProps, fps: number): Ti
       for (let k = 0; k < n; k += 1) {
         const a = Math.round((left * k) / n)
         const b = Math.round((left * (k + 1)) / n)
-        out.push({ ...shot, from: shot.from + toPrev + a, frames: b - a })
+        // One clip per piece: only the first keeps the footage, the others get their own later.
+        const props = k === 0 ? shot.props : { ...shot.props, bg: undefined }
+        out.push({ ...shot, props, from: shot.from + toPrev + a, frames: b - a })
       }
       return
     }
@@ -263,7 +295,8 @@ export function settleEmpty(shots: TimedShot[], props: ReelProps, fps: number): 
     }
     const prev = out[out.length - 1]
     const next = list[i + 1]
-    const canPrev = prev && prev.show !== 'EndCard' ? Math.max(0, max - prev.frames) : 0
+    const canPrev =
+      prev && prev.show !== 'EndCard' ? Math.max(0, roomOf(out, prev, max, fps) - prev.frames) : 0
     const canNext =
       next && !isEmpty(next) && next.origin !== 'cue' ? Math.max(0, max - next.frames) : 0
     if (canPrev + canNext >= shot.frames) {
@@ -275,9 +308,7 @@ export function settleEmpty(shots: TimedShot[], props: ReelProps, fps: number): 
       }
       return
     }
-    // The terms being said, never the title again (the hook and end card already show it).
-    const terms = termsCard(shot, props, fps, 1)
-    out.push(terms ?? shot)
+    out.push(shot)
   })
   return out
 }
@@ -314,4 +345,27 @@ export function easeTextRuns(shots: TimedShot[], fps: number): TimedShot[] {
     out.push(shot)
   })
   return out
+}
+
+/** How long `shot` may grow: 4 s, but the reel's first shot stays a quick cut (it is the hook). */
+const roomOf = (out: readonly TimedShot[], shot: TimedShot, max: number, fps: number): number =>
+  out[0] === shot ? Math.min(max, Math.round(HOOK_FIRST_MAX_S * fps)) : max
+
+const isStatement = (s: TimedShot) =>
+  s.show === 'KeyPoint' &&
+  !s.props.hook &&
+  !s.props.quote &&
+  !Array.isArray(s.props.items) &&
+  str(s.props.text) !== ''
+
+/**
+ * Last look at every key point's words against the captions over its final span: a text that turned
+ * into a copy of the captions (its shot grew or moved) is emptied for footage, never shown.
+ */
+export function vetKeyPoints(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
+  return shots.map((s) =>
+    isStatement(s) && !showable(str(s.props.text), captionsOf(s, props, fps))
+      ? { ...s, props: { ...s.props, text: '', sub: '' }, origin: 'planned' as const }
+      : s,
+  )
 }

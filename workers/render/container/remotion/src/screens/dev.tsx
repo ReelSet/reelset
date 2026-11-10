@@ -9,7 +9,7 @@ import {
 import { Pop, Rise, easeInOut, easeOut } from '../fx'
 import { codeMetrics, tokenize, type TokenKind } from '../lib/highlight'
 import { cardLines, codeKind, isShortCode } from '../lib/looks'
-import { demoCrop } from '../lib/images'
+import { DEMO_PUSH, demoLayout, demoOffset } from '../lib/demo'
 import { fitText } from '../lib/text'
 import { buildSession, fitSessionFont, revealSession } from '../lib/terminal'
 import {
@@ -330,7 +330,7 @@ export function Terminal({ frames, ctx, props, topPad }: ScreenProps) {
             const typing = v.typed < row.cmd.length
             return (
               <div key={i} style={{ marginBottom: size * 0.3 }}>
-                <div style={{ wordBreak: 'break-all' }}>
+                <div style={{ overflowWrap: 'anywhere' }}>
                   <span style={{ color: COLOR.accent }}>$ </span>
                   {row.cmd.slice(0, v.typed)}
                   {typing && cursorOn ? <span style={{ background: COLOR.text }}> </span> : null}
@@ -342,7 +342,7 @@ export function Terminal({ frames, ctx, props, topPad }: ScreenProps) {
                       color: /^(?:Successfully|Done|Finished|Installed|v?\d)/.test(o)
                         ? '#3fb950'
                         : COLOR.muted,
-                      wordBreak: 'break-all',
+                      overflowWrap: 'anywhere',
                     }}
                   >
                     {o}
@@ -581,9 +581,9 @@ function CodeEditor({ frames, props, topPad }: ScreenProps) {
 }
 
 /**
- * README demo clip, large: a landscape clip is cropped to a 4:5 window (full width, from below the
- * chrome to the bottom safe line) that pans gently across the UI so its text is readable on a phone;
- * a portrait clip fills the frame. A blurred copy fills what is left.
+ * README demo clip, large: two cuts of one clip (a wide crop that pans from the heading, then a closer
+ * one on the densest region), each in a window inside the safe box that fills 64% of the frame height
+ * (see `lib/demo.ts`). A blurred copy fills the rest of the frame.
  */
 export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
   const { fps } = useVideoConfig()
@@ -594,10 +594,16 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
     prop<number>(props, 'offset', 0),
     Math.max(0, demo.seconds - frames / fps),
   )
-  const startFrom = Math.round(offset * fps)
-  const crop = demoCrop(demo.width ?? 1280, demo.height ?? 720, PANEL_TOP + topPad, ZONE_BOTTOM)
-  const p = easeInOut(Math.min(1, frame / Math.max(1, frames)))
-  const x = -crop.overflow * (crop.panFrom + (crop.panTo - crop.panFrom) * p)
+  const only = props.part === 0 || props.part === 1 ? props.part : null
+  const split = only === null ? Math.round(frames * 0.5) : only === 0 ? frames : 0
+  const second = frame >= split
+  const startFrom = Math.round(offset * fps) + (second ? split : 0)
+  const layout = demoLayout(demo, PANEL_TOP + topPad)
+  const part = layout.parts[second ? 1 : 0]
+  const length = Math.max(1, second ? frames - split : split)
+  const p = easeInOut(Math.min(1, (second ? frame - split : frame) / length))
+  const at = demoOffset(part, p)
+  const punch = second && only === null ? 0.96 + 0.04 * Math.min(1, (frame - split) / 6) : 1
   const { owner, name } = repoIdentity(ctx)
   const label = owner && name ? `github.com/${owner}/${name}` : ctx.domain
   return (
@@ -620,11 +626,15 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
       <div
         style={{
           position: 'absolute',
-          left: 0,
-          top: crop.top,
-          width: W,
-          height: crop.height,
+          left: layout.left,
+          top: layout.top,
+          width: layout.width,
+          height: layout.height,
           overflow: 'hidden',
+          borderRadius: 24,
+          border: `2px solid ${COLOR.line}`,
+          boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+          transform: `scale(${punch})`,
         }}
       >
         <OffthreadVideo
@@ -633,14 +643,16 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
           startFrom={startFrom}
           style={{
             position: 'absolute',
-            left: x,
-            top: (crop.height - crop.videoHeight) / 2,
-            width: crop.videoWidth,
-            height: crop.videoHeight,
+            left: at.x,
+            top: at.y,
+            width: part.videoWidth,
+            height: part.videoHeight,
+            transform: `scale(${1 + DEMO_PUSH * p})`,
+            transformOrigin: `${-at.x}px ${-at.y}px`,
           }}
         />
       </div>
-      <div style={{ position: 'absolute', left: SAFE.left, top: crop.top + 24 }}>
+      <div style={{ position: 'absolute', left: layout.left + 22, top: layout.top + 22 }}>
         <Chip size={30} bg="rgba(9,9,11,0.78)" color={COLOR.text}>
           <i style={{ width: 12, height: 12, borderRadius: 6, background: COLOR.accent }} />
           Demo · {label}

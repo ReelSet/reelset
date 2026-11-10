@@ -3,6 +3,7 @@ import { lookKey } from './finalize'
 import { assignBroll } from './broll'
 import { sampleReel } from './fixtures'
 import { capFor, identityOf, imageIndex, newState, pickShot, varietyKey } from './planner'
+import { enforceVariety } from './variety'
 import { resolveShots, totalFrames, withDemoOffsets } from './timeline'
 import type { BrollClip, ReelProps, Scene, TimedShot } from './types'
 
@@ -120,6 +121,38 @@ describe('pickShot caps', () => {
   })
 })
 
+describe('cue stats keep their room', () => {
+  it('re-picks a planned stat that would use up the cap before a cued one', () => {
+    const p = sampleReel({ source: 'github', images: [], broll: [1, 2, 3, 4].map(clip) })
+    const stat = (from: number, value: string, origin: TimedShot['origin']): TimedShot => ({
+      from,
+      frames: 60,
+      show: 'StatSlam',
+      props: { value, label: 'x' },
+      sceneIndex: 1,
+      origin,
+    })
+    const out = enforceVariety(
+      [stat(0, '94', 'planned'), stat(60, '70', 'planned'), stat(120, '7.1', 'cue')],
+      p,
+      FPS,
+    )
+    expect(out.find((s) => s.props.value === '7.1')?.show).toBe('StatSlam')
+    expect(out.filter((s) => s.show === 'StatSlam' && s.origin === 'planned').length).toBeLessThan(
+      2,
+    )
+  })
+})
+
+describe('code identity', () => {
+  it('reads one line shown as a terminal and as a code block as the same screen', () => {
+    const line = '550 5.7.1 Message rejected: Message lacks SPF'
+    expect(identityOf('Terminal', { lines: [line] })).toBe(
+      identityOf('CodeBlock', { code: line, language: 'text' }),
+    )
+  })
+})
+
 describe('b-roll assignment', () => {
   const mk = (show: TimedShot['show'], sceneIndex: number, i: number): TimedShot => ({
     from: i * 60,
@@ -139,10 +172,11 @@ describe('b-roll assignment', () => {
   ]
 
   it('gives each clip to one shot, never reusing a clip, only on backdrop screens', () => {
-    const out = assignBroll(base, [clip(1), clip(2), clip(3)])
+    const out = assignBroll(base, [1, 2, 3, 4, 5, 6].map(clip))
     const bgs = out.flatMap((s) => (typeof s.props.bg === 'number' ? [s.props.bg] : []))
     expect(new Set(bgs).size).toBe(bgs.length)
-    expect(bgs).toHaveLength(3)
+    // Two clips stay free for the later passes.
+    expect(bgs).toHaveLength(4)
     for (const s of out) {
       if (typeof s.props.bg === 'number') {
         expect(['KeyPoint', 'StatSlam', 'Compare', 'EndCard']).toContain(s.show)
@@ -163,16 +197,18 @@ describe('b-roll assignment', () => {
 })
 
 describe('repo demo', () => {
-  it('plans the demo early, after the hook, at most twice in a row', () => {
+  it('opens on the demo and plays it 3-5 s in at most two cuts', () => {
     const p = sampleReel({
       demo: { src: 'job/demo.mp4', seconds: 6, width: 1280, height: 720, repo: 'a/b' },
     })
     const shots = run(p)
     const demos = shots.filter((s) => s.show === 'RepoDemo')
-    expect(demos.length).toBeGreaterThan(0)
+    expect(shots[0]!.show).toBe('RepoDemo')
     expect(demos.length).toBeLessThanOrEqual(2)
-    expect(demos[0]!.from / FPS).toBeLessThan(p.scenes[1]!.end)
-    expect(demos[0]!.sceneIndex).toBeGreaterThanOrEqual(1)
+    const seconds = demos.reduce((n, s) => n + s.frames, 0) / FPS
+    expect(seconds).toBeGreaterThanOrEqual(2.2)
+    expect(seconds).toBeLessThanOrEqual(5)
+    if (demos.length === 2) expect(demos.map((d) => d.props.part)).toEqual([0, 1])
   })
 
   it('continues the clip across consecutive cuts', () => {

@@ -1,7 +1,7 @@
 import { Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
 import { Pop, Rise, easeOut } from '../fx'
 import { keyPhraseIn } from '../lib/extract'
-import { captionFor, focusOrigin } from '../lib/images'
+import { captionFor, focusOrigin, wideFigureZoom } from '../lib/images'
 import { clipWords, plainText } from '../lib/table'
 import { fitText, fitWindow } from '../lib/text'
 import { typeset } from '../lib/typeset'
@@ -190,9 +190,11 @@ export function FigureZoom({ frames, ctx, props, topPad }: ScreenProps) {
     // Whole figure inside the safe box first, then a slow push toward its point of interest.
     const cardTop = top + 92
     const room = ZONE_BOTTOM - cardTop - 10
-    const base = Math.min(1.2, CONTENT_W / iw)
-    const cardH = Math.min(room, Math.max(ih * base, Math.round(CONTENT_W * 0.62)))
-    const zoom = Math.max(1, Math.min(1.7, cardH / (ih * base), 1.2 / base))
+    const cardH = Math.min(
+      room,
+      Math.max(ih * Math.min(1.2, CONTENT_W / iw), Math.round(CONTENT_W * 0.62)),
+    )
+    const { base, zoom } = wideFigureZoom(iw, ih, CONTENT_W, cardH)
     const z = 1 + (zoom - 1) * p
     const [fx, fy] = focusOrigin(img, variant % 2 === 0 ? '30% 50%' : '70% 50%')
       .split(' ')
@@ -238,13 +240,13 @@ export function FigureZoom({ frames, ctx, props, topPad }: ScreenProps) {
               left: 0,
               right: 0,
               top: LOW_TOP + 30 - (CONTENT_TOP + topPad),
-              fontSize: 36,
+              fontSize: 42,
               lineHeight: 1.3,
-              color: '#e4e4e7',
-              fontWeight: 500,
+              color: '#f4f4f5',
+              fontWeight: 600,
             }}
           >
-            {clipWords(alt, 150)}
+            {clipWords(alt, 120)}
           </div>
         ) : null}
       </Page>
@@ -369,7 +371,8 @@ export function ImageFull({ frames, ctx, props, topPad }: ScreenProps) {
   // Share cards and screenshots carry text to their edges: shown whole inside the safe box (phones
   // crop the sides, the action rail covers the right), never cropped full-bleed.
   const textual = img.kind === 'og' || img.kind === 'screenshot' || img.kind === 'figure'
-  const padded = topPad > 0 || textual
+  const bleed = props.bleed === true
+  const padded = !bleed && (topPad > 0 || textual)
   const top = CONTENT_TOP + topPad + 8
   return (
     <Page frames={frames} bleed topPad={topPad}>

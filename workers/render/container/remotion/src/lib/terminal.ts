@@ -100,7 +100,8 @@ export function sessionFont(lines: number, height: number): number {
 /** Like sessionFont, but counts the lines each command and output wraps to at that size. */
 export function fitSessionFont(rows: readonly SessionRow[], width: number, height: number): number {
   for (let size = 64; size > 38; size -= 2) {
-    const perLine = Math.max(8, Math.floor(width / (size * 0.62)))
+    // Lines wrap between words, which wastes a little of each line.
+    const perLine = Math.max(8, Math.floor((width / (size * 0.62)) * 0.9))
     const wrapped = rows.reduce(
       (n, r) =>
         n +
