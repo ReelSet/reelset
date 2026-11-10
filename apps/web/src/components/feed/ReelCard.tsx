@@ -34,6 +34,7 @@ type Props = {
 }
 
 const DOUBLE_TAP_MS = 280
+const HOLD_MS = 300
 
 function host(url: string): string {
   try {
@@ -53,6 +54,9 @@ export function ReelCard(props: Props) {
   const completeSent = useRef(false)
   const lastTap = useRef(0)
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const held = useRef(false)
+  const [soundFlash, setSoundFlash] = useState<{ on: boolean; key: number } | null>(null)
   const soundRef = useRef(soundOn)
   const [blocked, setBlocked] = useState(false)
   const [buffering, setBuffering] = useState(false)
@@ -84,6 +88,9 @@ export function ReelCard(props: Props) {
     const video = videoRef.current
     if (!video) return
     if (!active) {
+      if (tapTimer.current) clearTimeout(tapTimer.current)
+      if (holdTimer.current) clearTimeout(holdTimer.current)
+      held.current = false
       video.pause()
       video.currentTime = 0
       setExpanded(false)
@@ -174,15 +181,20 @@ export function ReelCard(props: Props) {
     if (!item.liked) onToggleLike(item)
   }
 
+  function setSound(on: boolean) {
+    if (videoRef.current) videoRef.current.muted = !on
+    onSound(on)
+    setSoundFlash({ on, key: Date.now() })
+  }
+
   function onTap() {
-    if (blocked) {
-      playFromGesture()
+    if (held.current) {
+      held.current = false
       return
     }
-    const turnedOnSound = !soundRef.current
-    if (turnedOnSound) {
-      if (videoRef.current) videoRef.current.muted = false
-      onSound(true)
+    if (blocked || paused) {
+      playFromGesture()
+      return
     }
     const now = Date.now()
     if (now - lastTap.current < DOUBLE_TAP_MS) {
@@ -192,8 +204,27 @@ export function ReelCard(props: Props) {
       return
     }
     lastTap.current = now
-    if (turnedOnSound) return
-    tapTimer.current = setTimeout(togglePause, DOUBLE_TAP_MS)
+    // Browsers only allow unmuting inside the tap itself; muting can wait to rule out a double tap.
+    if (!soundRef.current) {
+      setSound(true)
+      return
+    }
+    tapTimer.current = setTimeout(() => setSound(false), DOUBLE_TAP_MS)
+  }
+
+  function onPressStart() {
+    held.current = false
+    if (blocked || paused) return
+    holdTimer.current = setTimeout(() => {
+      held.current = true
+      videoRef.current?.pause()
+    }, HOLD_MS)
+  }
+
+  function onPressEnd() {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+    holdTimer.current = null
+    if (held.current) void videoRef.current?.play().catch(() => undefined)
   }
 
   async function share() {
@@ -228,7 +259,7 @@ export function ReelCard(props: Props) {
           src={item.posterUrl}
           alt=""
           draggable={false}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover cropped:object-contain"
         />
       )}
       {inWindow && (
@@ -254,16 +285,33 @@ export function ReelCard(props: Props) {
           }}
           onCanPlay={() => setBuffering(false)}
           onStalled={() => setBuffering(true)}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${ready ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity cropped:object-contain duration-300 ${ready ? 'opacity-100' : 'opacity-0'}`}
         />
       )}
 
       <button
         type="button"
-        aria-label="Tap to play or pause, double tap to like"
+        aria-label="Tap for sound on or off, double tap to like, hold to pause"
         onClick={onTap}
-        className="absolute inset-0 z-10 h-full w-full cursor-pointer"
+        onPointerDown={onPressStart}
+        onPointerUp={onPressEnd}
+        onPointerCancel={onPressEnd}
+        onPointerLeave={onPressEnd}
+        onContextMenu={(e) => e.preventDefault()}
+        className="absolute inset-0 z-10 h-full w-full cursor-pointer select-none [-webkit-touch-callout:none]"
       />
+
+      {soundFlash && (
+        <div
+          key={soundFlash.key}
+          onAnimationEnd={() => setSoundFlash(null)}
+          className="animate-sound-flash pointer-events-none absolute inset-0 z-20 grid place-items-center"
+        >
+          <div className="grid h-16 w-16 place-items-center rounded-full bg-black/60 text-white">
+            <VolumeIcon muted={!soundFlash.on} className="h-7 w-7" />
+          </div>
+        </div>
+      )}
 
       {heart > 0 && (
         <div
@@ -391,17 +439,6 @@ export function ReelCard(props: Props) {
           </div>
         </div>
       </div>
-
-      {active && !soundOn && !blocked && !paused && !failed && !expanded && (
-        <button
-          type="button"
-          onClick={() => onSound(true)}
-          className="glass animate-fade-in absolute bottom-[calc(18%+0.5rem)] left-3.5 z-30 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95 short:bottom-[calc(18%+0.25rem)]"
-        >
-          <VolumeIcon muted className="h-3.5 w-3.5" />
-          Tap for sound
-        </button>
-      )}
 
       <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2 short:bottom-[max(0.75rem,env(safe-area-inset-bottom))] short:gap-0.5 cropped:bottom-[max(0.5rem,env(safe-area-inset-bottom))] cropped:gap-0 cropped:[&>button]:min-h-10">
         <RailButton
