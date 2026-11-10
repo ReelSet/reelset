@@ -47,3 +47,4 @@ out/
 # personal agent notes and local smoke state
 CLAUDE.local.md
 scripts/smoke/.settings-backup.json
+.gstack/
