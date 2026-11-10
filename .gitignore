@@ -43,3 +43,7 @@ out/
 *.jpeg
 !apps/web/public/**/*.jpg
 !apps/web/public/**/*.mp4
+
+# personal agent notes and local smoke state
+CLAUDE.local.md
+scripts/smoke/.settings-backup.json

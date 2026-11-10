@@ -1,0 +1,34 @@
+name: Mirror to deploy repo
+
+# Vercel Hobby can't deploy org-owned repos, so main is mirrored to the personal repo
+# that Vercel is connected to.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    if: github.repository == 'ReelSet/reelset'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Push main to mehul100100/reelset
+        env:
+          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$MIRROR_SSH_KEY" > ~/.ssh/mirror
+          chmod 600 ~/.ssh/mirror
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND='ssh -i ~/.ssh/mirror -o IdentitiesOnly=yes'
+          git push --force git@github.com:mehul100100/reelset.git "$GITHUB_SHA:refs/heads/main"
+          echo "mirrored $GITHUB_SHA"

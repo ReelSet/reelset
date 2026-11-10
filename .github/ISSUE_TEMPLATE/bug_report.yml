@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in reelset is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: Page URL or reel link, if it's about a specific reel.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Feed / reels
+        - Ask
+        - Login / profile
+        - Ingest worker
+        - Render worker
+        - Self-hosting / setup
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Device and browser
+      placeholder: iPhone 15, Safari 18
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove any keys or personal data first.
