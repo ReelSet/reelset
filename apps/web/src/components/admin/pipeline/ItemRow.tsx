@@ -74,11 +74,13 @@ export function InProgressRow({
   now: Date
 }) {
   const since = stepClock(item)
-  const key = item.render_status === 'rendering' ? 'render' : activeStepKey(item.status)
+  const stepKey = activeStepKey(item.status)
+  const waitingForSlot = stepKey === 'render' && item.render_status !== 'rendering'
+  const key = waitingForSlot ? null : stepKey
   const eta = etaHint(key, now.getTime() - new Date(since).getTime(), medians)
   const attempts = Math.max(item.attempts, item.render_attempts ?? 0)
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-line/60 px-3 py-3 last:border-b-0 sm:grid-cols-[auto_minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center">
+    <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-line/60 px-3 py-3 last:border-b-0 sm:grid-cols-[auto_minmax(0,1.3fr)_minmax(0,1fr)_11rem] sm:items-center">
       <Thumb src={item.thumbnail} title={item.title} />
       <div className="min-w-0">
         <Link

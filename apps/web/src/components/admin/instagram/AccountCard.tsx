@@ -56,7 +56,7 @@ export function AccountCard({
         ) : null}
       </div>
 
-      {view.canConnect && account?.state !== 'connected' ? (
+      {view.canConnect && account && account.state !== 'connected' ? (
         <form
           action={connectAccountAction}
           className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4"
