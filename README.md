@@ -4,7 +4,18 @@ What developers are building, in 60-second reels.
 
 Reelset ingests interesting developer projects, turns them into short vertical reels, and serves them in a reader app.
 
-Try it at [reelset.app](https://reelset.app).
+Try it at [reelset.app](https://reelset.app) · follow on [Instagram](https://www.instagram.com/reelset.app/)
+
+<p align="center">
+  <a href="https://reelset.app"><img src="docs/screenshots/desktop.webp" alt="Reelset feed on desktop: a Reddit thread turned into a reel showing 505 upvotes and 135 comments" width="100%"></a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/reel-reddit.webp" alt="Reel of a Reddit thread with upvote and comment counts" width="24%">
+  <img src="docs/screenshots/reel-youtube.webp" alt="Reel of a YouTube video about weight-space programming with its view count" width="24%">
+  <img src="docs/screenshots/reel-ollama.webp" alt="Reel about running a free local AI model with Ollama" width="24%">
+  <img src="docs/screenshots/ask.webp" alt="Ask page: ask what developers are building, answers cite the feed" width="24%">
+</p>
 
 ## Sources
 
