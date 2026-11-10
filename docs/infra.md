@@ -66,3 +66,9 @@ wrangler deploy
 ```
 
 Roll back by setting `LLM_PROVIDER` back to `gemini` in `workers/ingest/wrangler.jsonc` and redeploying. Embeddings and image vetting keep using `GEMINI_API_KEY` either way, so those need Gemini credits regardless. Offline check without touching the database: `npx tsx --env-file=.env.local scripts/maintenance/gen-claude-samples.ts <outDir> <slug>=<itemId> ... [--effort low|medium|high] [--dry]` (live Claude calls, writes script, usage, cost and brief per item as JSON; `--dry` only writes the prompt). Regenerating stored scripts: `LLM_PROVIDER=anthropic scripts/maintenance/regen-scripts.ts`.
+
+## Template upgrade sweep and ingest gating
+
+- The render cron's template-upgrade sweep (re-renders already rendered items on the newest template) is off unless `app_setting` `render_upgrade_enabled` is `true` (`scripts/maintenance/set-setting.ts renderUpgradeEnabled true`). New items always render on the current template through the queue. `feed_min_template` stays 6 until the old reels are deliberately retired.
+- Template 8 renders take 7-12 minutes on the `standard-3` container (Pexels b-roll vetting plus Remotion), so the first queue attempt can time out; the retry returns the container's cached result.
+- The ingest pipeline pause probe is a Gemini embedding call. While Gemini prepay credits are depleted (HTTP 402) the pause is renewed every probe and no new items are scripted, whatever `LLM_PROVIDER` is. Top up Gemini credits to resume ingest.
