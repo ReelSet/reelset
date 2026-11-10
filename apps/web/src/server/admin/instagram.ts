@@ -129,10 +129,10 @@ export async function postQueue(db: Database) {
     .execute()
 }
 
-export async function lastAttemptAt(db: Database): Promise<Date | null> {
+export async function lastPostedAt(db: Database): Promise<Date | null> {
   const row = await db
     .selectFrom('instagram_post')
-    .select(sql<Date | null>`max(started_at)`.as('at'))
+    .select(sql<Date | null>`max(posted_at)`.as('at'))
     .executeTakeFirst()
   return row?.at ?? null
 }

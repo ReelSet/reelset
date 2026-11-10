@@ -38,7 +38,7 @@ export async function claimNextPost(
     and not exists (
       select 1 from instagram_post
       where status in ('posting', 'deleting')
-        or started_at > now() - make_interval(mins => ${minGapMinutes})
+        or posted_at > now() - make_interval(mins => ${minGapMinutes})
     )
     returning ${CLAIM_COLUMNS}`.execute(db)
   const post = rows[0] ?? null

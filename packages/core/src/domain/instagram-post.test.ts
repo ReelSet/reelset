@@ -3,6 +3,7 @@ import { InstagramPostStatus as S } from '../db/enums'
 import {
   InvalidInstagramTransitionError,
   assertPostTransition,
+  queuedPostEtas,
   canTransitionPost,
   gapRemainingMs,
 } from './instagram-post'
@@ -39,5 +40,21 @@ describe('gapRemainingMs', () => {
   })
   it('returns the time left inside the gap', () => {
     expect(gapRemainingMs(new Date('2026-11-11T11:55:00Z'), now, 10)).toBe(5 * 60_000)
+  })
+})
+
+describe('queuedPostEtas', () => {
+  const now = new Date('2026-11-11T04:02:00Z')
+
+  it('posts right away when no real post happened in the last 10 minutes', () => {
+    expect(queuedPostEtas(1, new Date('2026-11-11T03:40:00Z'), now)).toEqual([now])
+    expect(queuedPostEtas(1, null, now)).toEqual([now])
+  })
+
+  it('waits out the gap and lands on the next cron tick, then spaces later posts', () => {
+    expect(queuedPostEtas(2, new Date('2026-11-11T03:58:00Z'), now)).toEqual([
+      new Date('2026-11-11T04:10:00Z'),
+      new Date('2026-11-11T04:20:00Z'),
+    ])
   })
 })

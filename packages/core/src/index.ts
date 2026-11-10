@@ -100,6 +100,7 @@ export {
   INSTAGRAM_CAPTION_MAX_CHARS,
   INSTAGRAM_HASHTAG_MAX,
   INSTAGRAM_MIN_GAP_MINUTES,
+  queuedPostEtas,
   IG_LOGIN_FAILURE_ADVICE_AFTER,
   InvalidInstagramTransitionError,
   assertPostTransition,
