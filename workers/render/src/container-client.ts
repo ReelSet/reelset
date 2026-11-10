@@ -23,6 +23,7 @@ export type RenderInput = {
   facts?: ItemFacts
   broll?: BrollPick[]
   demo?: ItemDemo
+  ttsEngine?: 'kokoro' | 'edge'
   narration?: { audioBase64: string; words: { text: string; start: number; end: number }[] }
 }
 
@@ -33,6 +34,7 @@ const metadataSchema = z.object({
   durationMs: z.number().int().positive(),
   ttsDurationMs: z.number().int().nonnegative(),
   ttsChars: z.number().int().nonnegative(),
+  ttsProvider: z.string().optional(),
   renderMs: z.number().int().nonnegative(),
   cover: z.boolean().default(false),
   templateVersion: z.string().optional(),

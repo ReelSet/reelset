@@ -8,7 +8,7 @@ import {
   parseSpokenWords,
   selectProvider,
   shortenScript,
-  shouldFallbackToEdge,
+  fallbackEngineFor,
   type AiLike,
   type SpokenWord,
 } from './tts'
@@ -126,10 +126,11 @@ describe('chunkText', () => {
 describe('provider selection', () => {
   const ai: AiLike = { run: async () => null }
 
-  it('defaults to edge and only uses aura2 with a binding', () => {
+  it('keeps edge and kokoro, and starts aura2 at kokoro without a binding', () => {
     expect(selectProvider('edge', ai)).toBe('edge')
+    expect(selectProvider('kokoro', undefined)).toBe('kokoro')
     expect(selectProvider('aura2', ai)).toBe('aura2')
-    expect(selectProvider('aura2', undefined)).toBe('edge')
+    expect(selectProvider('aura2', undefined)).toBe('kokoro')
   })
 
   it('changes the render-key voice per provider and speaker', () => {
@@ -137,11 +138,13 @@ describe('provider selection', () => {
     expect(edge).toBe('en-US-AriaNeural')
     expect(effectiveVoice('aura2', 'hera', edge)).toBe('aura2-hera')
     expect(effectiveVoice('aura2', 'orion', edge)).not.toBe('aura2-hera')
+    expect(effectiveVoice('kokoro', 'hera', edge)).toBe('kokoro-af_heart')
   })
 
-  it('falls back to edge only after repeated deliveries', () => {
-    expect(shouldFallbackToEdge(1)).toBe(false)
-    expect(shouldFallbackToEdge(3)).toBe(true)
+  it('uses kokoro as the container engine unless edge was chosen explicitly', () => {
+    expect(fallbackEngineFor('aura2')).toBe('kokoro')
+    expect(fallbackEngineFor('kokoro')).toBe('kokoro')
+    expect(fallbackEngineFor('edge')).toBe('edge')
   })
 })
 
@@ -180,6 +183,18 @@ describe('generateNarration', () => {
     expect(out.words.map((w) => w.text)).toEqual(['Hi', 'there'])
     expect(out.chars).toBe(8)
     expect(out.costUsd).toBeCloseTo(8 * 0.00003 + (1 / 60) * 0.0052, 6)
+  })
+
+  it('rejects unusable alignment so the caller falls back', async () => {
+    const ai: AiLike = {
+      async run(model) {
+        if (model.includes('aura')) return new Uint8Array([1])
+        return { results: { channels: [{ alternatives: [{ words: [] }] }] } }
+      },
+    }
+    await expect(generateNarration(ai, 'Hi there', 'hera', silentLog)).rejects.toMatchObject({
+      code: 'tts_unavailable',
+    })
   })
 
   it('maps workers ai failures to a retryable tts_unavailable error', async () => {
