@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import NextTopLoader from 'nextjs-toploader'
 import { ToastProvider } from '@/components/ui/Toast'
 import './globals.css'
 
@@ -39,6 +40,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body className="font-sans antialiased">
+        <NextTopLoader
+          color="#c8f751"
+          height={3}
+          showSpinner={false}
+          shadow={false}
+          zIndex={1000}
+        />
         <ToastProvider>{children}</ToastProvider>
         <Analytics />
       </body>
