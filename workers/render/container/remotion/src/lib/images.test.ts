@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionFor, fitImage, planImages, demoBox } from './images'
+import { DEMO_MIN_SHARE, captionFor, demoCrop, fitImage, isBrandImage, planImages } from './images'
 import type { ReelImage, Scene } from './types'
 
 describe('fitImage', () => {
@@ -93,31 +93,39 @@ describe('captionFor', () => {
   })
 })
 
-describe('demoBox', () => {
-  it('shows a landscape clip whole (no crop), as wide as the frame allows, above the captions', () => {
-    const b = demoBox(1080, 608, 318)
-    expect(b.width).toBe(1032)
-    expect(b.height).toBe(Math.round((1032 * 608) / 1080))
-    expect(b.left).toBe(24)
-    expect(b.top).toBeGreaterThanOrEqual(318)
-    expect(b.top + b.height).toBeLessThanOrEqual(Math.round(1920 * 0.58) - 24)
-    expect(b.fullBleed).toBe(false)
+describe('demoCrop', () => {
+  it('shows a landscape demo large but never zoomed past 72% of its width, above the captions', () => {
+    const c = demoCrop(1080, 608, 330, 1090)
+    expect(1080 / c.videoWidth).toBeGreaterThanOrEqual(DEMO_MIN_SHARE - 0.01)
+    expect(c.videoHeight / 608).toBeGreaterThan(1.2)
+    expect(c.top).toBeGreaterThanOrEqual(330)
+    expect(c.top + c.height).toBeLessThanOrEqual(1090)
+    expect(c.overflow).toBe(c.videoWidth - 1080)
+    expect(c.panFrom).toBeLessThan(c.panTo)
   })
 
-  it('fits a near-square clip into the zone, centred, aspect kept', () => {
-    const b = demoBox(1000, 900, 318)
-    expect(b.height).toBe(Math.round(1920 * 0.58) - 24 - 318)
-    expect(b.width / b.height).toBeCloseTo(1000 / 900, 2)
-    expect(b.left).toBe(Math.round((1080 - b.width) / 2))
+  it('never makes the window taller than the clip and fills the width of a portrait clip', () => {
+    const c = demoCrop(1080, 608, 0, 1920)
+    expect(c.height).toBeLessThanOrEqual(c.videoHeight)
+    expect(c.height).toBeLessThanOrEqual(1350)
+    const p = demoCrop(720, 1280, 330, 1090)
+    expect(p.videoWidth).toBe(1080)
+    expect(p.overflow).toBe(0)
+    expect(p.height).toBe(760)
   })
+})
 
-  it('goes full-bleed for a portrait clip', () => {
-    expect(demoBox(720, 1280, 318)).toEqual({
-      left: 0,
-      top: 0,
-      width: 1080,
-      height: 1920,
-      fullBleed: true,
-    })
+describe('isBrandImage', () => {
+  const title = 'Outlook.com Is Quietly Rejecting Email from Domains Without DMARC'
+  it("skips a site's default share card", () => {
+    const og = { src: 'x', kind: 'og' as const, alt: 'MailRoute — Cloud Email Security' }
+    expect(isBrandImage(og, title, 'mailroute.net')).toBe(true)
+  })
+  it('keeps story images and images without alt text', () => {
+    const story = { src: 'x', kind: 'og' as const, alt: 'Outlook rejecting email without DMARC' }
+    expect(isBrandImage(story, title, 'mailroute.net')).toBe(false)
+    expect(isBrandImage({ src: 'x', kind: 'og' }, title, 'mailroute.net')).toBe(false)
+    const fig = { src: 'x', kind: 'figure' as const, alt: 'MailRoute pipeline' }
+    expect(isBrandImage(fig, title, 'mailroute.net')).toBe(false)
   })
 })

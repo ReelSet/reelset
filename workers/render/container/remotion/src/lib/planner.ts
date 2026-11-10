@@ -1,7 +1,16 @@
+import { related } from './ideas'
+import { isBrandImage } from './images'
 import { styleOf } from './typeset'
 import { keyPhraseIn, sentences, shellLines, versusPair } from './extract'
 import { barProps, namesOf, quantitiesOf, sentenceFor, spokenIn } from './numbers'
-import { SOURCE_SCREENS, commentFor, nextVariant, variantOf } from './sources'
+import {
+  SOURCE_SCREENS,
+  commentFor,
+  isSourcedQuote,
+  nextVariant,
+  repoCardSparse,
+  variantOf,
+} from './sources'
 import {
   carriesQuantity,
   isClaimLike,
@@ -38,16 +47,13 @@ export type PlanState = {
 }
 
 export const CAP_PER_SCREEN = 2
-/**
- * How often one image may appear: a figure twice (two different crops, or a crop and the paper
- * card), a hero image (og card, thumbnail, screenshot) once: shown again it reads as a repeat.
- */
-export const imageCap = (img: ReelImage | undefined): number => (img?.kind === 'figure' ? 2 : 1)
+/** Any one image (hero, figure, screenshot) appears once: shown again, in any crop, it reads as a repeat. */
+export const imageCap = (_img: ReelImage | undefined): number => 1
 export const NO_REPEAT_WITHIN = 3
 /** Longest a shot may be stretched when nothing new is left to show (QA limit is 4 s). */
 export const FOLD_MAX_S = 3.5
 export const capFor = (show: ScreenName): number =>
-  show === 'EndCard' || SOURCE_SCREENS.has(show) ? 1 : show === 'RepoDemo' ? 3 : CAP_PER_SCREEN
+  show === 'EndCard' || show === 'RepoDemo' || SOURCE_SCREENS.has(show) ? 1 : CAP_PER_SCREEN
 /** Narration that points at the demo ("watch the tour") is shown over the demo itself. */
 export const DEMO_CUE = /\b(watch|tour|demo|in action|see it)\b/i
 
@@ -123,7 +129,6 @@ export function recentLook(
   }
   return state.history.slice(-NO_REPEAT_WITHIN).includes(show)
 }
-export const MAY_REPEAT = new Set<ScreenName>(['RepoDemo'])
 
 export const newState = (): PlanState => ({
   history: [],
@@ -303,11 +308,13 @@ const HERO_ORDER: ReelImage['kind'][] = ['thumbnail', 'og', 'screenshot', 'figur
 export function usableImages(
   images: readonly ReelImage[] | undefined,
   skipThumbnails = false,
+  story?: { title: string; domain: string },
 ): number[] {
   const list = images ?? []
   return list
     .map((img, i) => ({ img, i }))
     .filter(({ img }) => img.kind !== 'avatar' && !(skipThumbnails && img.kind === 'thumbnail'))
+    .filter(({ img }) => !story || !isBrandImage(img, story.title, story.domain))
     .sort((a, b) => HERO_ORDER.indexOf(a.img.kind) - HERO_ORDER.indexOf(b.img.kind) || a.i - b.i)
     .map(({ i }) => i)
 }
@@ -352,7 +359,7 @@ export function pickShot(
   const text = textOf(props.words, chunk) || ('text' in scene ? scene.text : '')
   const sceneText = 'text' in scene ? scene.text : ''
   const visual = scene.kind === 'beat' ? scene.visual : undefined
-  const images = usableImages(props.images, state.thumbUsed).filter(
+  const images = usableImages(props.images, state.thumbUsed, props).filter(
     (i) => (state.imageUses[i] ?? 0) < imageCap(props.images?.[i]),
   )
   const prev = state.history[state.history.length - 1]
@@ -365,7 +372,7 @@ export function pickShot(
   }
 
   const total = Math.max(1, props.durationSeconds)
-  const imageBudget = usableImages(props.images, false).reduce(
+  const imageBudget = usableImages(props.images, false, props).reduce(
     (n, i) => n + imageCap(props.images?.[i]),
     0,
   )
@@ -388,26 +395,27 @@ export function pickShot(
     }
   }
 
-  if (props.demo && scene.kind !== 'hook' && scene.kind !== 'outro') {
-    const hasDemo = (state.uses.RepoDemo ?? 0) > 0
-    if (!hasDemo) add('RepoDemo', {}, isFirstInScene && sceneIndex === 1 ? 13 : 4)
-    else if (prev === 'RepoDemo' && state.uses.RepoDemo! < 2) add('RepoDemo', {}, 20)
-    else if (
-      DEMO_CUE.test(text.split(/\s+/).slice(0, 3).join(' ')) &&
-      state.uses.RepoDemo! < capFor('RepoDemo')
-    )
-      add('RepoDemo', {}, 16)
+  if (props.demo && scene.kind !== 'hook' && scene.kind !== 'outro' && !state.uses.RepoDemo) {
+    // The demo plays once: over the words that point at it when the narration has them.
+    const cueNow = DEMO_CUE.test(text.split(/\s+/).slice(0, 3).join(' '))
+    const cueLater = props.words.some((w) => w.start > atSeconds && DEMO_CUE.test(w.text))
+    if (cueNow || !cueLater)
+      add('RepoDemo', {}, cueNow ? 16 : isFirstInScene && sceneIndex === 1 ? 13 : 4)
   }
 
   const sourceScreen = SOURCE_SCREEN[props.source]
   const sourceImage = images[0]
   const sourceScore = scene.kind === 'hook' && isFirstInScene ? 5 : 1.8
-  const sceneQuote =
-    visual?.type === 'quote' ? { text: visual.text, attribution: visual.attribution } : undefined
+  // A scripted quote shows in quote marks only when those words are really in the source.
+  const quoted = visual?.type === 'quote' && isSourcedQuote(visual.text, props) ? visual : undefined
+  const sceneQuote = quoted ? { text: quoted.text, attribution: quoted.attribution } : undefined
   if (SOURCE_SCREENS.has(sourceScreen)) {
     const used = state.sourceUsed[sourceScreen] ?? []
     const variant = nextVariant(sourceScreen, props, used, undefined, Boolean(sceneQuote))
-    const comment = variant === 'comment' ? commentFor(sourceScreen, props, sceneQuote) : null
+    const found = variant === 'comment' ? commentFor(sourceScreen, props, sceneQuote) : null
+    // A comment or post excerpt from the thread shows only over narration about the same thing.
+    const comment =
+      found && (sceneQuote || related(found.quote, `${text} ${sceneText}`)) ? found : null
     const quoteSeen = comment && state.keyTexts.has(comment.quote.toLowerCase())
     const figure = (props.images ?? []).findIndex((i) => i.kind === 'figure')
     const figureFree =
@@ -420,6 +428,8 @@ export function pickShot(
       const extra = variant === 'figure' ? { image: figure } : (comment ?? {})
       add(sourceScreen, { focus: sceneIndex, variant, ...extra }, sourceScore)
     }
+  } else if (sourceScreen === 'RepoPage' && repoCardSparse(props)) {
+    // No description or counts to show: the repo's share card and the demo say more.
   } else if (!(sourceScreen === 'YouTubePlayer' && state.thumbUsed)) {
     if (!IMAGE_SCREENS.has(sourceScreen)) {
       add(sourceScreen, { focus: sceneIndex }, sourceScore)
@@ -488,7 +498,7 @@ export function pickShot(
       add('KeyPoint', { text: title, sub: subtitle }, isFirstInScene ? 7 : 2.5)
     }
   }
-  if (visual?.type === 'quote' && !state.keyTexts.has(visual.text.toLowerCase())) {
+  if (quoted && !state.keyTexts.has(quoted.text.toLowerCase())) {
     const quoteVariant =
       SOURCE_SCREENS.has(sourceScreen) &&
       (state.sourceUsed[sourceScreen] ?? []).length < 3 &&
@@ -500,10 +510,10 @@ export function pickShot(
     add(
       show,
       {
-        quote: visual.text,
-        by: visual.attribution,
+        quote: quoted.text,
+        by: quoted.attribution,
         ...(show === 'KeyPoint'
-          ? { text: visual.text, sub: visual.attribution }
+          ? { text: quoted.text, sub: quoted.attribution }
           : { variant: 'comment' }),
       },
       isFirstInScene ? 8 : 3,
@@ -524,7 +534,7 @@ export function pickShot(
   let best: Candidate | undefined
   for (const c of cands) {
     let s = c.score
-    if (!MAY_REPEAT.has(c.show)) {
+    {
       const otherLook = varietyKey(c.show, c.props) !== state.looks[state.looks.length - 1]
       if (c.show === prev) s -= c.show === 'KeyPoint' && otherLook ? 9 : 1000
       if (recentLook(state, c.show, c.props, prev)) s -= 150
@@ -539,8 +549,8 @@ export function pickShot(
     s -= 2.2 * state.history.slice(-5).filter((h) => h === c.show).length
     if (c.show === 'KeyPoint' && state.history.slice(-2).includes('KeyPoint')) s -= 1.5
     const id = identityOf(c.show, c.props)
-    if (!MAY_REPEAT.has(c.show) && state.reserved.has(id)) s -= 600
-    if (!MAY_REPEAT.has(c.show) && state.identities.includes(id)) {
+    if (state.reserved.has(id)) s -= 600
+    if (state.identities.includes(id)) {
       s -= state.identities[state.identities.length - 1] === id ? 2000 : 400
     }
     if (!best || s > best.score) best = { ...c, score: s }

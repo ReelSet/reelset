@@ -1,4 +1,12 @@
-import { createContext, useContext, type CSSProperties, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import {
   AbsoluteFill,
   Img,
@@ -21,7 +29,11 @@ export type ReelCtx = {
   facts: ItemFacts
   images: ReelImage[]
   hook: string
+  /** The script's short headline (hook card), when given. */
+  headline?: string
   demo?: ReelDemo
+  /** The plan plays the demo as its own shot (RepoDemo), so other screens leave it out. */
+  demoInPlan?: boolean
 }
 
 export type ScreenProps = {
@@ -133,24 +145,65 @@ export function Page({
               backgroundSize: '108px 108px',
             }}
           />
-          {bleed ? null : (
-            <div
-              style={{
-                position: 'absolute',
-                left: SAFE.left,
-                right: SAFE.right,
-                top: CONTENT_TOP + topPad,
-                bottom: 0,
-                ...style,
-              }}
-            >
-              <TopPadContext.Provider value={topPad}>{children}</TopPadContext.Provider>
-            </div>
-          )}
-          {bleed ? children : null}
         </AbsoluteFill>
       </Drift>
+      {bleed ? (
+        children
+      ) : (
+        <div
+          style={{
+            position: 'absolute',
+            left: SAFE.left,
+            right: SAFE.right,
+            top: CONTENT_TOP + topPad,
+            bottom: 0,
+            ...style,
+          }}
+        >
+          <TopPadContext.Provider value={topPad}>{children}</TopPadContext.Provider>
+        </div>
+      )}
     </AbsoluteFill>
+  )
+}
+
+/**
+ * Keeps a block inside `maxHeight` px (the zone above the caption band): content that would run
+ * taller is scaled down from its top-left corner instead of spilling under the captions.
+ */
+export function Fit({
+  maxHeight,
+  children,
+  style,
+  center = false,
+}: {
+  maxHeight: number
+  children: ReactNode
+  style?: CSSProperties
+  /** Short content sits in the middle of the zone instead of its top. */
+  center?: boolean
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const h = el.scrollHeight
+    setScale(h > maxHeight ? maxHeight / h : 1)
+  }, [maxHeight, children])
+  return (
+    <div
+      style={{
+        height: maxHeight,
+        overflow: 'hidden',
+        ...(center ? { display: 'flex', flexDirection: 'column', justifyContent: 'center' } : {}),
+        ...style,
+      }}
+    >
+      <div ref={ref} style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }}>
+        {children}
+      </div>
+    </div>
   )
 }
 
@@ -223,6 +276,7 @@ export function Photo({
   pan = 0,
   keepInFrame = true,
   backdropOnly = false,
+  contain = false,
 }: {
   image: ReelImage
   frames: number
@@ -240,12 +294,17 @@ export function Photo({
   keepInFrame?: boolean
   /** Only the blurred, darkened fill (a backdrop behind other content), no sharp copy. */
   backdropOnly?: boolean
+  /** Always show the whole image (no cover crop). */
+  contain?: boolean
 }) {
   const frame = useCurrentFrame()
   const p = easeOut(Math.min(1, frame / Math.max(1, frames)))
   const iw = image.width ?? 1280
   const ih = image.height ?? 720
-  const cover = fitImage(iw, ih, w, h)
+  const fitted = fitImage(iw, ih, w, h)
+  // Text-bearing images (share cards, screenshots) are never cropped to fill.
+  const cover =
+    contain && fitted.mode === 'cover' ? { ...fitted, mode: 'contain' as const } : fitted
   let dw: number
   let dh: number
   let zoom = zoomTo

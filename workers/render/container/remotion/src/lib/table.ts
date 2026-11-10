@@ -1,5 +1,6 @@
-import { sameNumber } from './text-rules'
-import type { ScreenName } from './types'
+import { quantitiesOf, spokenIn, wordsIn } from './numbers'
+import { quantityValue, sameNumber } from './text-rules'
+import type { ReelProps, ScreenName, TimedShot } from './types'
 
 export type TableView = {
   ref: string
@@ -130,4 +131,81 @@ export function matchCell(
   )
   const best = hits.sort((a, b) => b.score - a.score || a.row - b.row)[0]
   return best ? { row: best.row, col: best.col } : null
+}
+
+const BASELINE = /\b(?:base(?:line)?|vanilla|original|default|naive|w\/o|without)\b/i
+const rowName = (cells: readonly string[]) => (cells[0] ?? '').trim().toLowerCase()
+
+export type FocusTable = {
+  rows: string[]
+  hi: number
+  col: number
+  value: string
+  label: string
+}
+
+/**
+ * The slice of a table that says what the narration says, or null when the table would show a
+ * different story. `cell` holds the narrated number; every other number said in the same sentence
+ * (`others`, e.g. "surpassing MOPD's 80.9%") must also be a cell of this table, and each of those
+ * rows must have a name no other row shares ("P2-MOPD" twice means two settings the viewer cannot
+ * tell apart). Rows shown: the narrated one, the compared ones and a baseline, at most 4, in table
+ * order, with only the narrated cell highlighted.
+ */
+export function focusTable(
+  view: Pick<TableView, 'headers' | 'rows' | 'hi'>,
+  cell: { row: number; col: number },
+  others: readonly { raw: string; label: string }[],
+  maxRows = 4,
+): FocusTable | null {
+  const used = new Set<number>([cell.row])
+  for (const q of others) {
+    const hit = matchCell({ ...view, hi: cell.row }, q.raw, q.label)
+    if (!hit) return null
+    used.add(hit.row)
+  }
+  const names = view.rows.map(rowName)
+  for (const r of used) {
+    if (!names[r] || names.filter((n) => n === names[r]).length > 1) return null
+  }
+  const base = view.rows.findIndex((cells, r) => !used.has(r) && BASELINE.test(cells[0] ?? ''))
+  if (base >= 0 && used.size < maxRows) used.add(base)
+  const keep = [...used].sort((a, b) => a - b).slice(0, maxRows)
+  if (!keep.includes(cell.row)) return null
+  const rows = keep.map((r) => view.rows[r]!)
+  const hi = keep.indexOf(cell.row)
+  return {
+    rows: rows.map((cells) => cells.join('|')),
+    hi,
+    col: cell.col,
+    value: rows[hi]![cell.col] ?? '',
+    label: cellLabel(rows[hi]![0], view.headers[cell.col]),
+  }
+}
+
+/**
+ * Table props for a shot: the cell of a number said over it, sliced by `focusTable` so the table
+ * tells the narration's story; null when no number said over the shot is honestly in the table.
+ */
+export function tableFor(
+  table: Record<string, unknown>,
+  shot: Pick<TimedShot, 'from' | 'frames' | 'sceneIndex'>,
+  props: ReelProps,
+  fps: number,
+): Record<string, unknown> | null {
+  const view = readTable(table)
+  const scene = props.scenes[shot.sceneIndex]
+  if (!view || !scene || !('text' in scene)) return null
+  const spoken = wordsIn(props.words, shot.from / fps - 0.3, (shot.from + shot.frames) / fps)
+  for (const q of spokenIn(scene.text, spoken)) {
+    const cell = matchCell(view, q.raw, q.label)
+    if (!cell) continue
+    const v = quantityValue(q.raw)
+    const others = quantitiesOf(q.sentence).filter(
+      (x) => x.index !== q.index && x.unit === q.unit && quantityValue(x.raw) !== v,
+    )
+    const focused = focusTable(view, cell, others)
+    if (focused) return { ref: view.ref, caption: view.caption, headers: view.headers, ...focused }
+  }
+  return null
 }

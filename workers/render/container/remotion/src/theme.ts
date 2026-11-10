@@ -23,10 +23,24 @@ export const MONO = '"Geist Mono", ui-monospace, Menlo, monospace'
 
 // Mobile app header overlays the top ~11%: burned chrome starts at 12% of the frame height.
 export const TOP_SAFE = Math.ceil(H * 0.12)
-export const HEADER_H = 48
-export const SAFE = { left: 56, right: 130, top: TOP_SAFE, bottom: Math.round(H * 0.18) } as const
+// 390x844 phones crop ~9% of each side of a cover-fit 9:16 video, the app's action rail covers the
+// right 14%: burned content stays inside x in [11%, 86%].
+export const SAFE = {
+  left: Math.ceil(W * 0.11),
+  right: Math.ceil(W * 0.14),
+  top: TOP_SAFE,
+  bottom: Math.round(H * 0.18),
+} as const
 export const CONTENT_W = W - SAFE.left - SAFE.right
-export const CONTENT_TOP = TOP_SAFE + HEADER_H + 40
+// Chrome: 6 px progress bar, 18 px gap, 1.45x source chip (36 px tall). Nothing a screen draws may start above it.
+export const CHROME_SCALE = 1.45
+export const HEADER_H = 6 + 18 + Math.ceil(36 * CHROME_SCALE)
+export const CHROME_BOTTOM = TOP_SAFE + HEADER_H
+/** Top edge for full-width panels (HN banner, terminal, code editor): clear of the chrome. */
+export const PANEL_TOP = CHROME_BOTTOM + 22
+export const CONTENT_TOP = CHROME_BOTTOM + 40
+/** Burned content never goes below this line (the app's caption and action overlay). */
+export const BOTTOM_LIMIT = Math.floor(H * 0.88)
 
 // Karaoke band: 58-72% of frame height, centered, 72% wide (clear of the right rail), two lines max.
 export const CAPTION_BAND = { topPct: 0.58, bottomPct: 0.72, widthPct: 0.72 } as const

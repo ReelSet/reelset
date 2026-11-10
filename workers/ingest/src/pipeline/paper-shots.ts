@@ -33,7 +33,17 @@ function labelColumn(t: PaperTable, numeric: readonly number[]): number {
   return Math.max(0, first - 1)
 }
 
-export type TableHint = { row?: string; metric?: string; value?: string }
+export type TableHint = {
+  row?: string
+  metric?: string
+  value?: string
+  /** Other numbers said in the same sentence ("surpassing MOPD's 80.9%"): each must be a cell too. */
+  others?: readonly string[]
+}
+
+const BASELINE = /\b(?:base(?:line)?|vanilla|original|default|naive|w\/o|without)\b/i
+/** Rows a narrated table shows: the narrated one, the ones it is compared with and a baseline. */
+export const MAX_NARRATED_ROWS = 4
 
 /** Rows with a label and no numbers ("Qwen3-1.7B") split a table into sections; [start, end) of the row's section. */
 function sectionOf(t: PaperTable, numeric: readonly number[], labelCol: number, row: number) {
@@ -122,8 +132,28 @@ export function buildTableProps(t: PaperTable, hint: TableHint = {}): Obj | null
   const eligible = all.filter((r) => r >= section.start && r < section.end)
   if (eligible.length < 2) return null
 
-  const priority = [hi, ...eligible.filter((r) => r !== hi && bestScore(r) > 0), ...eligible]
-  const picked = [...new Set(priority)].slice(0, MAX_TABLE_ROWS).sort((a, b) => a - b)
+  let picked: number[]
+  if (target) {
+    // Narrated: only the rows the sentence talks about, each with a name no other row shares.
+    const rowsSaid = [hi]
+    for (const other of hint.others ?? []) {
+      const r = eligible.find(
+        (row) => row !== hi && chosen.some((c) => sameNumber(other, t.rows[row]?.[c] ?? '')),
+      )
+      if (r === undefined) return null
+      rowsSaid.push(r)
+    }
+    const name = (r: number) => (t.rows[r]![labelCol] ?? '').trim().toLowerCase()
+    if (rowsSaid.some((r) => !name(r) || eligible.filter((x) => name(x) === name(r)).length > 1))
+      return null
+    const base = eligible.find((r) => !rowsSaid.includes(r) && BASELINE.test(name(r)))
+    picked = [...new Set([...rowsSaid, ...(base === undefined ? [] : [base])])]
+      .slice(0, MAX_NARRATED_ROWS)
+      .sort((a, b) => a - b)
+  } else {
+    const priority = [hi, ...eligible.filter((r) => r !== hi && bestScore(r) > 0), ...eligible]
+    picked = [...new Set(priority)].slice(0, MAX_TABLE_ROWS).sort((a, b) => a - b)
+  }
 
   const headers = [t.headers[labelCol] ?? '', ...chosen.map((c) => t.headers[c] ?? '')].map((h) =>
     cell(h),
@@ -153,7 +183,7 @@ export function buildTableProps(t: PaperTable, hint: TableHint = {}): Obj | null
     value: rows[hiRow]![keyCol] ?? '',
     label: headers[keyCol] ?? '',
   }
-  if (bestCells.length > 0) props.best = bestCells.slice(0, 8)
+  if (bestCells.length > 0 && !target) props.best = bestCells.slice(0, 8)
   return props
 }
 
@@ -170,7 +200,10 @@ function eachShot(script: ScriptLike): Shot[] {
 const PAPER_ONLY = new Set(['TableScreen', 'EquationScreen'])
 
 /** The quantity spoken nearest the shot's cue word (in its sentence), with what the sentence says it is. */
-export function narratedAt(text: string, cue: unknown): { raw: string; label: string } | null {
+export function narratedAt(
+  text: string,
+  cue: unknown,
+): { raw: string; label: string; others: string[] } | null {
   const word =
     typeof cue === 'string'
       ? cue
@@ -191,9 +224,15 @@ export function narratedAt(text: string, cue: unknown): { raw: string; label: st
     .search(new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '')}`))
   const qs = findQuantities(sentence)
   const best = [...qs].sort((a, b) => Math.abs(a.index - at) - Math.abs(b.index - at))[0]
-  return best
-    ? { raw: best.raw, label: numberLabel(sentence, { start: best.index, end: best.end }) }
-    : null
+  if (!best) return null
+  const others = qs
+    .filter((q) => q !== best && q.unit === best.unit && q.value !== best.value)
+    .map((q) => q.raw)
+  return {
+    raw: best.raw,
+    label: numberLabel(sentence, { start: best.index, end: best.end }),
+    others,
+  }
 }
 
 export type ResolveStats = {
@@ -238,7 +277,7 @@ export function resolvePaperShots(
         if (said) {
           const tables = [table, ...paper.tables].filter((x): x is PaperTable => Boolean(x))
           const withIt = tables
-            .map((x) => buildTableProps(x, { ...hint, value: said.raw }))
+            .map((x) => buildTableProps(x, { ...hint, value: said.raw, others: said.others }))
             .find((x) => x !== null)
           if (withIt) {
             shot.props = withIt

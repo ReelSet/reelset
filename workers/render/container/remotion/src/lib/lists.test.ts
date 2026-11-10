@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { itemTimes, listIn, revealLists } from './lists'
+import { itemTimes, listIn, revealLists, listPieces, listSize } from './lists'
 import type { ReelProps, TimedShot, Word } from './types'
 
 const words = (text: string, start = 0, step = 0.4): Word[] =>
@@ -24,6 +24,14 @@ describe('listIn', () => {
       kicker: 'DMARC prevents',
       items: ['spoofing', 'phishing', 'business email compromise'],
     })
+  })
+
+  it('finds a list without a serial comma and keeps its kicker short', () => {
+    const list = listIn(
+      'Fizgig is an open source studio for training, fixing and exploring LoRAs for image models like Flux, Qwen and SDXL.',
+    )
+    expect(list?.items).toEqual(['Flux', 'Qwen', 'SDXL'])
+    expect(list!.kicker.split(' ').length).toBeLessThanOrEqual(4)
   })
 
   it('ignores two-item phrases and clauses', () => {
@@ -81,5 +89,60 @@ describe('revealLists', () => {
     expect(times).toEqual([...times].sort((a, b) => a - b))
     out.forEach((s, i) => i > 0 && expect(s.from).toBe(out[i - 1]!.from + out[i - 1]!.frames))
     expect(out.reduce((n, s) => n + s.frames, 0)).toBe(180)
+  })
+})
+
+describe('listPieces', () => {
+  it('keeps a list of three on one card over its last 4 s', () => {
+    expect(listPieces(10, 14.7, [11.2, 12, 13.1])).toEqual([
+      { from: 10.7, to: 14.7, first: 0, last: 3 },
+    ])
+  })
+
+  it('splits a long list into two cards that each show their own items', () => {
+    const p = listPieces(10, 17.6, [11.5, 13, 14.5, 16])!
+    expect(p).toHaveLength(2)
+    expect(p.map((x) => [x.first, x.last])).toEqual([
+      [0, 2],
+      [2, 4],
+    ])
+    for (const x of p) expect(x.to - x.from).toBeLessThanOrEqual(4)
+  })
+})
+
+describe('listSize', () => {
+  it('keeps every word inside the width and wraps long items between words', () => {
+    const size = listSize(['spoofing', 'phishing', 'business email compromise'], 750, 600)
+    expect('compromise'.length * 0.64 * size).toBeLessThanOrEqual(750)
+    expect(size).toBeGreaterThan(70)
+  })
+})
+
+describe('long lists', () => {
+  it('gives the second card of a split list the other layout', () => {
+    const text =
+      'This affects mail to outlook.com, hotmail.com, live.com, or msn.com addresses if your domain lacks DMARC.'
+    const ws: Word[] = text
+      .split(' ')
+      .map((t, i) => ({ text: t, start: i * 1.2, end: i * 1.2 + 0.6 }))
+    const props = {
+      durationSeconds: 24,
+      words: ws,
+      scenes: [{ kind: 'beat', start: 0, end: 24, text, visual: { type: 'title', title: 'x' } }],
+    } as unknown as ReelProps
+    const base: TimedShot[] = [
+      {
+        from: 0,
+        frames: 600,
+        show: 'KeyPoint',
+        props: { text: '' },
+        sceneIndex: 0,
+        origin: 'planned',
+      },
+    ]
+    const cards = revealLists(base, props, 30).filter((s) => Array.isArray(s.props.items))
+    expect(cards.length).toBe(2)
+    expect(cards[0]!.props.layout).toBeUndefined()
+    expect(cards[1]!.props.layout).toBe(1)
   })
 })

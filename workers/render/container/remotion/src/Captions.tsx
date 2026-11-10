@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
-import { highlightIndex, pageAt, toPages } from './lib/captions'
+import { captionWord, highlightIndex, pageAt, toPages } from './lib/captions'
 import { typeset } from './lib/typeset'
 import type { Word } from './lib/types'
 import {
@@ -23,7 +23,8 @@ export function Captions({ words }: { words: Word[] }) {
   const page = pageAt(pages, t, 0.2)
   if (!page) return null
   const first = page[0]?.start ?? 0
-  const lit = highlightIndex(page, t)
+  const before = words[words.indexOf(page[0]!) - 1]?.text ?? ''
+  const lit = highlightIndex(page, t, before)
   const pop = interpolate(t - first, [0, 0.1], [0.86, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -64,12 +65,15 @@ export function Captions({ words }: { words: Word[] }) {
                 borderRadius: 16,
                 background: active ? COLOR.accent : 'transparent',
                 color: active ? COLOR.accentInk : '#fff',
-                WebkitTextStroke: active ? undefined : '10px #000',
+                WebkitTextStroke: active ? undefined : '14px #000',
                 paintOrder: 'stroke fill',
-                textShadow: active ? undefined : '0 6px 24px rgba(0,0,0,0.5)',
+                // Reads on bright footage too: a dark halo under the outline.
+                textShadow: active
+                  ? undefined
+                  : '0 0 18px rgba(0,0,0,0.85), 0 6px 24px rgba(0,0,0,0.6)',
               }}
             >
-              {typeset(word.text)}
+              {typeset(captionWord(word.text))}
             </span>
           )
         })}

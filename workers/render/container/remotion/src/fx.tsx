@@ -17,14 +17,25 @@ export function useProgress(frames: number, from = 0): number {
 }
 
 export const easeOut = (p: number) => 1 - (1 - p) ** 3
+export const easeInOut = (p: number) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2)
 export const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 
 const cubic = (t: number) => 1 - (1 - t) ** 3
 const ramp = (frame: number, frames: number) =>
-  interpolate(frame, [0, frames], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: cubic })
+  interpolate(frame, [0, frames], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: cubic,
+  })
 
 /** How a shot arrives. Moving kinds slide over the previous shot, which the Reel keeps underneath. */
-export function Transition({ kind, children }: { kind: TransitionName | null; children: ReactNode }) {
+export function Transition({
+  kind,
+  children,
+}: {
+  kind: TransitionName | null
+  children: ReactNode
+}) {
   const frame = useCurrentFrame()
   let style: CSSProperties = {}
   let flash = 0
@@ -35,7 +46,10 @@ export function Transition({ kind, children }: { kind: TransitionName | null; ch
     style = { transform: `scale(${1 + 0.03 * (1 - ramp(frame, 5))})` }
   } else if (kind === 'slide') {
     const p = ramp(frame, TRANSITION_FRAMES.slide)
-    style = { transform: `translateX(${(1 - p) * 1080}px)`, boxShadow: p < 1 ? '-30px 0 60px rgba(0,0,0,0.45)' : undefined }
+    style = {
+      transform: `translateX(${(1 - p) * 1080}px)`,
+      boxShadow: p < 1 ? '-30px 0 60px rgba(0,0,0,0.45)' : undefined,
+    }
   } else if (kind === 'whip') {
     const p = ramp(frame, TRANSITION_FRAMES.whip)
     style = {
@@ -50,13 +64,23 @@ export function Transition({ kind, children }: { kind: TransitionName | null; ch
   return (
     <AbsoluteFill style={style}>
       {children}
-      {flash > 0 ? <AbsoluteFill style={{ background: '#fff', opacity: flash, pointerEvents: 'none' }} /> : null}
+      {flash > 0 ? (
+        <AbsoluteFill style={{ background: '#fff', opacity: flash, pointerEvents: 'none' }} />
+      ) : null}
     </AbsoluteFill>
   )
 }
 
 /** Slow push-in so a held screen never sits still. */
-export function Drift({ children, frames, to = 1.05 }: { children: ReactNode; frames: number; to?: number }) {
+export function Drift({
+  children,
+  frames,
+  to = 1.05,
+}: {
+  children: ReactNode
+  frames: number
+  to?: number
+}) {
   const scale = interpolate(useCurrentFrame(), [0, Math.max(1, frames)], [1, to], {
     extrapolateRight: 'clamp',
   })

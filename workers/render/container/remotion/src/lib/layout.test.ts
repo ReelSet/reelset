@@ -17,6 +17,9 @@ import {
   ZONE_H,
   TOP_SAFE,
   W,
+  BOTTOM_LIMIT,
+  CHROME_BOTTOM,
+  PANEL_TOP,
 } from '../theme'
 
 describe('caption band layout', () => {
@@ -59,5 +62,35 @@ describe('top chrome layout', () => {
 
   it('is 1080x1920', () => {
     expect([W, H]).toEqual([1080, 1920])
+  })
+})
+
+describe('safe zones', () => {
+  it('keeps burned content inside x in [11%, 86%] and above the bottom 12%', () => {
+    expect(SAFE.left).toBeGreaterThanOrEqual(W * 0.11)
+    expect(W - SAFE.right).toBeLessThanOrEqual(W * 0.86)
+    expect(BOTTOM_LIMIT).toBeLessThanOrEqual(H * 0.88)
+    expect(LOW_BOTTOM).toBeLessThanOrEqual(BOTTOM_LIMIT)
+  })
+
+  it('starts every screen below the top chrome', () => {
+    expect(PANEL_TOP).toBeGreaterThan(CHROME_BOTTOM)
+    expect(CONTENT_TOP).toBeGreaterThan(PANEL_TOP)
+  })
+})
+
+describe('code card and bar value layout', () => {
+  it('stacks the tags of a one-line DNS record', async () => {
+    const { cardLines } = await import('./looks')
+    expect(cardLines('v=DMARC1; p=none;', 'dns')).toEqual(['v=DMARC1;', 'p=none;'])
+    expect(cardLines('npm i x', 'bash')).toEqual(['npm i x'])
+    expect(cardLines('a=1; b=2; c=3; d=4; e=5;', 'dns')).toEqual(['a=1; b=2; c=3; d=4; e=5;'])
+  })
+
+  it('sizes the bar value column for the longest value on one line', async () => {
+    const { barValueWidth } = await import('./looks')
+    expect(barValueWidth(['49 min', '~20 min'])).toBeGreaterThanOrEqual(7 * 84 * 0.6)
+    expect(barValueWidth(['9%'])).toBe(220)
+    expect(barValueWidth(['1,234,567,890 tokens'])).toBe(420)
   })
 })

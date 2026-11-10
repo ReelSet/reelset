@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { lookKey } from './finalize'
 import { assignBroll } from './broll'
 import { sampleReel } from './fixtures'
 import { capFor, identityOf, imageIndex, newState, pickShot, varietyKey } from './planner'
@@ -44,12 +45,13 @@ describe('planner variety', () => {
       expect(n).toBeLessThanOrEqual(images[Number(i)]!.kind === 'figure' ? 3 : 2)
   })
 
-  it('never shows the same look twice in a row (only key points of another layout may follow each other)', () => {
+  it('never shows the same look twice in a row (only key points may follow each other)', () => {
     shots.forEach((s, i) => {
       const prev = shots[i - 1]
-      if (!prev || s.show === 'RepoDemo') return
+      if (!prev) return
       if (s.show !== 'KeyPoint') expect(s.show).not.toBe(prev.show)
-      expect(identityOf(s.show, s.props)).not.toBe(identityOf(prev.show, prev.props))
+      expect(s.props.alt).toBeUndefined()
+      expect(lookKey(s)).not.toBe(lookKey(prev))
     })
   })
 

@@ -10,6 +10,7 @@ import {
   decideRenderAction,
   failureRateExceeded,
   findOrphanKeys,
+  primarySource,
   prioritizeUpgrades,
   renderCostUsd,
   retentionCutoff,
@@ -238,5 +239,20 @@ describe('prioritizeUpgrades', () => {
   it('treats everything as visible when the minimum is 0 and breaks ties by id', () => {
     const out = prioritizeUpgrades([c('b', 0.5, 1, 0), c('a', 0.5, 1, 3)], 0, now)
     expect(out.map((x) => x.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('primarySource', () => {
+  it('uses the canonical URL kind over the discovering mention', () => {
+    expect(primarySource('reddit', 'https://github.com/shootthesound/fizgig')).toBe('github')
+    expect(primarySource('hn', 'https://arxiv.org/abs/2611.03953')).toBe('papers')
+    expect(primarySource('reddit', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('youtube')
+  })
+
+  it('keeps the mention source for articles and bare hosts', () => {
+    expect(primarySource('hn', 'https://mailroute.net/blog/outlook')).toBe('hn')
+    expect(primarySource('reddit', 'https://github.com/')).toBe('reddit')
+    expect(primarySource(null, null)).toBeNull()
+    expect(sourceLabel(primarySource('reddit', 'https://github.com/a/b'))).toBe('GitHub')
   })
 })

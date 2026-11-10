@@ -10,7 +10,8 @@ export function wordsFrom(text: string, startAt = 0, per = 0.36): Word[] {
   })
 }
 
-const HOOK = 'Tired of AI-generated UIs looking, well, generic? Meet unslop, a skill that fixes them.'
+const HOOK =
+  'Tired of AI-generated UIs looking, well, generic? Meet unslop, a skill that fixes them.'
 const BEATS = [
   'Unslop is a skill for Claude Code, Codex, and other agents. It turns vibecoded interfaces into a designed one with 12 passes.',
   'It targets slop like purple gradients, glows, emoji labels, and uneven spacing. Then it sets a design direction from your product and fixes the screen pass by pass.',
@@ -61,7 +62,11 @@ export function sampleReel(over: Partial<ReelProps> = {}): ReelProps {
         start: beatSpans[2]![0],
         end: beatSpans[2]![1],
         text: BEATS[2]!,
-        visual: { type: 'code', language: 'bash', code: 'git clone https://github.com/heydamir/unslop' },
+        visual: {
+          type: 'code',
+          language: 'bash',
+          code: 'git clone https://github.com/heydamir/unslop',
+        },
       },
       { kind: 'outro', start: outro[0], end: outro[1], text: OUTRO },
     ],

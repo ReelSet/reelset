@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { assignBroll } from './broll'
 import { barProps, withMeasure } from './numbers'
-import { fillEmpty, pacePunches, wordCueKeyPoints } from './polish'
-import { STATS_FLOOR, sourceVariants } from './sources'
+import { fillEmpty, wordCueKeyPoints } from './polish'
+import { STATS_FLOOR, countSaid, sourceVariants } from './sources'
 import { fitWindow, sentencesUpTo } from './text'
-import { comparisonFor, demoOnCue, splitSpan } from './timeline'
+import { comparisonFor, demoOnCue } from './timeline'
 import { displayTitle } from './typeset'
 import type { BrollClip, ReelProps, TimedShot, Word } from './types'
 
@@ -62,10 +62,20 @@ describe('wordCueKeyPoints', () => {
     expect(out!.props.value).toBe('12×')
   })
 
-  it('frees a cue with nothing honest to say for the planner', () => {
+  it('turns a cue that names things into the terms being said, lit as spoken', () => {
     const [out] = wordCueKeyPoints(
       [shot(0, 90, 'KeyPoint', { text: 'Linear parameter combination' }, 'cue')],
       reel('of student and expert parameters as one model'),
+      FPS,
+    )
+    expect(out!.props.items).toEqual(['expert parameters'])
+    expect(out!.origin).toBe('cue')
+  })
+
+  it('frees a cue with nothing honest to say for the planner', () => {
+    const [out] = wordCueKeyPoints(
+      [shot(0, 90, 'KeyPoint', { text: 'Linear parameter combination' }, 'cue')],
+      reel('and then it was so'),
       FPS,
     )
     expect(out!.props.text).toBe('')
@@ -88,32 +98,48 @@ describe('fillEmpty', () => {
     for (const s of out) expect(s.frames).toBeLessThanOrEqual(4 * FPS)
   })
 
-  it('puts an unused paper table in an empty slot of its own scene, plain when no number is said', () => {
-    const p = reel(text, {
+  const tableReel = (narration: string) =>
+    reel(narration, {
       scenes: [
         {
           kind: 'beat',
           start: 0,
           end: 12,
-          text,
+          text: narration,
           visual: { type: 'title', title: 'x' },
           shots: [
             {
               at: 'one',
               show: 'TableScreen',
-              props: { ref: 'Table 1', headers: ['M', 'A'], rows: ['x|1'] },
+              props: {
+                ref: 'Table 1',
+                headers: ['Method', 'Score'],
+                rows: ['Baseline|61.2', 'Ours|94.7', 'Other|12.0'],
+              },
             },
           ],
         },
       ],
     } as Partial<ReelProps>)
+
+  it('puts a paper table in an empty slot only when a number said over it is a cell', () => {
+    const said = tableReel(
+      'one two three four five six seven eight nine ten eleven Ours reaches 94.7% now',
+    )
     const out = fillEmpty(
       [shot(0, 120, 'EndCard', {}), shot(120, 120, 'KeyPoint', { text: '' })],
-      p,
+      said,
       FPS,
     )
     expect(out[1]!.show).toBe('TableScreen')
-    expect(out[1]!.props.plain).toBe(true)
+    expect(out[1]!.props.value).toBe('94.7')
+    const silent = tableReel(text)
+    const none = fillEmpty(
+      [shot(0, 120, 'EndCard', {}), shot(120, 120, 'KeyPoint', { text: '' })],
+      silent,
+      FPS,
+    )
+    expect(none.some((s) => s.show === 'TableScreen')).toBe(false)
   })
 
   it('leaves a remainder of at least 1.2 s rather than a flash', () => {
@@ -126,27 +152,6 @@ describe('fillEmpty', () => {
     covers(out, 290)
     const empty = out.find((s) => !s.props.text)
     if (empty) expect(empty.frames).toBeGreaterThanOrEqual(36)
-  })
-})
-
-describe('pacePunches', () => {
-  it('splits the longest still holds with a punch-in until the average is <= 2.4 s', () => {
-    const t = Array.from({ length: 40 }, (_, i) => `w${i}`).join(' ')
-    const shots = [
-      shot(0, 120, 'KeyPoint', { text: 'MOPD is a heavy pipeline' }),
-      shot(120, 120, 'StatSlam', { value: '9%', label: 'x' }),
-      shot(240, 120, 'RepoDemo', {}),
-    ]
-    const out = pacePunches(shots, reel(t), FPS)
-    covers(out, 360)
-    expect(out.length / (360 / FPS)).toBeGreaterThanOrEqual(1 / 2.4)
-    const punched = out.filter((s) => s.props.punch)
-    expect(punched.every((s) => s.show !== 'RepoDemo')).toBe(true)
-    for (const p of punched) {
-      const { lead, frames } = p.props.punch as { lead: number; frames: number }
-      expect(lead).toBeGreaterThanOrEqual(1.4 * FPS - 1)
-      expect(frames).toBe(120)
-    }
   })
 })
 
@@ -176,16 +181,6 @@ describe('comparisons', () => {
         { label: 'Now', value: '14.9GB' },
       ],
     })
-  })
-
-  it('splits a long build into pieces of at most 4 s', () => {
-    expect(splitSpan(0, 3, 2)).toEqual([[0, 3]])
-    expect(splitSpan(0, 6, 3.5)).toEqual([
-      [0, 3.5],
-      [3.5, 6],
-    ])
-    for (const [a, b] of splitSpan(0, 9, 8.5)!) expect(b! - a!).toBeLessThanOrEqual(4)
-    expect(splitSpan(0, 20, 1)).toBeNull()
   })
 
   it('keeps unrelated labels apart', () => {
@@ -244,14 +239,26 @@ describe('source looks', () => {
         facts: { reddit: { upvotes, comments } },
         scenes: [],
       } as never)
+    const said = [{ kind: 'beat', text: 'It got 521 points and 300 upvotes on the front page.' }]
+    const redditSaid = (upvotes: number) =>
+      sourceVariants('RedditPost', {
+        facts: { reddit: { upvotes, comments: 0 } },
+        scenes: said,
+      } as never)
     expect(reddit(75, 16)).not.toContain('stats')
-    expect(reddit(STATS_FLOOR.reddit, 0)).toContain('stats')
-    expect(
-      sourceVariants('HNThread', {
-        facts: { hn: { points: 521, comments: 347 } },
-        scenes: [],
-      } as never),
-    ).toContain('stats')
+    expect(redditSaid(STATS_FLOOR.reddit)).toContain('stats')
+    const hn = (scenes: unknown[]) =>
+      sourceVariants('HNThread', { facts: { hn: { points: 521, comments: 347 } }, scenes } as never)
+    expect(hn(said)).toContain('stats')
+    expect(hn([{ kind: 'beat', text: 'Outlook is rejecting mail.' }])).not.toContain('stats')
+  })
+
+  it('counts a number as said only when the narration says it', () => {
+    const scenes = [{ kind: 'beat', text: 'It has 1,240 stars (and 521 points).' }] as never
+    expect(countSaid({ scenes }, 1240)).toBe(true)
+    expect(countSaid({ scenes }, 521)).toBe(true)
+    expect(countSaid({ scenes }, 347)).toBe(false)
+    expect(countSaid({ scenes }, undefined)).toBe(false)
   })
 })
 

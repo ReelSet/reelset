@@ -176,6 +176,10 @@ export function buildFacts(mentions: readonly MentionForFacts[], canonicalUrl: s
       })
     }
   }
+  const repo = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#]|$)/.exec(
+    canonicalUrl,
+  )
+  if (!facts.repo && repo?.[1] && repo[2]) facts.repo = { owner: repo[1], name: repo[2] }
   const host = hostOf(canonicalUrl)
   if (!facts.article && host && !NON_ARTICLE_HOSTS.test(host) && !facts.paper) {
     facts.article = { site: host }

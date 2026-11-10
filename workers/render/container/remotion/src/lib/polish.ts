@@ -1,7 +1,8 @@
-import { claimPhrases, findQuantities, quantityValue } from './text-rules'
+import { isCallToAction, termsCard } from './finalize'
+import { findQuantities, quantityValue } from './text-rules'
 import { FOLD_MAX_S, MAX_HOLD_S, givenKeyPoint, keyPointFor } from './planner'
-import { namesOf, spokenIn, wordsIn } from './numbers'
-import { cellLabel, matchCell, readTable } from './table'
+import { spokenIn, wordsIn } from './numbers'
+import { tableFor } from './table'
 import type { ReelProps, TimedShot } from './types'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -32,7 +33,7 @@ function wordShot(shot: TimedShot, props: ReelProps, fps: number, pick: Picker):
     3,
     str(shot.props.sub),
   )
-  return options.find((t) => !repeatsList(t, pick.listWords)) ?? ''
+  return options.find((t) => !repeatsList(t, pick.listWords) && !isCallToAction(t)) ?? ''
 }
 
 const repeatsList = (text: string, items: readonly string[]) =>
@@ -71,9 +72,15 @@ export function wordCueKeyPoints(shots: TimedShot[], props: ReelProps, fps: numb
     const stat = statFor(shot, props, fps, shown)
     if (stat) return stat
     const given = givenKeyPoint(props, shot.props.text, shot.props.sub)
-    const own = given && !repeatsList(given, pick.listWords) ? given : null
+    const own =
+      given && !repeatsList(given, pick.listWords) && !isCallToAction(given) ? given : null
     const text = own && !pick.used.has(own.toLowerCase()) ? own : wordShot(shot, props, fps, pick)
-    if (!text) return { ...shot, origin: 'planned', props: { text: '', sub: '' } }
+    if (!text) {
+      // A cue that names things ("Linear parameter combination") lights them as they are said.
+      const terms = termsCard(shot, props, fps, 1)
+      if (terms) return { ...terms, origin: 'cue' }
+      return { ...shot, origin: 'planned', props: { text: '', sub: '' } }
+    }
     pick.used.add(text.toLowerCase())
     const sub = own === text ? str(shot.props.sub) : ''
     return { ...shot, props: { ...shot.props, text, sub } }
@@ -117,7 +124,7 @@ const isCaptionOnly = (s: TimedShot) =>
   s.show === 'KeyPoint' && !s.props.quote && !Array.isArray(s.props.items) && !str(s.props.text)
 const isBlank = (s: TimedShot) => isCaptionOnly(s) && typeof s.props.bg !== 'number'
 
-/** Paper tables the script referenced (renderer props), for a plain table look later in the reel. */
+/** Paper tables the script referenced (renderer props), for an empty slot where a cell is said. */
 const tablesOf = (props: ReelProps): Record<string, unknown>[] =>
   props.scenes.flatMap((sc) =>
     (sc.shots ?? []).filter((s) => s.show === 'TableScreen' && s.props).map((s) => s.props!),
@@ -167,9 +174,12 @@ export function fillEmpty(shots: TimedShot[], props: ReelProps, fps: number): Ti
     }
     const asset = (): TimedShot | null => {
       const table = tables[0]
-      if (table && shot === tableSlot && !has('TableScreen') && prev?.show !== 'TableScreen')
-        return { ...shot, show: 'TableScreen', props: tableProps(table, shot, props, fps) }
-      const fig = figures.find((i) => figureUses(i) < 2)
+      const focused =
+        table && shot === tableSlot && !has('TableScreen') && prev?.show !== 'TableScreen'
+          ? tableFor(table, shot, props, fps)
+          : null
+      if (focused) return { ...shot, show: 'TableScreen', props: focused }
+      const fig = figures.find((i) => figureUses(i) < 1)
       const nextShow = shots[shots.indexOf(shot) + 1]?.show
       if (fig !== undefined && prev?.show !== 'FigureZoom' && nextShow !== 'FigureZoom') {
         const variant = 2 + figureUses(fig)
@@ -186,6 +196,7 @@ export function fillEmpty(shots: TimedShot[], props: ReelProps, fps: number): Ti
     const max = Math.round(MAX_HOLD_S * fps)
     const nextOk =
       next &&
+      next.origin !== 'cue' &&
       next.sceneIndex === shot.sceneIndex &&
       (next.show === 'EndCard' ||
         next.show === 'StatSlam' ||
@@ -235,34 +246,6 @@ export function fillEmpty(shots: TimedShot[], props: ReelProps, fps: number): Ti
   return out
 }
 
-/** A plain results table, its highlight moved to the cell of a number said over it (if any). */
-function tableProps(
-  table: Record<string, unknown>,
-  shot: TimedShot,
-  props: ReelProps,
-  fps: number,
-): Record<string, unknown> {
-  const view = readTable(table)
-  const scene = props.scenes[shot.sceneIndex]
-  const said =
-    view && scene && 'text' in scene
-      ? spokenIn(scene.text, wordsIn(props.words, shot.from / fps, (shot.from + shot.frames) / fps))
-      : []
-  for (const q of said) {
-    const cell = view ? matchCell(view, q.raw, q.label) : null
-    if (!view || !cell) continue
-    return {
-      ...table,
-      plain: false,
-      hi: cell.row,
-      col: cell.col,
-      value: view.rows[cell.row]![cell.col]!,
-      label: cellLabel(view.rows[cell.row]![0], view.headers[cell.col]),
-    }
-  }
-  return { ...table, plain: true, value: '', label: '' }
-}
-
 /**
  * Caption-only shots that got no stock clip are absorbed by their neighbours (the previous shot
  * holds longer, the next one starts earlier, each at most 4 s). Only when neither has room does the
@@ -281,7 +264,8 @@ export function settleEmpty(shots: TimedShot[], props: ReelProps, fps: number): 
     const prev = out[out.length - 1]
     const next = list[i + 1]
     const canPrev = prev && prev.show !== 'EndCard' ? Math.max(0, max - prev.frames) : 0
-    const canNext = next && !isEmpty(next) ? Math.max(0, max - next.frames) : 0
+    const canNext =
+      next && !isEmpty(next) && next.origin !== 'cue' ? Math.max(0, max - next.frames) : 0
     if (canPrev + canNext >= shot.frames) {
       const toPrev = Math.min(canPrev, shot.frames)
       if (prev) prev.frames += toPrev
@@ -291,12 +275,9 @@ export function settleEmpty(shots: TimedShot[], props: ReelProps, fps: number): 
       }
       return
     }
-    const shown = new Set(list.map((s) => str(s.props.text).toLowerCase()))
-    const text =
-      claimPhrases(props.title, { names: namesOf(props) }).find(
-        (t) => !shown.has(t.toLowerCase()),
-      ) ?? ''
-    out.push({ ...shot, props: { ...shot.props, text } })
+    // The terms being said, never the title again (the hook and end card already show it).
+    const terms = termsCard(shot, props, fps, 1)
+    out.push(terms ?? shot)
   })
   return out
 }
@@ -333,55 +314,4 @@ export function easeTextRuns(shots: TimedShot[], fps: number): TimedShot[] {
     out.push(shot)
   })
   return out
-}
-
-/** Screens that hold still after their entrance, so a punch-in cut reads as emphasis, not a reset. */
-const PUNCHABLE = new Set(['KeyPoint', 'StatSlam', 'PaperPage', 'RepoPage', 'Compare'])
-const PACE_S = 2.4
-const MIN_PIECE_S = 1.4
-
-/**
- * Keeps the cutting pace (average shot <= 2.4 s, the QA gate is 2.5) without inventing content:
- * the longest still holds get a punch-in cut at the word boundary nearest their middle. The second
- * piece shows the same screen, continued (`punch.lead` frames already played) and pushed in.
- */
-export function pacePunches(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
-  const total = shots.reduce((n, s) => n + s.frames, 0)
-  const need = Math.ceil(total / fps / PACE_S) - shots.length
-  if (need <= 0) return shots
-  const can = (s: TimedShot) =>
-    PUNCHABLE.has(s.show) &&
-    !s.props.punch &&
-    !Array.isArray(s.props.items) &&
-    !Array.isArray(s.props.times) &&
-    !(s.show === 'KeyPoint' && !str(s.props.text) && !s.props.quote) &&
-    s.frames >= 2 * MIN_PIECE_S * fps
-  const picked = new Set(
-    shots
-      .filter(can)
-      .sort((a, b) => b.frames - a.frames)
-      .slice(0, need),
-  )
-  return shots.flatMap((s) => {
-    if (!picked.has(s)) return [s]
-    const mid = (s.from + s.frames / 2) / fps
-    const lo = (s.from + MIN_PIECE_S * fps) / fps
-    const hi = (s.from + s.frames - MIN_PIECE_S * fps) / fps
-    const cutAt = props.words
-      .map((w) => w.start)
-      .filter((t) => t >= lo && t <= hi)
-      .sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0]
-    if (cutAt === undefined) return [s]
-    const lead = Math.round(cutAt * fps) - s.from
-    return [
-      { ...s, frames: lead },
-      {
-        ...s,
-        from: s.from + lead,
-        frames: s.frames - lead,
-        sfx: undefined,
-        props: { ...s.props, punch: { lead, frames: s.frames } },
-      },
-    ]
-  })
 }

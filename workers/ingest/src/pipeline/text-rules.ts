@@ -397,8 +397,19 @@ export function claimPhrases(sentence: string, opts: PhraseOpts = {}): string[] 
   return [...new Set(out)]
 }
 
+/** "block by block", "step by step", "side to side": the phrase ends inside a fixed pairing. */
+const insidePairing = (toks: readonly string[], n: number): boolean => {
+  const l = low(toks[n] ?? '')
+  return (
+    (l === 'by' || l === 'to' || l === 'after' || l === 'for') &&
+    n > 0 &&
+    low(toks[n - 1] ?? '') === low(toks[n + 1] ?? '')
+  )
+}
+
 const cutsBefore = (toks: readonly string[], n: number): boolean => {
   const l = low(toks[n] ?? '')
+  if (insidePairing(toks, n)) return false
   if (!CUT_BEFORE.has(l)) return false
   if (l !== 'and' && l !== 'or') return true
   const next = toks[n + 1] ?? ''
