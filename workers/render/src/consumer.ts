@@ -29,6 +29,7 @@ import { containerJobId, posterKeyFor, videoKeyFor } from './keys'
 import {
   classifyFailure,
   collectImageUrls,
+  containerTitle,
   decideRenderAction,
   renderCostUsd,
   sourceImageUrls,
@@ -223,7 +224,7 @@ async function renderAndUpload(
     {
       jobId,
       script,
-      title: item.title,
+      title: containerTitle(item.title),
       sourceLabel: item.sourceLabel,
       imageUrls: collectImageUrls(script),
       voice: narration ? deps.voice : (deps.edgeVoice ?? deps.voice),

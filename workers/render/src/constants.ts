@@ -6,6 +6,7 @@ export const RETRY_BASE_DELAY_SECONDS = 30
 export const UNREACHABLE_MAX_RETRIES = 8
 export const UNREACHABLE_MAX_DELAY_SECONDS = 300
 
+export const CONTAINER_TITLE_MAX_CHARS = 200
 export const MAX_VIDEO_BYTES = 25 * 1024 * 1024
 export const CONTAINER_SLOTS = 3
 export const CONTAINER_BASE_URL = 'http://container'

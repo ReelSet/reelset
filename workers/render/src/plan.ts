@@ -1,5 +1,6 @@
 import type { ItemStatus, ReelScript, RenderStatus, Source } from '@reelset/core'
 import {
+  CONTAINER_TITLE_MAX_CHARS,
   CONTAINER_USD_PER_SECOND,
   DEAD_LETTER_ALERT_MIN,
   FAILURE_RATE_MIN_RENDERS,
@@ -75,6 +76,14 @@ const SOURCE_LABELS: Record<Source, string> = {
   reddit: 'Reddit',
   youtube: 'YouTube',
   papers: 'Research',
+}
+
+export function containerTitle(title: string): string {
+  if (title.length <= CONTAINER_TITLE_MAX_CHARS) return title
+  const clipped = title.slice(0, CONTAINER_TITLE_MAX_CHARS - 1)
+  const wordEnd = clipped.lastIndexOf(' ')
+  const base = wordEnd > CONTAINER_TITLE_MAX_CHARS / 2 ? clipped.slice(0, wordEnd) : clipped
+  return `${base.trimEnd()}\u2026`
 }
 
 export function sourceLabel(source: Source | null): string {
