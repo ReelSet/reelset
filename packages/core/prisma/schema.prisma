@@ -149,6 +149,18 @@ enum SpendCategory {
   @@map("spend_category")
 }
 
+enum InstagramPostStatus {
+  draft
+  queued
+  posting
+  posted
+  failed
+  deleting
+  deleted
+
+  @@map("instagram_post_status")
+}
+
 model Item {
   id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   canonicalKey    String                     @unique(map: "item_canonical_key_key") @map("canonical_key") @db.VarChar(512)
@@ -179,6 +191,7 @@ model Item {
   chunks   EvidenceChunk[]
   events   ItemEvent[]
   renders  Render[]
+  instagramPosts InstagramPost[]
   likes    Like[]
   saves    Save[]
   usage    Event[]
@@ -187,6 +200,30 @@ model Item {
   @@index([status, statusChangedAt], map: "item_status_changed_idx")
   @@index([status, queuedAt], map: "item_requeue_idx")
   @@map("item")
+}
+
+model InstagramPost {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId            String                  @map("item_id") @db.Uuid
+  videoKey          String                  @map("video_key")
+  caption           String
+  status            InstagramPostStatus     @default(queued)
+  mediaPk           String?                 @map("media_pk")
+  permalink         String?
+  error             String?
+  attempts          Int                     @default(0)
+  requestedBy       String?                 @map("requested_by")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt         DateTime?               @map("started_at") @db.Timestamptz(6)
+  postedAt          DateTime?               @map("posted_at") @db.Timestamptz(6)
+  deleteRequestedAt DateTime?               @map("delete_requested_at") @db.Timestamptz(6)
+  updatedAt         DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt], map: "instagram_post_status_created_idx")
+  @@index([itemId], map: "instagram_post_item_idx")
+  @@map("instagram_post")
 }
 
 model Mention {

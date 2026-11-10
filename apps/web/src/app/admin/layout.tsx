@@ -11,6 +11,7 @@ export const metadata = {
 
 const LINKS = [
   { href: '/admin', label: 'Pipeline' },
+  { href: '/admin/instagram', label: 'Instagram' },
   { href: '/admin/items', label: 'Items' },
   { href: '/admin/ingest', label: 'Ingest runs' },
   { href: '/admin/renders', label: 'Renders' },

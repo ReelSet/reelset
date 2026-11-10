@@ -156,6 +156,12 @@ Replaces the card-on-empty-background look with full-bleed screens cut on spoken
 - Safe zones: everything stays inside x 11-86% at every frame: cut transitions scale in from 0.96 / 0.985 instead of 1.1 / 1.03 (content never crosses the 11% line on the way in), the top-right brand chip keeps 16 px inside the 86% line and right-aligned accent bars 14 px.
 - `TEMPLATE_VERSION` 8 (`workers/render/src/constants.ts` and `reel/version.py`). `scripts/maintenance/render-template-counts.ts` and `render-upgrade-status.ts` compute keys with the live voice (`aura2-<speaker>` when `tts_provider` is aura2, `kokoro-af_heart` when it is kokoro).
 
+## Instagram posts
+
+- Table `instagram_post` (migration `20261111000000_instagram_post`): `status` is `draft|queued|posting|posted|failed|deleting|deleted` (`deleted` also means a cancelled queued post). Transitions live in core `canTransitionPost`; a unique partial index allows one live (queued, posting, posted, deleting) row per item.
+- Only the render worker moves rows past `queued` (`claimNextPost`, `claimNextDelete`, `markPosted`, `markPostFailed`, `releasePostToQueue`). Web only inserts `queued` rows, cancels `queued` ones and sets `delete_requested_at` on `posted` ones. Caption limits (2200 chars, 30 hashtags) are validated in web before insert.
+- Account state and the encrypted session are `app_setting` keys `ig_account` and `ig_session_enc` (core `getIgAccount`, `getEncryptedSession`).
+
 ## Feed visibility (web)
 
 An item appears only if `item.status = 'rendered'` AND it has a `render` with `status = 'done'` AND `video_key IS NOT NULL` (latest such render wins).

@@ -2,6 +2,7 @@ import { getContainer } from '@cloudflare/containers'
 import {
   createDb,
   createLogger,
+  errorFields,
   getSetting,
   recordSpend,
   SETTINGS,
@@ -16,11 +17,16 @@ import { processRenderJob } from './consumer'
 import { pickBroll } from './pexels'
 import type { Env } from './env'
 import { handleParsePaper } from './paper-route'
+import { handleIgRoute, matchIgRoute } from './instagram/routes'
+import { IG_CONTAINER_SLOT, igConfigured, withIgDeps } from './instagram/wire'
+import { runInstagramQueue } from './instagram/service'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import { createMaintenanceStore, createRenderStore, type ItemForRender } from './store'
 import { loadTtsConfig } from './tts-config'
 
 export { ReelContainer } from './container'
+
+const INTERNAL_HOST = 'render.internal'
 
 function makeLogger(env: Env): Logger {
   return createLogger({ app: 'render', level: (env.LOG_LEVEL as Logger['level']) ?? 'info' })
@@ -33,10 +39,23 @@ function containerSlots(env: Env) {
 }
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url)
+    const igRoute = matchIgRoute(request.method, url.pathname)
+    if (igRoute !== 'not_found') {
+      const log = makeLogger(env).child({ route: `ig/${igRoute}` })
+      const container = getContainer(env.REEL_CONTAINER, IG_CONTAINER_SLOT)
+      return handleIgRoute(igRoute, request, {
+        token: env.IG_ADMIN_TOKEN,
+        withDeps: (fn) => withIgDeps(env, container, log, fn),
+        waitUntil: (p) => ctx.waitUntil(p),
+        log,
+      })
+    }
     const route = matchRoute(request.method, url.pathname)
-    if (route === 'not_found') return new Response('not found', { status: 404 })
+    if (route === 'not_found' || url.hostname !== INTERNAL_HOST) {
+      return new Response('not found', { status: 404 })
+    }
     const slot = Math.floor(Math.random() * CONTAINER_SLOTS)
     const container = getContainer(env.REEL_CONTAINER, `slot-${slot}`)
     const log = makeLogger(env).child({ route })
@@ -104,6 +123,14 @@ export default {
       log,
       max: 1,
     })
+    if (igConfigured(env)) {
+      const container = getContainer(env.REEL_CONTAINER, IG_CONTAINER_SLOT)
+      ctx.waitUntil(
+        withIgDeps(env, container, log, runInstagramQueue).catch((err) =>
+          log.error(errorFields(err), 'instagram queue run failed'),
+        ),
+      )
+    }
     ctx.waitUntil(
       (async () => {
         const upgradeEnabled = await getSetting(db, SETTINGS.renderUpgradeEnabled, log)
