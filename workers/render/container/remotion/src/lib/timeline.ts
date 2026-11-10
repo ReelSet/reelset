@@ -3,20 +3,36 @@ import { headlineFrom } from './extract'
 import { assignBroll } from './broll'
 import { groundShots } from './ground'
 import {
+  DEMO_CUE,
   MAX_HOLD_S,
   imageIndex,
   limitThumbnailReuse,
   newState,
   planRange,
   register,
+  reserveCues,
   type PlanState,
 } from './planner'
 import { enforceVariety } from './variety'
-import { holdFor } from './table'
+import { cellLabel, holdFor, matchCell, readTable } from './table'
+import { barProps, quantitiesOf, spokenIn, wordsIn } from './numbers'
+import { revealLists, spliceShots } from './lists'
+import { quantityValue } from './text-rules'
+import {
+  easeTextRuns,
+  fillEmpty,
+  pacePunches,
+  polishKeyPoints,
+  settleEmpty,
+  wordCueKeyPoints,
+} from './polish'
+import { completeCode } from './planner'
 import type { ReelProps, Scene, ScreenName, Shot, TimedScene, TimedShot } from './types'
 import { SCREEN_NAMES, SFX_NAMES } from './types'
 
 export const MIN_CUE_GAP_FRAMES = 18
+/** A first cue this far into its scene keeps its word; planned shots fill the lead-in. */
+export const LEAD_IN_S = 1.2
 
 export function totalFrames(durationSeconds: number, fps: number): number {
   return Math.max(1, Math.ceil(durationSeconds * fps))
@@ -96,19 +112,29 @@ function fitSceneShots(
       warnings.push(`scene ${sceneIndex} shot ${k}: unknown screen or sfx, skipped`)
       continue
     }
-    const t =
-      k === 0
-        ? t0
-        : typeof raw.t === 'number' && raw.t >= t0 && raw.t < t1
-          ? raw.t
-          : cueTime(raw.at, props.words, { from: t0, to: t1 })
-    if (t === null) {
-      warnings.push(
-        `scene ${sceneIndex} shot ${k}: cue "${raw.at}" not found in the voice, skipped`,
-      )
-      continue
+    let shotProps = raw.props ?? {}
+    if (raw.show === 'CodeBlock') {
+      const code = completeCode(shotProps.code)
+      if (!code) {
+        warnings.push(`scene ${sceneIndex} shot ${k}: code is not a complete line, skipped`)
+        continue
+      }
+      shotProps = { ...shotProps, code }
     }
-    const from = k === 0 ? scene.from : Math.round(t * fps)
+    const t =
+      typeof raw.t === 'number' && raw.t >= t0 && raw.t < t1
+        ? raw.t
+        : cueTime(raw.at, props.words, { from: t0, to: t1 })
+    if (t === null) {
+      if (k > 0) {
+        warnings.push(
+          `scene ${sceneIndex} shot ${k}: cue "${raw.at}" not found in the voice, skipped`,
+        )
+        continue
+      }
+    }
+    const lead = t === null || t - t0 < LEAD_IN_S ? t0 : t
+    const from = lead === t0 ? scene.from : Math.round(lead * fps)
     const prev = cueShots[cueShots.length - 1]
     const minGap = prev ? Math.round((holdFor(prev.show)?.gap ?? 0) * fps) : 0
     if (
@@ -124,7 +150,7 @@ function fitSceneShots(
       from,
       frames: 1,
       show: raw.show,
-      props: raw.props ?? {},
+      props: shotProps,
       sfx: raw.sfx,
       sceneIndex,
       origin: 'cue',
@@ -137,7 +163,14 @@ function fitSceneShots(
     })
     return finish(planned, scene.from, sceneEnd)
   }
-  cueShots[0]!.from = scene.from
+  reserveCues(state, props, cueShots)
+  const lead: TimedShot[] =
+    cueShots[0]!.from > scene.from
+      ? planRange(planCtx, scene, sceneIndex, scene.start, cueShots[0]!.from / fps, state, {
+          firstInScene: true,
+          lastInScene: false,
+        })
+      : []
   for (const s of cueShots) {
     register(
       state,
@@ -148,7 +181,7 @@ function fitSceneShots(
       s.props,
     )
   }
-  const out: TimedShot[] = []
+  const out: TimedShot[] = [...lead]
   cueShots.forEach((s, i) => {
     const hold = holdFor(s.show)
     const maxHold = Math.round((hold?.max ?? MAX_HOLD_S) * fps)
@@ -198,7 +231,12 @@ export function withDemoOffsets(
 }
 
 /** Beat sheet cues (or the deterministic planner when absent) -> shots covering every frame. Never throws. */
-export function resolveShots(props: ReelProps, fps: number, total: number): Resolved {
+export function resolveShots(
+  props: ReelProps,
+  fps: number,
+  total: number,
+  trace?: (stage: string, shots: readonly TimedShot[]) => void,
+): Resolved {
   const warnings: string[] = []
   const scenes = toFrames(props.scenes, fps, total)
   const state = newState()
@@ -218,11 +256,225 @@ export function resolveShots(props: ReelProps, fps: number, total: number): Reso
       })
     }
   })
-  const limited = limitThumbnailReuse(shots, props, fps)
-  const varied = enforceVariety(limited, props, fps)
-  const grounded = groundShots(varied, props)
-  return {
-    shots: withDemoOffsets(assignBroll(grounded, props.broll), props.demo?.seconds, fps),
-    warnings,
+  const step = (stage: string, out: TimedShot[]) => {
+    trace?.(stage, out)
+    return out
   }
+  step('fit', shots)
+  const listed = step('lists', wordCueKeyPoints(revealLists(shots, props, fps), props, fps))
+  const limited = step('thumbs', limitThumbnailReuse(listed, props, fps))
+  const tabled = step('tables', matchTables(limited, props, fps))
+  const compared = step('compare', compareStats(tabled, props, fps))
+  const varied = step('variety', demoOnCue(enforceVariety(compared, props, fps), props, fps))
+  const grounded = step('ground', groundShots(varied, props))
+  const worded = step(
+    'words',
+    fillEmpty(easeTextRuns(polishKeyPoints(grounded, props, fps), fps), props, fps),
+  )
+  const backed = step('broll', settleEmpty(assignBroll(worded, props.broll), props, fps))
+  const paced = step('pace', pacePunches(backed, props, fps))
+  return { shots: withDemoOffsets(paced, props.demo?.seconds, fps), warnings }
+}
+
+/**
+ * The highlighted table cell must be the number spoken over it. A number narrated during the shot
+ * moves the highlight to its cell; if the table does not hold it, the shot becomes a StatSlam of
+ * that number (grounded later).
+ */
+export function matchTables(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
+  return shots.map((shot) => {
+    if (shot.show !== 'TableScreen') return shot
+    const view = readTable(shot.props)
+    const scene = props.scenes[shot.sceneIndex]
+    if (!view || !scene || !('text' in scene)) return shot
+    const spoken = wordsIn(props.words, shot.from / fps - 0.3, (shot.from + shot.frames) / fps)
+    const said = spokenIn(scene.text, spoken)
+    for (const q of said) {
+      const cell = matchCell(view, q.raw, q.label)
+      if (!cell) continue
+      const value = view.rows[cell.row]![cell.col]!
+      return {
+        ...shot,
+        props: {
+          ...shot.props,
+          hi: cell.row,
+          col: cell.col,
+          value,
+          label: cellLabel(view.rows[cell.row]![0], view.headers[cell.col]),
+        },
+      }
+    }
+    const first = said[0]
+    if (!first) return { ...shot, props: { ...shot.props, plain: true, value: '', label: '' } }
+    return {
+      ...shot,
+      show: 'StatSlam' as ScreenName,
+      props: { value: first.raw, label: first.label },
+      sfx: 'ding' as const,
+    }
+  })
+}
+
+/**
+ * A stat said as one side of a comparison ("94.7% average recovery, surpassing MOPD's 80.9%";
+ * "falls from 22.9 to 14.9 gigabytes") is shown once, as bars that name both sides and build as
+ * each number is said (`times`, seconds into the shot). It runs from the first number to just
+ * after the second, in pieces of at most 4 s; later shots of either number are dropped.
+ */
+export function compareStats(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
+  let out = shots.map((s) => ({ ...s }))
+  const done = new Set<number | null>()
+  for (let i = 0; i < out.length; i += 1) {
+    const shot = out[i]!
+    if (shot.show !== 'StatSlam') continue
+    const scene = props.scenes[shot.sceneIndex]
+    if (!scene || !('text' in scene)) continue
+    const v = quantityValue(String(shot.props.value ?? ''))
+    if (done.has(v)) continue
+    const pair = comparisonFor(scene.text, v)
+    if (!pair) continue
+    const t1 = spokenAt(props, scene, pair.first)
+    const t2 = spokenAt(props, scene, pair.second)
+    if (!t1 || !t2 || t2.start <= t1.start) continue
+    const prev = out[i - 1]
+    const blankBefore =
+      prev &&
+      prev.sceneIndex === shot.sceneIndex &&
+      prev.show === 'KeyPoint' &&
+      !prev.props.text &&
+      !prev.props.items &&
+      !prev.props.quote
+    const floor = prev ? (blankBefore ? prev.from : prev.from + 0.6 * fps) / fps : 0
+    const start = blankBefore ? floor : Math.max(floor, Math.min(shot.from / fps, t1.start - 0.15))
+    const end = Math.max((shot.from + shot.frames) / fps, t2.end + 0.5)
+    const pieces = splitSpan(start, end, t2.start - 0.15)
+    if (!pieces) continue
+    const made: TimedShot[] = pieces.map(([a, b]) => {
+      const from = Math.round(a! * fps)
+      return {
+        ...shot,
+        from,
+        frames: Math.round(b! * fps) - from,
+        show: 'BarRace',
+        sfx: 'tick',
+        props: {
+          ...pair.bars,
+          times: [t1.start - a!, t2.start - a!].map((t) => Math.round(t * 100) / 100),
+        },
+      }
+    })
+    done.add(v)
+    done.add(quantityValue(pair.second.raw))
+    done.add(quantityValue(pair.first.raw))
+    out = spliceShots(out, made, fps)
+    i = out.indexOf(made[made.length - 1]!)
+    for (let k = i + 1; k < out.length && out[k]!.sceneIndex === shot.sceneIndex; k += 1) {
+      const s = out[k]!
+      if (made.includes(s)) continue
+      const vals =
+        s.show === 'StatSlam'
+          ? [quantityValue(String(s.props.value ?? ''))]
+          : s.show === 'BarRace' && Array.isArray(s.props.bars)
+            ? (s.props.bars as { value?: unknown }[]).map((b) =>
+                quantityValue(String(b.value ?? '')),
+              )
+            : []
+      if (vals.some((x) => done.has(x)))
+        out[k] = { ...s, show: 'KeyPoint', props: { text: '', sub: '' }, origin: 'planned' }
+    }
+  }
+  return out
+}
+
+type Said = { raw: string; index: number; sentence: string }
+
+/** `[a, b]` in pieces of at most 4 s, cut at `prefer` when that works, else evenly (<= 3 pieces). */
+export function splitSpan(a: number, b: number, prefer: number): number[][] | null {
+  if (b - a <= MAX_HOLD_S) return [[a, b]]
+  if (
+    prefer - a >= 1.2 &&
+    prefer - a <= MAX_HOLD_S &&
+    b - prefer <= MAX_HOLD_S &&
+    b - prefer >= 1.2
+  )
+    return [
+      [a, prefer],
+      [prefer, b],
+    ]
+  const n = Math.ceil((b - a) / MAX_HOLD_S)
+  if (n > 3) return null
+  const step = (b - a) / n
+  return Array.from({ length: n }, (_, k) => [a + k * step, a + (k + 1) * step])
+}
+
+/** The other side of a comparison for value `v` in a narration text, as named bars. */
+export function comparisonFor(
+  text: string,
+  v: number | null,
+): { first: Said; second: Said; bars: ReturnType<typeof barProps> } | null {
+  const all = quantitiesOf(text)
+  const q = all.find((x) => quantityValue(x.raw) === v)
+  if (!q) return null
+  const from = / · from (\S+)$/.exec(q.label)?.[1]
+  if (from) {
+    const digits = /\d[\d,]*(?:\.\d+)?/.exec(from)?.[0] ?? ''
+    const index = digits ? q.sentence.indexOf(digits) : -1
+    const head = q.label.split(' · ')[0] ?? ''
+    if (index < 0 || index >= q.index || !head) return null
+    return {
+      first: { raw: from, index, sentence: q.sentence },
+      second: q,
+      bars: {
+        title: head,
+        bars: [
+          { label: 'Before', value: from },
+          { label: 'Now', value: q.raw },
+        ],
+      },
+    }
+  }
+  const other = all.find(
+    (x) =>
+      x !== q &&
+      x.sentence === q.sentence &&
+      x.unit === q.unit &&
+      x.unit !== '' &&
+      quantityValue(x.raw) !== v &&
+      !x.label.includes(' · from'),
+  )
+  if (!other) return null
+  const [first, second] = q.index < other.index ? [q, other] : [other, q]
+  const bars = barProps(first, second)
+  return bars.title ? { first, second, bars } : null
+}
+
+/** When the digits of a narrated number are spoken inside a scene. */
+function spokenAt(
+  props: ReelProps,
+  scene: { start: number; end: number },
+  q: Said,
+): { start: number; end: number } | null {
+  const digits = /\d[\d,]*(?:\.\d+)?/.exec(q.raw)?.[0] ?? ''
+  const w = props.words.find(
+    (x) => x.start >= scene.start - 0.01 && x.start < scene.end && x.text.includes(digits),
+  )
+  return w ? { start: w.start, end: w.end } : null
+}
+
+/** The demo cut lands on the word that points at it ("Watch the tour"), not a beat later. */
+export function demoOnCue(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
+  const out = shots.map((s) => ({ ...s }))
+  for (const w of props.words) {
+    if (!DEMO_CUE.test(w.text)) continue
+    const at = Math.round(w.start * fps)
+    const k = out.findIndex((s) => s.show === 'RepoDemo' && s.from > at && s.from - at <= 0.9 * fps)
+    const prev = out[k - 1]
+    if (k <= 0 || !prev || at - prev.from < 0.6 * fps) continue
+    const d = out[k]!.from - at
+    if (out[k]!.frames + d > MAX_HOLD_S * fps) continue
+    prev.frames -= d
+    out[k]!.from = at
+    out[k]!.frames += d
+  }
+  return out
 }

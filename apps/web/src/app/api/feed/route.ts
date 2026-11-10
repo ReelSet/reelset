@@ -35,6 +35,7 @@ function toDto(item: RankedItem, base: string): FeedItemDto {
     liked: item.liked,
     saved: item.saved,
     mentions: item.mentions,
+    credits: item.credits,
   }
 }
 

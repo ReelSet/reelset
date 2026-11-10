@@ -85,7 +85,7 @@ export function ProfileLibrary({ liked, saved }: { liked: PosterReel[]; saved: P
                   />
                 )}
                 <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2 pt-8 text-[11px] leading-snug">
-                  <span className="line-clamp-2">{r.title}</span>
+                  <span className="line-clamp-2 [overflow-wrap:anywhere]">{r.title}</span>
                 </span>
               </a>
             </li>

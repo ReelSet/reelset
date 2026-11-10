@@ -71,7 +71,7 @@ export default async function ProfilePage() {
           {initial}
         </div>
         <div className="min-w-0">
-          <h1 className="truncate text-[22px] font-semibold tracking-tight">
+          <h1 className="line-clamp-2 text-[22px] font-semibold leading-tight tracking-tight [overflow-wrap:anywhere]">
             {user.email ?? 'Signed in'}
           </h1>
           {since && <p className="mt-0.5 text-sm text-muted">Member since {since}</p>}

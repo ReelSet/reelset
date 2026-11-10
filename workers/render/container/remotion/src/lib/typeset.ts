@@ -44,6 +44,13 @@ export function typeset(text: string): string {
     .replace(/(?<=[A-Za-z\])])_\{?(\d{1,3})\}?/g, (m, digits: string) => map(digits, SUB) ?? m)
 }
 
+/** Item title as shown on screen; `owner/repo` slugs stay verbatim (`llama_3` is a name, not math). */
+/** A source title as shown: typeset, with an accidental doubled word ("has has") removed. */
+export const displayTitle = (title: string): string => {
+  const t = title.trim().replace(/\b(\p{L}+)\s+\1\b/giu, '$1')
+  return /^[\w.-]+\/[\w.-]+$/.test(t) ? t : typeset(t)
+}
+
 /** Longest unbreakable run of characters in a text, used to keep every word inside the frame. */
 export const longestWord = (text: string): number =>
   Math.max(1, ...text.split(/\s+/).map((w) => [...w].length))

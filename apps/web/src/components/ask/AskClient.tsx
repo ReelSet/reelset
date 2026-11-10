@@ -323,7 +323,7 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
         </form>
 
         {idle && (
-          <ul className="flex flex-wrap gap-2 pb-6">
+          <ul className="mt-3 flex flex-wrap gap-2 pb-6">
             {SUGGESTIONS.map((s, i) => (
               <li
                 key={s}

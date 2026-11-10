@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionFor, fitImage, planImages } from './images'
+import { captionFor, fitImage, planImages, demoBox } from './images'
 import type { ReelImage, Scene } from './types'
 
 describe('fitImage', () => {
@@ -90,5 +90,34 @@ describe('captionFor', () => {
   it('falls back to the domain', () => {
     expect(captionFor(img('og', 1), 'example.com')).toBe('example.com')
     expect(captionFor(img('figure', 1), 'example.com')).toBe('Figure · example.com')
+  })
+})
+
+describe('demoBox', () => {
+  it('shows a landscape clip whole (no crop), as wide as the frame allows, above the captions', () => {
+    const b = demoBox(1080, 608, 318)
+    expect(b.width).toBe(1032)
+    expect(b.height).toBe(Math.round((1032 * 608) / 1080))
+    expect(b.left).toBe(24)
+    expect(b.top).toBeGreaterThanOrEqual(318)
+    expect(b.top + b.height).toBeLessThanOrEqual(Math.round(1920 * 0.58) - 24)
+    expect(b.fullBleed).toBe(false)
+  })
+
+  it('fits a near-square clip into the zone, centred, aspect kept', () => {
+    const b = demoBox(1000, 900, 318)
+    expect(b.height).toBe(Math.round(1920 * 0.58) - 24 - 318)
+    expect(b.width / b.height).toBeCloseTo(1000 / 900, 2)
+    expect(b.left).toBe(Math.round((1080 - b.width) / 2))
+  })
+
+  it('goes full-bleed for a portrait clip', () => {
+    expect(demoBox(720, 1280, 318)).toEqual({
+      left: 0,
+      top: 0,
+      width: 1080,
+      height: 1920,
+      fullBleed: true,
+    })
   })
 })

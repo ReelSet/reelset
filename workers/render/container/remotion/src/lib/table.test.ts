@@ -36,6 +36,13 @@ describe('readTable', () => {
     expect([t.value, t.label]).toEqual(['68.4', 'Ours · MMLU'])
   })
 
+  it('marks the highlighted cell, and none for a plain table', () => {
+    expect(readTable(props)!.mark).toEqual({ row: 1, col: 1 })
+    const t = readTable({ ...props, plain: true })!
+    expect([t.mark, t.value, t.label]).toEqual([null, '', ''])
+    expect([t.hi, t.col]).toEqual([1, 1])
+  })
+
   it('returns null for unusable props', () => {
     expect(readTable({})).toBeNull()
     expect(readTable({ headers: ['a'], rows: ['x'] })).toBeNull()

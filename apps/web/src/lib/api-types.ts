@@ -1,5 +1,12 @@
 export type MentionDto = { source: string; score: number | null; url: string }
 
+export const PEXELS_HOME_URL = 'https://www.pexels.com'
+
+export type CreditsDto = {
+  stock: { creator: string | null; url: string }[]
+  demo: { repo: string; url: string } | null
+}
+
 export type FeedItemDto = {
   id: string
   title: string
@@ -16,6 +23,7 @@ export type FeedItemDto = {
   liked: boolean
   saved: boolean
   mentions: MentionDto[]
+  credits: CreditsDto | null
 }
 
 export type FeedResponse = {

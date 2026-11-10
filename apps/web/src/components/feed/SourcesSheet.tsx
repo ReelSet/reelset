@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import type { FeedItemDto } from '@/lib/api-types'
+import { PEXELS_HOME_URL, type CreditsDto, type FeedItemDto } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import { ArrowUpRightIcon, CloseIcon } from '@/components/ui/icons'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
@@ -86,7 +86,53 @@ export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
             </a>
           </li>
         </ul>
+        {item.credits && <MediaCredits credits={item.credits} />}
       </div>
     </div>
+  )
+}
+
+const creditLink = 'underline decoration-white/20 underline-offset-2 transition hover:text-fg'
+
+function MediaCredits({ credits }: { credits: CreditsDto }) {
+  return (
+    <section
+      aria-label="Media credits"
+      className="mt-5 border-t border-line pt-4 text-xs text-faint"
+    >
+      {credits.stock.length > 0 && (
+        <>
+          <a
+            href={PEXELS_HOME_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-sm font-medium text-muted ${creditLink}`}
+          >
+            Videos provided by Pexels
+          </a>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {credits.stock.map((clip) => (
+              <li key={clip.url}>
+                <a href={clip.url} target="_blank" rel="noopener noreferrer" className={creditLink}>
+                  {clip.creator ? `Video by ${clip.creator} on Pexels` : 'Video on Pexels'}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {credits.demo && (
+        <p className={credits.stock.length > 0 ? 'mt-2' : undefined}>
+          <a
+            href={credits.demo.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={creditLink}
+          >
+            Demo from github.com/{credits.demo.repo}
+          </a>
+        </p>
+      )}
+    </section>
   )
 }

@@ -12,7 +12,14 @@ export type ItemFacts = {
     latestRelease?: string
   }
   hn?: { points?: number; comments?: number; author?: string; topComment?: string }
-  reddit?: { subreddit?: string; upvotes?: number; comments?: number; author?: string }
+  reddit?: {
+    subreddit?: string
+    upvotes?: number
+    comments?: number
+    author?: string
+    text?: string
+    topComment?: string
+  }
   youtube?: { channel?: string; views?: number; duration?: string }
   paper?: { authors?: string[]; abstract?: string; upvotes?: number }
   article?: { site?: string; author?: string }
@@ -26,6 +33,44 @@ export type MentionForFacts = {
   score: number | null
   numComments: number | null
   raw: unknown
+  body?: string | null
+}
+
+const BODY_EXCERPT = 280
+
+/** First ~280 chars of a post body, cut at a sentence (or word) end; markdown and links dropped. */
+export function excerpt(body: string | null | undefined, max = BODY_EXCERPT): string | undefined {
+  if (!body) return undefined
+  const text = body
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[*_`#>]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (text.length < 20) return undefined
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
+  return end > max * 0.4 ? cut.slice(0, end + 1) : `${cut.replace(/\s+\S*$/, '')}…`
+}
+
+/** "Authors: A, B et al. Abstract: ..." (paper mention body) -> parts. */
+export function paperBody(body: string | null | undefined): {
+  authors?: string[]
+  abstract?: string
+} {
+  if (!body) return {}
+  const authors = /Authors:\s*(.+?)(?:\n|\s+Abstract:|$)/s.exec(body)?.[1]
+  const abstract = /Abstract:\s*([\s\S]+)$/.exec(body)?.[1]
+  return {
+    authors: authors
+      ?.replace(/\s+et al\.?$/, '')
+      .split(/,\s*/)
+      .map((a) => a.trim())
+      .filter(Boolean)
+      .slice(0, 8),
+    abstract: abstract ? abstract.replace(/\s+/g, ' ').trim().slice(0, 600) : undefined,
+  }
 }
 
 type Bag = Record<string, unknown>
@@ -108,6 +153,8 @@ export function buildFacts(mentions: readonly MentionForFacts[], canonicalUrl: s
         upvotes: count(m.score),
         comments: count(m.numComments),
         author: str(m.author),
+        text: excerpt(m.body),
+        topComment: str(f.topComment),
       })
     } else if (m.source === 'youtube' && !facts.youtube) {
       facts.youtube = compact({
@@ -116,9 +163,10 @@ export function buildFacts(mentions: readonly MentionForFacts[], canonicalUrl: s
         duration: formatDuration(f.durationSec),
       })
     } else if (m.source === 'papers' && !facts.paper) {
+      const fromBody = paperBody(m.body)
       facts.paper = compact({
-        authors: strings(f.authors),
-        abstract: str(f.abstract),
+        authors: strings(f.authors) ?? strings(fromBody.authors),
+        abstract: str(f.abstract) ?? str(fromBody.abstract),
         upvotes: count(m.score),
       })
     } else if (m.source === 'news' && !facts.article) {

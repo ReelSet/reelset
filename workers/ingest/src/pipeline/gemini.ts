@@ -200,6 +200,9 @@ export function repairModelOutput(
     for (const claim of script.claims) if (isObj(claim)) clip(claim, 'text', 220)
     if (allowedChunkIds) script.claims = dropUnknownChunkIds(script.claims, allowedChunkIds)
   }
+  const claims = Array.isArray(script.claims)
+    ? script.claims.flatMap((c) => (isObj(c) && typeof c.text === 'string' ? [c.text] : []))
+    : []
   if (Array.isArray(script.beats)) {
     const beats: unknown[] = script.beats.slice(0, 6)
     script.beats = beats
@@ -207,7 +210,7 @@ export function repairModelOutput(
     for (const beat of beats) {
       if (!isObj(beat)) continue
       clip(beat, 'text', 220)
-      repairShots(beat, factNumbers, labelLedger)
+      repairShots(beat, factNumbers, labelLedger, { sourceText: facts, claims })
       repairBroll(beat)
       const v = beat.visual
       if (!isObj(v)) continue

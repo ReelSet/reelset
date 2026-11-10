@@ -58,8 +58,10 @@ export function findNumbers(text: string): Found[] {
   return found
 }
 
+/** Splits on sentence punctuation followed by a space, so "1.7B" and "outlook.com" stay whole. */
 export function sentences(text: string): string[] {
-  return (text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [text])
+  return text
+    .split(/(?<=[.!?]["')\]]*)\s+/)
     .map((s) => s.trim())
     .filter(Boolean)
 }

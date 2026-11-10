@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildFacts, formatDuration, type MentionForFacts } from './facts'
+import { buildFacts, excerpt, formatDuration, type MentionForFacts } from './facts'
 
 const base = { title: null, author: null, score: null, numComments: null, raw: null }
 const m = (over: Partial<MentionForFacts> & Pick<MentionForFacts, 'source' | 'url'>) => ({
@@ -134,5 +134,38 @@ describe('formatDuration', () => {
     expect(formatDuration(3725)).toBe('1:02:05')
     expect(formatDuration(0)).toBeUndefined()
     expect(formatDuration(null)).toBeUndefined()
+  })
+})
+
+describe('mention bodies', () => {
+  it('reads a paper mention body for authors and abstract when raw facts lack them', () => {
+    const facts = buildFacts(
+      [
+        m({
+          source: 'papers',
+          url: 'https://arxiv.org/abs/2611.03953',
+          score: 42,
+          body: 'Authors: Sinuo Wang, Jiacheng Lu et al. Abstract: Multi-teacher on-policy distillation consolidates experts.',
+        }),
+      ],
+      'https://arxiv.org/abs/2611.03953',
+    )
+    expect(facts.paper).toEqual({
+      authors: ['Sinuo Wang', 'Jiacheng Lu'],
+      abstract: 'Multi-teacher on-policy distillation consolidates experts.',
+      upvotes: 42,
+    })
+  })
+
+  it('keeps a short, sentence-cut excerpt of a reddit post body', () => {
+    const body = `Training is much faster, uses far less memory. ${'More words here. '.repeat(30)}`
+    const facts = buildFacts(
+      [m({ source: 'reddit', url: 'https://reddit.com/r/x/comments/1/', body })],
+      'https://github.com/a/b',
+    )
+    expect(facts.reddit?.text?.startsWith('Training is much faster')).toBe(true)
+    expect(facts.reddit!.text!.length).toBeLessThanOrEqual(280)
+    expect(facts.reddit!.text!.endsWith('.')).toBe(true)
+    expect(excerpt('[link](https://x.y) short')).toBeUndefined()
   })
 })

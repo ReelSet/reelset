@@ -55,6 +55,7 @@ class RenderRequest:
     facts: dict = field(default_factory=dict)
     broll: list = field(default_factory=list)
     demo: dict | None = None
+    claims: list = field(default_factory=list)
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -168,7 +169,7 @@ def _clean(value, kind, limit=300):
 FACT_FIELDS = {
     "repo": {"owner": "str", "name": "str", "description": "str", "stars": "int", "forks": "int", "language": "str", "latestRelease": "str"},
     "hn": {"points": "int", "comments": "int", "author": "str", "topComment": "str"},
-    "reddit": {"subreddit": "str", "upvotes": "int", "comments": "int", "author": "str"},
+    "reddit": {"subreddit": "str", "upvotes": "int", "comments": "int", "author": "str", "text": "str", "topComment": "str"},
     "youtube": {"channel": "str", "views": "int", "duration": "str"},
     "paper": {"abstract": "str", "upvotes": "int"},
     "article": {"site": "str", "author": "str"},
@@ -186,7 +187,7 @@ def _validate_facts(raw) -> dict:
             continue
         clean = {}
         for key, kind in fields.items():
-            value = _clean(src.get(key), kind, 600 if key in ("abstract", "topComment") else 300)
+            value = _clean(src.get(key), kind, 600 if key in ("abstract", "topComment", "text") else 300)
             if value is not None:
                 clean[key] = value
         if group == "repo":
@@ -285,7 +286,23 @@ def validate_render_request(payload) -> RenderRequest:
         facts=_validate_facts(payload.get("facts")),
         broll=_validate_broll(payload.get("broll")),
         demo=_validate_demo(payload.get("demo")),
+        claims=_validate_claims(script.get("claims")),
     )
+
+
+MAX_CLAIMS = 12
+
+
+def _validate_claims(raw) -> list:
+    """The script's sourced claims, text only: the composition words key points and grounds stat labels with them."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for claim in raw[:MAX_CLAIMS]:
+        text = claim.get("text") if isinstance(claim, dict) else claim
+        if isinstance(text, str) and text.strip():
+            out.append(" ".join(text.split())[:300])
+    return out
 
 
 def _validate_narration(raw) -> tuple:

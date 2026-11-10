@@ -3,7 +3,7 @@ import { groundShots } from './ground'
 import { contextLabel, groundLabel, mentions, valueOf } from './labels'
 import { sampleReel } from './fixtures'
 import { salientPhrase } from './extract'
-import { fitWords, styleOf, typeset } from './typeset'
+import { displayTitle, fitWords, styleOf, typeset } from './typeset'
 import { readTable } from './table'
 import type { ReelProps, TimedShot } from './types'
 
@@ -45,7 +45,7 @@ describe('groundLabel (MOPD)', () => {
     const at = mentions('It scores 12 passes today.')[0]!
     expect(contextLabel('It scores 12 passes today.', at)).toBe('passes today')
     const b = mentions('P2 recovers 52.8% of it')[0]!
-    expect(contextLabel('P2 recovers 52.8% of it', b)).toBe('P2 recovers')
+    expect(contextLabel('P2 recovers 52.8% of it', b)).toBe('P2')
   })
 
   it('keeps the label of a number that is not in the narration (facts)', () => {
@@ -135,6 +135,14 @@ describe('text fidelity', () => {
     expect(typeset('x^{-1} and H_2O')).toBe('x⁻¹ and H₂O')
     expect(typeset('a^b')).toBe('a^b')
     expect(typeset('±3.2 σ')).toBe('±3.2 σ')
+  })
+
+  it('typesets item titles but leaves repo slugs alone', () => {
+    expect(displayTitle('P^2-MOPD: Accelerating Distillation')).toBe(
+      'P²-MOPD: Accelerating Distillation',
+    )
+    expect(displayTitle('meta/llama_3')).toBe('meta/llama_3')
+    expect(displayTitle(displayTitle('P^2 again'))).toBe('P² again')
   })
 
   it('keeps the caret in salient phrases', () => {

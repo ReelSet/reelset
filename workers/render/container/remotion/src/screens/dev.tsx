@@ -1,10 +1,28 @@
-import { OffthreadVideo, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
+import {
+  Freeze,
+  OffthreadVideo,
+  interpolate,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from 'remotion'
 import { Pop, Rise, easeOut } from '../fx'
-import { codeMetrics, sliceTokens, tokenize, type TokenKind } from '../lib/highlight'
-import { fitImage } from '../lib/images'
+import { codeMetrics, tokenize, type TokenKind } from '../lib/highlight'
+import { demoBox } from '../lib/images'
 import { fitText } from '../lib/text'
 import { buildSession, fitSessionFont, revealSession } from '../lib/terminal'
-import { COLOR, CONTENT_TOP, CONTENT_W, FONT, H, LOW_TOP, MONO, SAFE, W } from '../theme'
+import {
+  COLOR,
+  CONTENT_TOP,
+  CONTENT_W,
+  FONT,
+  H,
+  LOW_TOP,
+  MONO,
+  SAFE,
+  W,
+  ZONE_BOTTOM,
+} from '../theme'
 import {
   Chip,
   Page,
@@ -19,6 +37,8 @@ import {
 function repoIdentity(ctx: ScreenProps['ctx']): { owner: string; name: string } {
   const r = ctx.facts.repo
   if (r?.owner && r.name) return { owner: r.owner, name: r.name }
+  const d = /^([^/\s]+)\/([^/\s]+)$/.exec(ctx.demo?.repo ?? '')
+  if (d?.[1] && d[2]) return { owner: d[1], name: d[2] }
   const m = /github\.com\/([^/\s]+)\/([^/\s]+)/.exec(ctx.domain)
   if (m?.[1] && m[2]) return { owner: m[1], name: m[2] }
   const parts = ctx.title.split('/')
@@ -48,7 +68,8 @@ const Fork = ({ size = 44 }: { size?: number }) => (
 export function RepoPage({ frames, ctx, topPad }: ScreenProps) {
   const { owner, name } = repoIdentity(ctx)
   const r = ctx.facts.repo
-  const desc = r?.description ?? ctx.hook
+  const desc = r?.description ?? ''
+  const demo = ctx.demo
   const count = useCount(frames, 0.55)
   const nameSize = fitText(
     name,
@@ -93,20 +114,22 @@ export function RepoPage({ frames, ctx, topPad }: ScreenProps) {
           {name}
         </div>
       </Rise>
-      <Rise
-        delay={5}
-        style={{
-          marginTop: 34,
-          fontSize: topics.length || langs.length ? 46 : 56,
-          lineHeight: 1.22,
-          color: '#c9d1d9',
-          fontWeight: 500,
-          maxHeight: 290,
-          overflow: 'hidden',
-        }}
-      >
-        {desc}
-      </Rise>
+      {desc ? (
+        <Rise
+          delay={5}
+          style={{
+            marginTop: 34,
+            fontSize: topics.length || langs.length ? 46 : 56,
+            lineHeight: 1.22,
+            color: '#c9d1d9',
+            fontWeight: 500,
+            maxHeight: 290,
+            overflow: 'hidden',
+          }}
+        >
+          {desc}
+        </Rise>
+      ) : null}
       <div style={{ display: 'flex', gap: 22, marginTop: 40, flexWrap: 'wrap' }}>
         {stat(r?.stars) ? (
           <Pop delay={8}>
@@ -178,25 +201,46 @@ export function RepoPage({ frames, ctx, topPad }: ScreenProps) {
           ))}
         </div>
       ) : null}
-      <div
-        style={{
-          position: 'absolute',
-          left: -SAFE.left,
-          width: W,
-          top: LOW_TOP - CONTENT_TOP - topPad,
-          height: H,
-          background: COLOR.surface,
-          borderTop: `2px solid ${COLOR.line}`,
-          padding: `34px ${SAFE.right}px 0 ${SAFE.left}px`,
-        }}
-      >
-        <div style={{ fontSize: 34, color: COLOR.muted, fontWeight: 700, letterSpacing: '0.04em' }}>
-          README.md
-        </div>
-        <div style={{ fontSize: 60, fontWeight: 800, marginTop: 18, letterSpacing: '-0.03em' }}>
-          {name}
-        </div>
-      </div>
+      {demo ? (
+        <Pop delay={6} style={{ marginTop: 40 }}>
+          <div
+            style={{
+              border: `2px solid ${COLOR.line}`,
+              borderRadius: 24,
+              overflow: 'hidden',
+              background: COLOR.surface,
+            }}
+          >
+            <div
+              style={{
+                padding: '18px 28px',
+                fontSize: 32,
+                color: COLOR.muted,
+                fontWeight: 700,
+                borderBottom: `2px solid ${COLOR.line}`,
+              }}
+            >
+              README.md
+            </div>
+            <Freeze frame={Math.round(Math.min(2, demo.seconds / 2) * 30)}>
+              <OffthreadVideo
+                src={staticFile(demo.src)}
+                muted
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  height: Math.min(
+                    460,
+                    Math.round(((CONTENT_W - 4) * (demo.height ?? 720)) / (demo.width ?? 1280)),
+                  ),
+                  objectFit: 'contain',
+                  background: '#000',
+                }}
+              />
+            </Freeze>
+          </div>
+        </Pop>
+      ) : null}
     </Page>
   )
 }
@@ -225,7 +269,8 @@ export function Terminal({ frames, ctx, props, topPad }: ScreenProps) {
     r?.language ?? null,
     r?.latestRelease ?? null,
   ].filter((x): x is string => Boolean(x))
-  const desc = r?.description ?? ctx.hook
+  const desc = r?.description ?? ''
+  const demo = ctx.demo
   return (
     <Page frames={frames} bleed topPad={topPad}>
       <div
@@ -363,14 +408,9 @@ export function CodeBlock({ frames, props, topPad }: ScreenProps) {
   const lines = code.split('\n')
   const metrics = codeMetrics(code, CONTENT_W - 100, 640, lines.length <= 2 ? 2.3 : 1.45)
   const size = metrics.size
-  const total = code.length
-  const reveal = Math.floor(
-    interpolate(frame, [4, Math.max(8, frames * 0.62)], [0, total], {
-      extrapolateLeft: 'clamp',
-      extrapolateRight: 'clamp',
-    }),
-  )
-  let consumed = 0
+  // Lines land whole (one every 4 frames), never a half-typed fragment like "v=".
+  const shownLines = Math.min(lines.length, 1 + Math.floor(Math.max(0, frame - 2) / 4))
+  const cursorLine = Math.min(lines.length - 1, shownLines - 1)
   const ext = EXT[language.toLowerCase()] ?? language.toLowerCase()
   return (
     <Page frames={frames} bleed topPad={topPad}>
@@ -378,7 +418,7 @@ export function CodeBlock({ frames, props, topPad }: ScreenProps) {
         style={{
           position: 'absolute',
           left: 0,
-          top: CONTENT_TOP + topPad - 28,
+          top: CONTENT_TOP + topPad,
           width: W,
           bottom: 0,
           background: '#0d1117',
@@ -407,17 +447,16 @@ export function CodeBlock({ frames, props, topPad }: ScreenProps) {
         </div>
         <div
           style={{
-            padding: `${lines.length <= 2 ? 150 : 36}px ${SAFE.right}px 0 ${SAFE.left}px`,
+            padding: `${lines.length <= 2 ? Math.max(36, (ZONE_BOTTOM - CONTENT_TOP - topPad - 90 - lines.length * size * 1.5) / 2) : 36}px ${SAFE.right}px 0 ${SAFE.left}px`,
             fontFamily: MONO,
             fontSize: size,
             lineHeight: 1.5,
           }}
         >
           {lines.map((line, i) => {
-            const visible = Math.max(0, reveal - consumed)
-            consumed += line.length + 1
-            const tokens = sliceTokens(tokenize(line), visible)
-            const active = visible > 0 && visible < line.length + 1
+            if (i >= shownLines) return null
+            const tokens = tokenize(line)
+            const active = i === cursorLine
             return (
               <div
                 key={i}
@@ -449,7 +488,7 @@ export function CodeBlock({ frames, props, topPad }: ScreenProps) {
             position: 'absolute',
             left: 0,
             right: 0,
-            top: LOW_TOP - (CONTENT_TOP + topPad - 28) + 40,
+            top: LOW_TOP - (CONTENT_TOP + topPad) + 40,
             padding: `0 ${SAFE.right}px 0 ${SAFE.left}px`,
             display: 'flex',
             justifyContent: 'space-between',
@@ -472,6 +511,7 @@ export function CodeBlock({ frames, props, topPad }: ScreenProps) {
 /** README demo clip, full-bleed; a blurred copy fills the frame when the clip does not. */
 export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
   const { fps } = useVideoConfig()
+  const frame = useCurrentFrame()
   const demo = ctx.demo
   if (!demo) return <Page frames={frames} topPad={topPad} />
   const offset = Math.min(
@@ -479,21 +519,20 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
     Math.max(0, demo.seconds - frames / fps),
   )
   const startFrom = Math.round(offset * fps)
-  const fit = fitImage(demo.width ?? 1280, demo.height ?? 720, W, H)
+  const box = demoBox(demo.width ?? 1280, demo.height ?? 720, CONTENT_TOP + topPad)
+  const zoom = interpolate(frame, [0, Math.max(1, frames)], [1, box.fullBleed ? 1.05 : 1.03], {
+    extrapolateRight: 'clamp',
+  })
   const { owner, name } = repoIdentity(ctx)
   const label = owner && name ? `github.com/${owner}/${name}` : ctx.domain
-  const top = CONTENT_TOP + topPad + 8
   return (
     <Page frames={frames} bleed topPad={topPad}>
       <div
         style={{
           position: 'absolute',
-          left: 0,
-          top: 0,
-          width: W,
-          height: H,
+          inset: 0,
           overflow: 'hidden',
-          filter: fit.mode === 'cover' ? undefined : 'blur(44px) brightness(0.45) saturate(1.2)',
+          filter: 'blur(44px) brightness(0.4) saturate(1.2)',
         }}
       >
         <OffthreadVideo
@@ -503,42 +542,42 @@ export function RepoDemo({ frames, ctx, props, topPad }: ScreenProps) {
           style={{ width: W, height: H, objectFit: 'cover' }}
         />
       </div>
-      {fit.mode === 'contain' ? (
-        <div
-          style={{
-            position: 'absolute',
-            left: (W - fit.width) / 2,
-            top: (H - fit.height) / 2,
-            width: fit.width,
-            height: fit.height,
-            borderRadius: 20,
-            overflow: 'hidden',
-            boxShadow: '0 30px 80px rgba(0,0,0,0.55)',
-          }}
-        >
-          <OffthreadVideo
-            src={staticFile(demo.src)}
-            muted
-            startFrom={startFrom}
-            style={{ width: fit.width, height: fit.height, objectFit: 'cover' }}
-          />
-        </div>
-      ) : null}
       <div
         style={{
           position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(to bottom, rgba(9,9,11,0.55) 0%, rgba(9,9,11,0) 22%, rgba(9,9,11,0) 70%, rgba(9,9,11,0.6) 100%)',
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          overflow: 'hidden',
+          borderRadius: box.fullBleed ? 0 : 18,
+          boxShadow: box.fullBleed ? undefined : '0 30px 80px rgba(0,0,0,0.55)',
+          transform: box.fullBleed ? undefined : `scale(${zoom})`,
         }}
-      />
-      <div style={{ position: 'absolute', left: SAFE.left, top }}>
-        <Pop>
-          <Chip size={36} bg="rgba(9,9,11,0.72)">
-            <i style={{ width: 14, height: 14, borderRadius: 7, background: COLOR.accent }} />
-            Demo · {label}
-          </Chip>
-        </Pop>
+      >
+        <OffthreadVideo
+          src={staticFile(demo.src)}
+          muted
+          startFrom={startFrom}
+          style={{
+            width: box.width,
+            height: box.height,
+            objectFit: box.fullBleed ? 'cover' : 'contain',
+            transform: box.fullBleed ? `scale(${zoom})` : undefined,
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: box.fullBleed ? SAFE.left : box.left,
+          top: box.fullBleed ? CONTENT_TOP + topPad : box.top + box.height + 16,
+        }}
+      >
+        <Chip size={24} bg="rgba(9,9,11,0.72)" color={COLOR.muted}>
+          <i style={{ width: 10, height: 10, borderRadius: 5, background: COLOR.accent }} />
+          Demo · {label}
+        </Chip>
       </div>
     </Page>
   )

@@ -1,4 +1,6 @@
 import { elapsedMs, errorFields, type Database, type Logger } from '@reelset/core'
+import type { CreditsDto } from '@/lib/api-types'
+import { toCreditsDto } from '@/lib/credits'
 import { clampLimit, decodeCursor, encodeCursor } from './cursor'
 import { rankCandidates } from './scoring'
 import {
@@ -25,6 +27,7 @@ export type RankedItem = {
   liked: boolean
   saved: boolean
   mentions: { source: string; score: number | null; url: string }[]
+  credits: CreditsDto | null
 }
 
 export type RankFeedParams = {
@@ -55,6 +58,7 @@ export function toRankedItem(row: FeedRow): RankedItem | null {
     liked: Boolean(row.liked),
     saved: Boolean(row.saved),
     mentions: row.mentions,
+    credits: toCreditsDto(row.credits),
   }
 }
 

@@ -117,7 +117,12 @@ export function hydrateQuery(
       (eb) =>
         eb
           .selectFrom('render')
-          .select(['render.video_key', 'render.poster_key', 'render.video_duration_ms'])
+          .select([
+            'render.video_key',
+            'render.poster_key',
+            'render.video_duration_ms',
+            'render.credits',
+          ])
           .whereRef('render.item_id', '=', 'item.id')
           .where('render.status', '=', RenderStatus.done)
           .where('render.video_key', 'is not', null)
@@ -143,6 +148,7 @@ export function hydrateQuery(
       'r.video_key',
       'r.poster_key',
       'r.video_duration_ms',
+      'r.credits',
       jsonArrayFrom(
         eb
           .selectFrom('mention')

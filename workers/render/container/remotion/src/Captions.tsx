@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
-import { pageAt, toPages } from './lib/captions'
+import { highlightIndex, pageAt, toPages } from './lib/captions'
 import { typeset } from './lib/typeset'
 import type { Word } from './lib/types'
 import {
@@ -23,6 +23,7 @@ export function Captions({ words }: { words: Word[] }) {
   const page = pageAt(pages, t, 0.2)
   if (!page) return null
   const first = page[0]?.start ?? 0
+  const lit = highlightIndex(page, t)
   const pop = interpolate(t - first, [0, 0.1], [0.86, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -52,7 +53,7 @@ export function Captions({ words }: { words: Word[] }) {
         }}
       >
         {page.map((word, i) => {
-          const active = t >= word.start && t < word.end + 0.04
+          const active = i === lit
           return (
             <span
               key={i}

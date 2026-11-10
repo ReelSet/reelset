@@ -13,13 +13,14 @@ function withShots(shots: Shot[]): ReelProps {
 const words = (props: ReelProps) => props.words.filter((w) => w.start >= props.scenes[1]!.start)
 
 describe('paper screens on the timeline', () => {
-  it('keeps a table on screen past the normal hold before filling', () => {
+  it('keeps a table on screen past the normal hold, never over the 4 s QA limit', () => {
     const props = withShots([
       { at: 'x', show: 'TableScreen', props: { headers: ['a', 'b'], rows: ['x|1'] } },
     ])
     const { shots } = resolveShots(props, 30, Math.ceil(props.durationSeconds * 30))
     const table = shots.find((s) => s.show === 'TableScreen')!
-    expect(table.frames).toBeGreaterThanOrEqual(Math.round(3.7 * 30))
+    expect(table.frames).toBeGreaterThanOrEqual(Math.round(3.5 * 30))
+    expect(table.frames).toBeLessThanOrEqual(4 * 30)
   })
 
   it('skips a cue that would cut a table before it can be read', () => {

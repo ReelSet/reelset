@@ -1,0 +1,249 @@
+{
+  "durationSeconds": 52.244,
+  "title": "P^2-MOPD: Accelerating Multi-Teacher On-Policy Distillation via Parameter Priors",
+  "source": "papers",
+  "sourceLabel": "Research",
+  "domain": "arxiv.org",
+  "scenes": [
+    {
+      "kind": "hook",
+      "start": 0.0,
+      "end": 3.84,
+      "text": "Consolidating expert language models can be slow and uneven."
+    },
+    {
+      "kind": "beat",
+      "start": 3.84,
+      "end": 14.495,
+      "text": "Multi-teacher on-policy distillation, MOPD, consolidates domain experts. But MOPD is a heavy pipeline and often doesn't recover all domains evenly.",
+      "visual": { "type": "title", "title": "MOPD: Heavy & Uneven", "subtitle": "" },
+      "shots": [
+        { "at": "heavy", "show": "KeyPoint", "props": { "text": "Heavy pipeline" }, "t": 11.04 }
+      ]
+    },
+    {
+      "kind": "beat",
+      "start": 14.495,
+      "end": 27.15,
+      "text": "P^2-MOPD accelerates this by treating a linear combination of student and expert parameters as one differentiable model. It jointly optimizes mixing coefficients and student weights.",
+      "visual": { "type": "title", "title": "P^2-MOPD: Joint Optimization", "subtitle": "" },
+      "shots": [
+        {
+          "at": "combination",
+          "show": "KeyPoint",
+          "props": { "text": "Linear parameter combination" },
+          "t": 18.415
+        },
+        {
+          "at": "optimizes",
+          "show": "KeyPoint",
+          "props": { "text": "Optimizes coefficients and weights" },
+          "t": 24.735
+        }
+      ]
+    },
+    {
+      "kind": "beat",
+      "start": 27.15,
+      "end": 44.015,
+      "text": "This method uses experts as parameter priors. For a 1.7B model, P^2-MOPD achieved 94.7% average recovery, surpassing MOPD's 80.9%. It also raised worst-domain recovery to nearly 90%.",
+      "visual": { "type": "stat", "label": "Average Recovery", "value": "94.7%" },
+      "shots": [
+        {
+          "at": "94.7%",
+          "show": "StatSlam",
+          "props": { "value": "94.7%", "label": "Average Recovery" },
+          "sfx": "ding",
+          "t": 34.43
+        },
+        {
+          "at": "recovery",
+          "show": "TableScreen",
+          "props": {
+            "ref": "Table 1",
+            "caption": "Final results. Per-domain test scores (%, avg@3: each item is scored by the mean over three samples at temperature $1.0$) and summary metrics; for P2\u2026",
+            "headers": ["Method", "MedQA", "CaseHOLD", "Avg. Recovery"],
+            "rows": [
+              "Base student (\u03b8_0)|68.84|62.03|0",
+              "Domain teachers|79.86|73.57|100",
+              "TA merge|73.95|66.00|42.98",
+              "MOPD (TA init)|76.07|72.62|83.13\u00b19.03",
+              "P2-MOPD|78.74|72.58|94.85\u00b12.06",
+              "P2-MOPD|57.20|69.49|94.74\u00b10.91"
+            ],
+            "hi": 4,
+            "col": 1,
+            "value": "78.74",
+            "label": "MedQA",
+            "best": ["3:2", "4:1", "4:3", "5:1", "5:2", "5:3"]
+          },
+          "t": 36.27
+        }
+      ]
+    },
+    {
+      "kind": "outro",
+      "start": 44.015,
+      "end": 52.244,
+      "text": "P^2-MOPD makes expert weights a source of supervision, guiding the student and accelerating multi-teacher consolidation."
+    }
+  ],
+  "words": [
+    { "text": "Consolidating", "start": 0.24, "end": 1.04 },
+    { "text": "expert", "start": 1.04, "end": 1.52 },
+    { "text": "language", "start": 1.52, "end": 1.84 },
+    { "text": "models", "start": 1.84, "end": 2.24 },
+    { "text": "can", "start": 2.24, "end": 2.48 },
+    { "text": "be", "start": 2.48, "end": 2.64 },
+    { "text": "slow", "start": 2.64, "end": 2.88 },
+    { "text": "and", "start": 2.88, "end": 3.04 },
+    { "text": "uneven.", "start": 3.04, "end": 3.84 },
+    { "text": "Multi-teacher", "start": 4.16, "end": 4.953 },
+    { "text": "on-policy", "start": 4.953, "end": 5.52 },
+    { "text": "distillation,", "start": 5.52, "end": 6.48 },
+    { "text": "MOPD,", "start": 6.48, "end": 7.6 },
+    { "text": "consolidates", "start": 7.6, "end": 8.24 },
+    { "text": "domain", "start": 8.24, "end": 8.72 },
+    { "text": "experts.", "start": 8.72, "end": 9.52 },
+    { "text": "But", "start": 9.84, "end": 10.08 },
+    { "text": "MOPD", "start": 10.08, "end": 10.72 },
+    { "text": "is", "start": 10.72, "end": 10.96 },
+    { "text": "a", "start": 10.96, "end": 11.04 },
+    { "text": "heavy", "start": 11.04, "end": 11.28 },
+    { "text": "pipeline", "start": 11.28, "end": 11.76 },
+    { "text": "and", "start": 11.76, "end": 12.48 },
+    { "text": "often", "start": 12.48, "end": 12.48 },
+    { "text": "doesn't", "start": 12.48, "end": 12.735 },
+    { "text": "recover", "start": 12.735, "end": 13.135 },
+    { "text": "all", "start": 13.135, "end": 13.375 },
+    { "text": "domains", "start": 13.375, "end": 13.775 },
+    { "text": "evenly.", "start": 13.775, "end": 14.495 },
+    { "text": "P^2-MOPD", "start": 14.735, "end": 16.255 },
+    { "text": "accelerates", "start": 16.255, "end": 17.055 },
+    { "text": "this", "start": 17.055, "end": 17.295 },
+    { "text": "by", "start": 17.295, "end": 17.535 },
+    { "text": "treating", "start": 17.535, "end": 17.855 },
+    { "text": "a", "start": 17.855, "end": 18.015 },
+    { "text": "linear", "start": 18.015, "end": 18.415 },
+    { "text": "combination", "start": 18.415, "end": 18.975 },
+    { "text": "of", "start": 18.975, "end": 19.215 },
+    { "text": "student", "start": 19.215, "end": 19.535 },
+    { "text": "and", "start": 19.535, "end": 19.855 },
+    { "text": "expert", "start": 19.855, "end": 20.255 },
+    { "text": "parameters", "start": 20.255, "end": 21.135 },
+    { "text": "as", "start": 21.135, "end": 21.455 },
+    { "text": "one", "start": 21.455, "end": 21.775 },
+    { "text": "differentiable", "start": 21.775, "end": 22.495 },
+    { "text": "model.", "start": 22.495, "end": 23.135 },
+    { "text": "It", "start": 23.455, "end": 23.695 },
+    { "text": "jointly", "start": 23.695, "end": 24.735 },
+    { "text": "optimizes", "start": 24.735, "end": 24.75 },
+    { "text": "mixing", "start": 24.75, "end": 25.23 },
+    { "text": "coefficients", "start": 25.23, "end": 25.87 },
+    { "text": "and", "start": 25.87, "end": 26.11 },
+    { "text": "student", "start": 26.11, "end": 26.43 },
+    { "text": "weights.", "start": 26.43, "end": 27.15 },
+    { "text": "This", "start": 27.55, "end": 27.87 },
+    { "text": "method", "start": 27.87, "end": 28.19 },
+    { "text": "uses", "start": 28.19, "end": 28.51 },
+    { "text": "experts", "start": 28.51, "end": 28.99 },
+    { "text": "as", "start": 28.99, "end": 29.23 },
+    { "text": "parameter", "start": 29.23, "end": 29.63 },
+    { "text": "priors.", "start": 29.63, "end": 30.51 },
+    { "text": "For", "start": 30.75, "end": 30.99 },
+    { "text": "a", "start": 30.99, "end": 31.23 },
+    { "text": "1.7B", "start": 31.23, "end": 32.11 },
+    { "text": "model,", "start": 32.11, "end": 32.75 },
+    { "text": "P^2-MOPD", "start": 32.75, "end": 33.95 },
+    { "text": "achieved", "start": 33.95, "end": 34.43 },
+    { "text": "94.7%", "start": 34.43, "end": 35.87 },
+    { "text": "average", "start": 35.87, "end": 36.27 },
+    { "text": "recovery,", "start": 36.27, "end": 36.75 },
+    { "text": "surpassing", "start": 37.255, "end": 37.815 },
+    { "text": "MOPD's", "start": 37.815, "end": 38.975 },
+    { "text": "80.9%.", "start": 38.975, "end": 40.135 },
+    { "text": "It", "start": 40.455, "end": 40.695 },
+    { "text": "also", "start": 40.695, "end": 41.015 },
+    { "text": "raised", "start": 41.015, "end": 41.335 },
+    { "text": "worst-domain", "start": 41.335, "end": 41.975 },
+    { "text": "recovery", "start": 41.975, "end": 42.455 },
+    { "text": "to", "start": 42.455, "end": 42.695 },
+    { "text": "nearly", "start": 42.695, "end": 43.015 },
+    { "text": "90%.", "start": 43.015, "end": 44.015 },
+    { "text": "P^2-MOPD", "start": 44.015, "end": 45.815 },
+    { "text": "makes", "start": 45.815, "end": 46.135 },
+    { "text": "expert", "start": 46.135, "end": 46.535 },
+    { "text": "weights", "start": 46.535, "end": 46.855 },
+    { "text": "a", "start": 46.855, "end": 47.015 },
+    { "text": "source", "start": 47.015, "end": 47.175 },
+    { "text": "of", "start": 47.175, "end": 47.335 },
+    { "text": "supervision,", "start": 47.335, "end": 48.295 },
+    { "text": "guiding", "start": 48.455, "end": 48.775 },
+    { "text": "the", "start": 48.775, "end": 48.935 },
+    { "text": "student", "start": 48.935, "end": 49.255 },
+    { "text": "and", "start": 49.255, "end": 49.495 },
+    { "text": "accelerating", "start": 49.495, "end": 50.135 },
+    { "text": "multi-teacher", "start": 50.135, "end": 50.855 },
+    { "text": "consolidation.", "start": 50.855, "end": 51.495 }
+  ],
+  "audio": "job/narration.mp3",
+  "headline": "ACCELERATING MULTI-TEACHER DISTILLATION",
+  "facts": {
+    "paper": {
+      "abstract": "Multi-teacher on-policy distillation consolidates expert capabilities by supervising student-generated trajectories, whereas task arithmetic offers a training-free alternative through linear parameter combinations. We view the linear combination of student and expert parameters as a single differentiable model and propose P^2-MOPD, which jointly optimizes the mixing coefficients and the student weights under the same on-policy distillation objective. Unlike task arithmetic, which stays within the span of the frozen student and expert parameters for any choice of merging coefficients, P^2-MOPD",
+      "upvotes": 42,
+      "authors": ["Sinuo Wang", "Jiacheng Lu", "Zeyu Zhang", "Maojia Song", "Rui Sun", "Beidi Luan"]
+    }
+  },
+  "claims": [
+    "Multi-teacher on-policy distillation (MOPD) consolidates expert capabilities by supervising student-generated trajectories.",
+    "MOPD's pipeline is heavy and it does not recover all domains evenly.",
+    "P^2-MOPD views the linear combination of student and expert parameters as a single differentiable model.",
+    "P^2-MOPD jointly optimizes the mixing coefficients and the student weights under the on-policy distillation objective.",
+    "P^2-MOPD uses experts as parameter priors without confining the student to the span of frozen student and expert parameters.",
+    "For a 1.7B model, P^2-MOPD achieved 94.7% average recovery, compared to MOPD's 80.9%.",
+    "Expert parameters, kept as learnable priors throughout distillation, guide where the student moves, making expert weights a source of supervision."
+  ],
+  "images": [
+    { "src": "job/img0.jpg", "kind": "thumbnail", "width": 1200, "height": 648 },
+    {
+      "src": "job/img1.jpg",
+      "kind": "figure",
+      "width": 1280,
+      "height": 429,
+      "alt": "Figure 2: Overview of P2-MOPD. Each projection of the student is composed as its own learnable full weight plus a learnable linear combination of frozen expert directions, $W_{m}=B_{m}+\\sum_{k}\\alpha_{k,m}\\tau_{k,m}$ (Equation 4), and the composed weights are used as one model for the forward pass."
+    }
+  ],
+  "broll": [
+    {
+      "src": "job/broll0.mp4",
+      "seconds": 6.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 1,
+      "creator": "Nicola Narracci",
+      "creatorUrl": "https://www.pexels.com/@nicola-narracci-157460431",
+      "pageUrl": "https://www.pexels.com/video/dynamic-3d-data-visualization-of-network-flow-34336609/"
+    },
+    {
+      "src": "job/broll1.mp4",
+      "seconds": 6.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 2,
+      "creator": "Tima Miroshnichenko",
+      "creatorUrl": "https://www.pexels.com/@tima-miroshnichenko",
+      "pageUrl": "https://www.pexels.com/video/close-up-shot-of-a-electronic-motherboard-6755168/"
+    },
+    {
+      "src": "job/broll2.mp4",
+      "seconds": 6.0,
+      "width": 720,
+      "height": 1280,
+      "beat": 3,
+      "creator": "Nicola Narracci",
+      "creatorUrl": "https://www.pexels.com/@nicola-narracci-157460431",
+      "pageUrl": "https://www.pexels.com/video/a-blue-light-is-shown-in-the-dark-16863222/"
+    }
+  ]
+}
