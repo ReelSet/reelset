@@ -107,17 +107,19 @@ class RegroupTests(unittest.TestCase):
 
 
 class FakeEngine:
-    def __init__(self, seconds_at_speed_one=40.0, timings=True):
+    def __init__(self, seconds_at_speed_one=40.0, timings=True, fixed_pause_seconds=0.0):
         self.calls = []
         self.seconds_at_speed_one = seconds_at_speed_one
         self.timings = timings
+        self.fixed_pause_seconds = fixed_pause_seconds
 
     def phonemize(self, text):
         return "".join(ch for ch in text if ch.isalpha() or ch in ",.")
 
     def synthesize(self, phonemes, speed):
         self.calls.append(speed)
-        samples = int(self.seconds_at_speed_one / speed * kokoro_tts.SAMPLE_RATE)
+        seconds = self.fixed_pause_seconds + (self.seconds_at_speed_one - self.fixed_pause_seconds) / speed
+        samples = int(seconds * kokoro_tts.SAMPLE_RATE)
         return _Silence(samples), timings_for(phonemes) if self.timings else []
 
 
@@ -185,8 +187,28 @@ class KokoroSynthesisTests(unittest.TestCase):
             self.synth(FakeEngine(), text="   ")
 
     def test_refit_speed_rejects_what_would_clip_sentence_starts(self):
-        self.assertIsNone(kokoro_tts.refit_speed(1.15, 90))
-        self.assertIsNotNone(kokoro_tts.refit_speed(1.15, 60))
+        self.assertIsNone(kokoro_tts.refit_speed([(1.15, 90)]))
+        self.assertIsNotNone(kokoro_tts.refit_speed([(1.15, 60)]))
+
+    def test_single_measurement_assumes_pauses_do_not_shrink(self):
+        naive = 1.15 * 58 / (kokoro_tts.MAX_AUDIO_SECONDS - kokoro_tts.FIT_HEADROOM_SECONDS)
+        self.assertGreater(kokoro_tts.refit_speed([(1.15, 58)]), naive)
+
+    def test_two_measurements_solve_the_pause_exactly(self):
+        pause, speech = 12.0, 54.0
+        measured = [(1.0, pause + speech / 1.0), (1.1, pause + speech / 1.1)]
+        speed = kokoro_tts.refit_speed(measured)
+        self.assertAlmostEqual(pause + speech / speed, kokoro_tts.MAX_AUDIO_SECONDS - kokoro_tts.FIT_HEADROOM_SECONDS, places=1)
+
+    def test_pause_heavy_narration_fits_by_the_third_render(self):
+        engine = FakeEngine(seconds_at_speed_one=66, fixed_pause_seconds=20)
+        self.synth(engine)
+        self.assertLessEqual(len(engine.calls), kokoro_tts.MAX_FIT_RENDERS)
+        self.assertLessEqual(engine.calls[-1], kokoro_tts.FIT_MAX_SPEED)
+
+    def test_pauses_that_leave_no_room_raise(self):
+        with self.assertRaises(KokoroError):
+            self.synth(FakeEngine(seconds_at_speed_one=75, fixed_pause_seconds=60))
 
 
 class NarratorTests(unittest.TestCase):

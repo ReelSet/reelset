@@ -1,5 +1,6 @@
 import { sql } from 'kysely'
 import {
+  MAX_SPOKEN_CHARS,
   StaleTransitionError,
   contentHash,
   errorFields,
@@ -92,7 +93,7 @@ type ItemRow = {
 }
 
 const GENERATION_ATTEMPTS = 2
-export const NARRATION_LIMITS = { min: 110, max: 125 }
+export const NARRATION_LIMITS = { min: 100, max: 112, maxSpokenChars: MAX_SPOKEN_CHARS }
 
 async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefined> {
   const row = await db

@@ -15,10 +15,13 @@ import { MAX_VIDEO_BYTES, TEMPLATE_VERSION } from './constants'
 import { RenderJobError } from './errors'
 import {
   MAX_NARRATION_SECONDS,
+  MAX_SHORTEN_ATTEMPTS,
+  SHORTEN_MARGIN_SECONDS,
   audioToBase64,
   generateNarration,
   narrationText,
   shortenScript,
+  speakableNumbers,
   wordsToJson,
   type AiLike,
   type FallbackEngine,
@@ -180,33 +183,49 @@ async function generateAura(
   return generateNarration(aura.ai, narrationText(script), aura.speaker, log)
 }
 
-/** Aura over the cap is re-synthesized once from a shortened script; any Aura failure hands off to the container's kokoro then edge chain. */
+/** Aura over the cap is re-synthesized from progressively shorter scripts; any Aura failure hands off to the container's kokoro then edge chain. */
 async function prepareNarration(
   deps: ConsumerDeps,
-  script: ReelScript,
+  rawScript: ReelScript,
   log: Logger,
 ): Promise<Prepared> {
+  const script = speakableNumbers(rawScript)
   const aura = deps.aura
   if (!aura) {
     log.info({ provider: deps.fallbackEngine ?? 'edge' }, 'tts provider attempt')
     return { narration: null, script }
   }
   try {
-    const first = await generateAura(aura, script, log)
-    if (first.audioSeconds <= MAX_NARRATION_SECONDS) return { narration: first, script }
-    const shorter = shortenScript(script, (MAX_NARRATION_SECONDS - 3) / first.audioSeconds)
-    if (shorter) {
-      log.warn({ audioSeconds: first.audioSeconds }, 'aura narration too long, retrying shorter')
-      const second = await generateAura(aura, shorter, log)
-      if (second.audioSeconds <= MAX_NARRATION_SECONDS) {
-        return { narration: combine(first, second), script: shorter }
-      }
-    }
-    logFallback(deps, 'over_cap', log, { audioSeconds: first.audioSeconds })
+    const within = await synthesizeWithinCap(aura, script, log)
+    if (within) return within
+    logFallback(deps, 'over_cap', log)
   } catch (err) {
     logFallback(deps, 'aura_failed', log, errorFields(err))
   }
   return { narration: null, script }
+}
+
+async function synthesizeWithinCap(
+  aura: NonNullable<ConsumerDeps['aura']>,
+  script: ReelScript,
+  log: Logger,
+): Promise<Prepared | null> {
+  let current = script
+  let total: Narration | null = null
+  for (let attempt = 0; attempt <= MAX_SHORTEN_ATTEMPTS; attempt++) {
+    const next = await generateAura(aura, current, log)
+    total = total ? combine(total, next) : next
+    if (next.audioSeconds <= MAX_NARRATION_SECONDS) return { narration: total, script: current }
+    const ratio = (MAX_NARRATION_SECONDS - SHORTEN_MARGIN_SECONDS) / next.audioSeconds
+    const shorter = shortenScript(current, ratio)
+    if (!shorter) return null
+    log.warn(
+      { audioSeconds: next.audioSeconds, attempt },
+      'aura narration too long, retrying shorter',
+    )
+    current = shorter
+  }
+  return null
 }
 
 async function renderAndUpload(

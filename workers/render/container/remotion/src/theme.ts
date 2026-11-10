@@ -18,8 +18,9 @@ export const COLOR = {
   arxiv: '#b31b1b',
 } as const
 
-export const FONT = 'Geist, "Helvetica Neue", Arial, sans-serif'
-export const MONO = '"Geist Mono", ui-monospace, Menlo, monospace'
+export const CJK_FONT = '"Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK KR"'
+export const FONT = `Geist, "Helvetica Neue", Arial, ${CJK_FONT}, sans-serif`
+export const MONO = `"Geist Mono", ui-monospace, Menlo, ${CJK_FONT}, monospace`
 
 // Mobile app header overlays the top ~11%: burned chrome starts at 12% of the frame height.
 export const TOP_SAFE = Math.ceil(H * 0.12)

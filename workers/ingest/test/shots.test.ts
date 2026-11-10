@@ -159,10 +159,12 @@ describe('parseModelOutput with shots', () => {
 
 describe('prompt', () => {
   it('is versioned and lists every screen and sfx the renderer knows', () => {
-    expect(PROMPT_VERSION).toBe('reel-v5')
+    expect(PROMPT_VERSION).toBe('reel-v6')
     for (const name of SCREEN_NAMES) expect(SYSTEM_PROMPT).toContain(`${name}:`)
     for (const name of SFX_NAMES) expect(SYSTEM_PROMPT).toContain(name)
-    expect(SYSTEM_PROMPT).toContain('110 to 125 words')
+    expect(SYSTEM_PROMPT).toContain('100 to 112 words')
+    expect(SYSTEM_PROMPT).toContain('at most 760 characters')
+    expect(SYSTEM_PROMPT).toContain('at most 3 significant digits')
   })
 
   it('matches the renderer enum lists in remotion types', () => {

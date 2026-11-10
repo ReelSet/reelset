@@ -1,4 +1,5 @@
 import { errorFields, type Logger } from '@reelset/core'
+import { RECENT_REELS_WINDOW, isRejectedScene, matchesIntent, queryFor } from './broll-relevance'
 
 export const PEXELS_SEARCH_URL = 'https://api.pexels.com/videos/search'
 export const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60_000
@@ -14,6 +15,7 @@ const MAX_SECONDS = 45
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
 const USAGE_KEY = 'cache/pexels/usage.json'
 const RATE_KEY = 'cache/pexels/rate.json'
+const RECENT_KEY = 'cache/pexels/recent.json'
 
 export type BrollPick = {
   url: string
@@ -307,12 +309,31 @@ export async function searchVideos(deps: PexelsDeps, term: string): Promise<Cach
   }
 }
 
+function isOnTopic(pageUrl: string, term: string): boolean {
+  const words = slugWords(pageUrl)
+  return !isRejectedScene(words) && matchesIntent(words, term)
+}
+
+/** The last RECENT_REELS_WINDOW reels' clip ids, newest last; a repeat of the newest entry is not stored twice. */
+export function rememberReel(recent: readonly number[][], picks: readonly BrollPick[]): number[][] {
+  const ids = picks.map((p) => p.id).sort((a, b) => a - b)
+  const last = recent.at(-1)
+  if (
+    last &&
+    last.length === ids.length &&
+    [...last].sort((a, b) => a - b).every((v, i) => v === ids[i])
+  ) {
+    return [...recent]
+  }
+  return [...recent, picks.map((p) => p.id)].slice(-RECENT_REELS_WINDOW)
+}
+
 /**
  * Up to `MAX_REEL_CLIPS` distinct clips per reel, topic first: round one gives each beat a clip for
  * its best term, later rounds add more per beat from its other terms (then generic tech terms) until
- * every cutaway slot of a reel has a clip of its own. Never the same clip twice in a reel, nor two clips of one creator; across
- * reels the least-used clip first (usage counts live in the cache bucket); people-centric stock
- * clichés rank behind footage of the thing. Returns [] when nothing is found.
+ * every cutaway slot of a reel has a clip of its own. Never the same clip twice in a reel, nor two clips of one creator; people-centric
+ * or off-topic scenes are rejected; clips used by the last RECENT_REELS_WINDOW reels are skipped unless nothing else fits, then the
+ * least-used first (usage counts live in the cache bucket). Returns [] when nothing is found.
  */
 export async function pickBroll(
   deps: PexelsDeps,
@@ -320,19 +341,23 @@ export async function pickBroll(
   ctx: { source: string | null; title: string },
 ): Promise<BrollPick[]> {
   const usage = (await readJson<Record<string, number>>(deps.cache, USAGE_KEY)) ?? {}
+  const recentReels = (await readJson<number[][]>(deps.cache, RECENT_KEY)) ?? []
+  const recent = new Set(recentReels.flat())
   const taken = new Set<number>()
   // One clip per creator: a stock set shot on one desk is the same footage twice to a viewer.
   const creators = new Set<string>()
   const usedTerms = new Map<string, number>()
   const picks: BrollPick[] = []
   const beatTerms = beats.map((beat) => termsForBeat(beat, ctx.source, ctx.title))
-  const take = async (term: string, index: number): Promise<boolean> => {
-    const found = (await searchVideos(deps, term))
+  const take = async (term: string, index: number, allowRecent: boolean): Promise<boolean> => {
+    const found = (await searchVideos(deps, queryFor(term)))
       .filter(
         (v) =>
           !taken.has(v.id) &&
           !creators.has(v.creator) &&
+          (allowRecent || !recent.has(v.id)) &&
           isUsableSlug(v.pageUrl) &&
+          isOnTopic(v.pageUrl, term) &&
           v.seconds >= MIN_SECONDS &&
           v.seconds <= MAX_SECONDS,
       )
@@ -361,16 +386,22 @@ export async function pickBroll(
       const pool = round < 3 ? terms : [...terms, ...EXTRA_TERMS]
       // A term already used goes last, so the reel is not four keyboards.
       const ordered = [...pool].sort((a, b) => (usedTerms.get(a) ?? 0) - (usedTerms.get(b) ?? 0))
-      for (const term of ordered) {
-        if (await take(term, index)) {
-          added = true
-          break
+      for (const allowRecent of [false, true]) {
+        for (const term of ordered) {
+          if (await take(term, index, allowRecent)) {
+            added = true
+            break
+          }
         }
+        if (added) break
       }
     }
     if (!added) break
   }
-  if (picks.length > 0) await writeJson(deps.cache, USAGE_KEY, usage)
+  if (picks.length > 0) {
+    await writeJson(deps.cache, USAGE_KEY, usage)
+    await writeJson(deps.cache, RECENT_KEY, rememberReel(recentReels, picks))
+  }
   deps.log.info({ picks: picks.length, beats: beats.length }, 'b-roll picked')
   return picks
 }

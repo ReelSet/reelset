@@ -1,6 +1,7 @@
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 import { Pop, Rise, easeOut, useSpring } from '../fx'
 import { parseStat } from '../lib/count'
+import { displayStat, tidyDecimals } from '../lib/stat-format'
 import { barValueWidth } from '../lib/looks'
 import { fitText } from '../lib/text'
 import { typeset } from '../lib/typeset'
@@ -13,13 +14,13 @@ export function StatSlam({ frames, ctx, props, topPad }: ScreenProps) {
   const raw = prop<string>(props, 'value', '')
   const label = prop<string>(props, 'label', '')
   // The real number from the first frame: a count-up would show values nobody said ("47.0%" on the way to 94.7%).
-  const shown = raw
+  const shown = displayStat(raw, label)
   const fade = interpolate(frame, [0, 4], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   })
   const size = fitText(
-    raw || '0',
+    shown || '0',
     { width: CONTENT_W, height: 380 },
     { min: 110, max: 300, charWidth: 0.62, lineHeight: 1 },
   )
@@ -119,7 +120,9 @@ type Bar = { label: string; value: string }
 export function BarRace({ frames, props, ctx, topPad }: ScreenProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
-  const bars = prop<Bar[]>(props, 'bars', []).slice(0, 4)
+  const bars = prop<Bar[]>(props, 'bars', [])
+    .slice(0, 4)
+    .map((b) => ({ ...b, value: tidyDecimals(b.value) }))
   const title = typeset(prop<string>(props, 'title', ''))
   const times = Array.isArray(props.times) ? (props.times as number[]) : null
   const parsed = bars.map((b) => ({ ...b, stat: parseStat(b.value) }))

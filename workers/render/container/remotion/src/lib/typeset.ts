@@ -1,3 +1,4 @@
+import { tidyDecimals } from './stat-format'
 const SUP: Record<string, string> = {
   '0': '⁰',
   '1': '¹',
@@ -33,10 +34,10 @@ const map = (s: string, table: Record<string, string>): string | null => {
 
 /**
  * Display text for math-ish source strings: `P^2` -> `P²`, `x_1` -> `x₁`, `^{-1}` braces dropped.
- * Anything that has no unicode form keeps its caret/underscore so no character is ever lost.
+ * Anything that has no unicode form keeps its caret/underscore so no character is ever lost; decimals with 4+ fraction digits are rounded.
  */
 export function typeset(text: string): string {
-  return text
+  return tidyDecimals(text)
     .replace(/\^\{([^}]{1,6})\}|\^([+-]?\d{1,3}|n)/g, (m, braced?: string, bare?: string) => {
       const body = braced ?? bare ?? ''
       return map(body, SUP) ?? m

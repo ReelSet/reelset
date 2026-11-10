@@ -72,3 +72,14 @@ Roll back by setting `LLM_PROVIDER` back to `gemini` in `workers/ingest/wrangler
 - The render cron's template-upgrade sweep (re-renders already rendered items on the newest template) is off unless `app_setting` `render_upgrade_enabled` is `true` (`scripts/maintenance/set-setting.ts renderUpgradeEnabled true`). New items always render on the current template through the queue. `feed_min_template` stays 6 until the old reels are deliberately retired.
 - Template 8 renders take 7-12 minutes on the `standard-3` container (Pexels b-roll vetting plus Remotion), so the first queue attempt can time out; the retry returns the container's cached result.
 - The ingest pipeline pause probe is a Gemini embedding call. While Gemini prepay credits are depleted (HTTP 402) the pause is renewed every probe and no new items are scripted, whatever `LLM_PROVIDER` is. Top up Gemini credits to resume ingest.
+
+## Render container fonts and image
+
+- The image installs `fonts-noto-cjk` (SIL OFL) and deletes every weight except `NotoSansCJK-Regular.ttc` and `NotoSansCJK-Bold.ttc` in the same layer (about 40 MB); Remotion's font stacks (`theme.ts` `FONT`, `MONO`) fall back to it after Geist.
+
+## Render worker behavior worth knowing
+
+- Narration: ingest keeps scripts to 100-112 words / 760 spoken characters; the worker rounds long decimals before TTS, retries Aura up to 2 times on shorter scripts, then Kokoro (pause-aware speed refit), then edge-tts. Check `spend_ledger` rows with `category = 'tts'` (`meta.provider`) to see which engine each reel used.
+- `markRetryPending` (render consumer): while a retry is waiting the render row is `queued`, not `rendering`, so the 20-minute stuck reaper does not fail it. The item title is clamped to 200 characters before the container call.
+- Deploy render only when no render row is `rendering` and the `render-jobs` queue is empty, otherwise in-flight jobs are orphaned.
+- B-roll: Pexels cache keys in R2 `cache/pexels/`: `search-30-<sha1>.json` (7 days), `rate.json`, `usage.json` (all-time clip counts), `recent.json` (clip ids of the last 8 reels).

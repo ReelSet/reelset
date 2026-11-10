@@ -8,6 +8,7 @@ import {
   parseSpokenWords,
   selectProvider,
   shortenScript,
+  speakableNumbers,
   fallbackEngineFor,
   type AiLike,
   type SpokenWord,
@@ -259,5 +260,55 @@ describe('shortenScript', () => {
 
   it('returns null when every beat is a single sentence', () => {
     expect(shortenScript({ ...base, beats: [base.beats[1]!, base.beats[1]!] }, 0.5)).toBeNull()
+  })
+})
+
+describe('speakableNumbers', () => {
+  const script = {
+    version: 1 as const,
+    hook: 'Billing gets 0.9982666969299316 here.',
+    beats: [
+      {
+        text: 'Technical gets 0.0010246571619063616 and sales 0.0007087149424478412. Pi is 3.14.',
+        visual: { type: 'title' as const, title: 'A' },
+        shots: [{ at: '0.0010246571619063616', show: 'KeyPoint' as const }],
+      },
+    ],
+    outro: 'Done.',
+    claims: [],
+  }
+
+  it('rounds long decimals to 3 significant digits and leaves short numbers alone', () => {
+    const out = speakableNumbers(script)
+    expect(out.hook).toBe('Billing gets 0.998 here.')
+    expect(out.beats[0]!.text).toBe('Technical gets 0.00102 and sales 0.000709. Pi is 3.14.')
+  })
+
+  it('keeps a shot cue pointing at the rewritten word', () => {
+    expect(speakableNumbers(script).beats[0]!.shots![0]!.at).toBe('0.00102')
+  })
+})
+
+describe('shortenScript whole-beat cuts', () => {
+  const beat = (n: number) => ({
+    text: `Beat ${n} has some words in it.`,
+    visual: { type: 'title' as const, title: `T${n}` },
+  })
+  const script = {
+    version: 1 as const,
+    hook: 'Hook line.',
+    beats: [beat(1), beat(2), beat(3), beat(4), beat(5)],
+    outro: 'Outro line.',
+    claims: [],
+  }
+
+  it('drops whole beats when every beat is a single sentence, never the first, never below 3', () => {
+    const out = shortenScript(script, 0.3)!
+    expect(out.beats.length).toBe(3)
+    expect(out.beats[0]!.text).toContain('Beat 1')
+  })
+
+  it('returns null when only 3 single-sentence beats remain', () => {
+    expect(shortenScript({ ...script, beats: script.beats.slice(0, 3) }, 0.5)).toBeNull()
   })
 })

@@ -9,7 +9,7 @@ export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 // Medium (the model default) is pinned explicitly: scripts need grounded numbers and a sharp
 // hook, which benefit from some reasoning, while low skips the self-checks that keep narration at
-// 110-125 words. Higher levels cost far more output tokens for no measurable gain on this task.
+// 100-112 words. Higher levels cost far more output tokens for no measurable gain on this task.
 export const DEFAULT_CLAUDE_EFFORT: ClaudeEffort = 'medium'
 
 // Room for adaptive thinking plus a ~1.5K-token JSON script.
