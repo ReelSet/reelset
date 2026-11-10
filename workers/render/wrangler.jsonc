@@ -5,6 +5,7 @@
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "routes": [{ "pattern": "render-api.reelset.app", "custom_domain": true }],
   "observability": { "enabled": true },
   "containers": [
     {

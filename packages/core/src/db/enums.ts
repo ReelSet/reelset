@@ -106,3 +106,13 @@ export const SpendCategory = {
   scrape: 'scrape',
 } as const
 export type SpendCategory = (typeof SpendCategory)[keyof typeof SpendCategory]
+export const InstagramPostStatus = {
+  draft: 'draft',
+  queued: 'queued',
+  posting: 'posting',
+  posted: 'posted',
+  failed: 'failed',
+  deleting: 'deleting',
+  deleted: 'deleted',
+} as const
+export type InstagramPostStatus = (typeof InstagramPostStatus)[keyof typeof InstagramPostStatus]

@@ -20,6 +20,7 @@ import type {
   EventName,
   AskOutcome,
   SpendCategory,
+  InstagramPostStatus,
 } from './enums'
 
 export type AppSetting = {
@@ -83,6 +84,23 @@ export type IngestTask = {
   error: string | null
   started_at: Timestamp | null
   finished_at: Timestamp | null
+}
+export type InstagramPost = {
+  id: Generated<string>
+  item_id: string
+  video_key: string
+  caption: string
+  status: Generated<InstagramPostStatus>
+  media_pk: string | null
+  permalink: string | null
+  error: string | null
+  attempts: Generated<number>
+  requested_by: string | null
+  created_at: Generated<Timestamp>
+  started_at: Timestamp | null
+  posted_at: Timestamp | null
+  delete_requested_at: Timestamp | null
+  updated_at: Generated<Timestamp>
 }
 export type Item = {
   id: Generated<string>
@@ -200,6 +218,7 @@ export type DB = {
   evidence_chunk: EvidenceChunk
   ingest_run: IngestRun
   ingest_task: IngestTask
+  instagram_post: InstagramPost
   item: Item
   item_event: ItemEvent
   like: Like

@@ -5,7 +5,7 @@ import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from reel import pipeline, transcript, validation, youtube_search
+from reel import instagram, pipeline, transcript, validation, youtube_search
 from reel.errors import RenderError
 from reel.jobs import JobStore
 
@@ -86,13 +86,59 @@ class Handler(BaseHTTPRequestHandler):
                 return self._parse_paper()
             if self.path == "/render":
                 return self._render()
+            if self.path.startswith("/instagram/"):
+                return self._instagram(self.path.removeprefix("/instagram/"))
             return self._json(404, {"error": "not_found"})
+        except instagram.InstagramError as err:
+            log.warning("instagram request rejected code=%s", err.code)
+            self._json(err.status, {"error": err.code, "message": err.message})
         except RenderError as err:
             log.warning("request rejected code=%s msg=%s", err.code, err.message)
             self._error(err)
         except Exception:
             log.exception("unhandled error")
             self._json(500, {"error": "ffmpeg_failed", "message": "internal error"})
+
+    def _instagram(self, action: str):
+        body = self._read_json()
+        if not isinstance(body, dict):
+            raise instagram.InstagramError("invalid_input", "body must be an object", 400)
+        session = body.get("session") if isinstance(body.get("session"), dict) else None
+
+        def require_str(key: str) -> str:
+            value = body.get(key)
+            if not isinstance(value, str) or not value:
+                raise instagram.InstagramError("invalid_input", f"{key} is required", 400)
+            return value
+
+        proxy_index = body.get("proxyIndex") if isinstance(body.get("proxyIndex"), int) else None
+        proxy = instagram.resolve_proxy(proxy_index)
+        factory = lambda: instagram.new_client(proxy.url)  # noqa: E731
+        if action == "status":
+            work = lambda: instagram.status(session, factory)  # noqa: E731
+        elif action == "login":
+            work = lambda: instagram.login(  # noqa: E731
+                session,
+                require_str("username"),
+                require_str("password"),
+                body.get("totpSecret") or None,
+                body.get("code") or None,
+                factory,
+            )
+        elif action == "post":
+            if session is None:
+                raise instagram.InstagramError("needs_login", "no saved session", 401)
+            work = lambda: instagram.post_reel(  # noqa: E731
+                session, require_str("videoUrl"), require_str("caption"), factory
+            )
+        elif action == "delete":
+            if session is None:
+                raise instagram.InstagramError("needs_login", "no saved session", 401)
+            work = lambda: instagram.delete_media(session, require_str("mediaPk"), factory)  # noqa: E731
+        else:
+            return self._json(404, {"error": "not_found"})
+        result = instagram.run_exclusive(work)
+        self._json(200, {**result, "proxy": proxy.public()})
 
     def _youtube_search(self):
         queries, max_age_days, per_query_limit = youtube_search.validate_search_request(

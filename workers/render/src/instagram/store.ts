@@ -1,0 +1,52 @@
+import {
+  claimNextDelete,
+  claimNextPost,
+  failStuckPosts,
+  getEncryptedSession,
+  getIgAccount,
+  markDeleted,
+  markPostFailed,
+  markPosted,
+  releasePostToQueue,
+  restoreAfterDeleteFailure,
+  setEncryptedSession,
+  setIgAccount,
+  type ClaimedPost,
+  type Database,
+  type IgAccount,
+  type Logger,
+} from '@reelset/core'
+
+export type { ClaimedPost }
+
+export type IgStore = {
+  getSession(): Promise<string | null>
+  saveSession(blob: string): Promise<void>
+  getAccount(): Promise<IgAccount | null>
+  setAccount(account: IgAccount): Promise<void>
+  claimPost(): Promise<ClaimedPost | null>
+  claimDelete(): Promise<ClaimedPost | null>
+  markPosted(id: string, result: { mediaPk: string; permalink: string }): Promise<boolean>
+  markFailed(id: string, error: string): Promise<boolean>
+  release(id: string, note: string): Promise<boolean>
+  markDeleted(id: string): Promise<boolean>
+  restoreAfterDeleteFailure(id: string, error: string): Promise<boolean>
+  failStuck(): Promise<number>
+}
+
+export function createIgStore(db: Database, log: Logger): IgStore {
+  return {
+    getSession: () => getEncryptedSession(db),
+    saveSession: (blob) => setEncryptedSession(db, blob),
+    getAccount: () => getIgAccount(db),
+    setAccount: (account) => setIgAccount(db, account),
+    claimPost: () => claimNextPost(db, log),
+    claimDelete: () => claimNextDelete(db, log),
+    markPosted: (id, result) => markPosted(db, id, result),
+    markFailed: (id, error) => markPostFailed(db, id, error),
+    release: (id, note) => releasePostToQueue(db, id, note),
+    markDeleted: (id) => markDeleted(db, id),
+    restoreAfterDeleteFailure: (id, error) => restoreAfterDeleteFailure(db, id, error),
+    failStuck: () => failStuckPosts(db, log),
+  }
+}
