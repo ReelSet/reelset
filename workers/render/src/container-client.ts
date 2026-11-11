@@ -1,7 +1,13 @@
 import { z } from 'zod'
 import type { ItemImage, Logger, Source } from '@reelset/core'
 import { errorFields } from '@reelset/core'
-import { CONTAINER_BASE_URL, RENDER_TIMEOUT_MS, TEMPLATE_VERSION } from './constants'
+import {
+  BOX_BUSY_STATUS,
+  CLOUDFLARE_ORIGIN_TIMEOUT_STATUS,
+  CONTAINER_BASE_URL,
+  RENDER_TIMEOUT_MS,
+  TEMPLATE_VERSION,
+} from './constants'
 import { RenderJobError, parseErrorCode } from './errors'
 import type { ItemFacts } from './facts'
 import type { BrollPick } from './pexels'
@@ -82,11 +88,21 @@ async function send(
   }
 }
 
+const BUSY_STATUSES: ReadonlySet<number> = new Set([
+  BOX_BUSY_STATUS,
+  409,
+  CLOUDFLARE_ORIGIN_TIMEOUT_STATUS,
+])
+
 async function failureFrom(res: Response, what: string): Promise<RenderJobError> {
   const body: unknown = await res.json().catch(() => null)
   const code =
     typeof body === 'object' && body !== null && 'error' in body ? parseErrorCode(body.error) : null
-  return new RenderJobError(code ?? 'container_unreachable', `${what} returned ${res.status}`)
+  const busy = code === 'busy' || (code === null && BUSY_STATUSES.has(res.status))
+  return new RenderJobError(
+    busy ? 'busy' : (code ?? 'container_unreachable'),
+    `${what} returned ${res.status}`,
+  )
 }
 
 export function createContainerClient(fetcher: ContainerFetcher, log: Logger): ContainerClient {
@@ -136,27 +152,4 @@ export function createContainerClient(fetcher: ContainerFetcher, log: Logger): C
       }
     },
   }
-}
-
-/** Tries each container slot until one is not busy; later calls for the job reuse that slot. */
-export async function renderWithFailover(
-  slots: readonly ContainerFetcher[],
-  input: RenderInput,
-  log: Logger,
-): Promise<{ client: ContainerClient; metadata: RenderMetadata }> {
-  let lastError: RenderJobError | null = null
-  for (const [index, slot] of slots.entries()) {
-    const client = createContainerClient(slot, log.child({ slot: index }))
-    try {
-      return { client, metadata: await client.render(input) }
-    } catch (err) {
-      if (err instanceof RenderJobError && err.code === 'busy') {
-        log.info({ slot: index }, 'container slot busy, trying next')
-        lastError = err
-        continue
-      }
-      throw err
-    }
-  }
-  throw lastError ?? new RenderJobError('busy', 'no container slots configured')
 }

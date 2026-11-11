@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { StaleTransitionError, renderKey } from '@reelset/core'
 import { describe, expect, it } from 'vitest'
 import { processRenderJob, type ConsumerDeps } from './consumer'
-import { TEMPLATE_VERSION } from './constants'
+import { BUSY_MAX_DEFERRALS, BUSY_RETRY_DELAY_SECONDS, TEMPLATE_VERSION } from './constants'
 import {
   FakeContainer,
   FakeMedia,
@@ -25,21 +25,21 @@ async function keyFor(voice = 'en-US-AriaNeural') {
   })
 }
 
-function setup(opts: { store?: FakeStore; containers?: FakeContainer[]; media?: FakeMedia } = {}) {
+function setup(opts: { store?: FakeStore; container?: FakeContainer; media?: FakeMedia } = {}) {
   const store = opts.store ?? new FakeStore()
-  const containers = opts.containers ?? [new FakeContainer()]
+  const container = opts.container ?? new FakeContainer()
   const media = opts.media ?? new FakeMedia()
   const rec = recorders()
   const deps: ConsumerDeps = {
     store,
-    containers,
+    box: container,
     media: media as unknown as ConsumerDeps['media'],
     transition: rec.transition,
     spend: rec.spend,
     voice: 'en-US-AriaNeural',
     log: silentLog,
   }
-  return { deps, store, containers, media, rec }
+  return { deps, store, container, media, rec }
 }
 
 const body = { itemId: ITEM_ID, attempt: 0 }
@@ -48,19 +48,19 @@ const path = (c: FakeContainer) =>
 
 describe('processRenderJob', () => {
   it('renders a fresh embedded item end to end', async () => {
-    const { deps, store, containers, media, rec } = setup()
+    const { deps, store, container, media, rec } = setup()
     const key = await keyFor()
 
     const result = await processRenderJob(deps, body, 1)
 
     expect(result).toEqual({ action: 'ack' })
-    expect(path(containers[0]!)).toEqual([
+    expect(path(container)).toEqual([
       'POST /render',
       'GET /render/JOB/video',
       'GET /render/JOB/poster',
       'DELETE /render/JOB',
     ])
-    const renderCall = containers[0]!.requests[0]!.body as Record<string, unknown>
+    const renderCall = container.requests[0]!.body as Record<string, unknown>
     expect(renderCall).toMatchObject({
       title: 'Some repo',
       sourceLabel: 'GitHub',
@@ -105,11 +105,11 @@ describe('processRenderJob', () => {
     }
     const facts = { repo: { owner: 'acme', name: 'widget', stars: 1200, forks: 40 } }
     const store = new FakeStore(makeItem({ script, facts }))
-    const { deps, containers } = setup({ store })
+    const { deps, container } = setup({ store })
 
     await processRenderJob(deps, body, 1)
 
-    const sent = containers[0]!.requests[0]!.body as {
+    const sent = container.requests[0]!.body as {
       script: { headline: string; beats: { shots?: { show: string }[] }[] }
       facts: unknown
     }
@@ -127,12 +127,12 @@ describe('processRenderJob', () => {
       videoKey: videoKeyFor(ITEM_ID, key),
       posterKey: posterKeyFor(ITEM_ID, key),
     })
-    const { deps, containers, media, rec } = setup({ store })
+    const { deps, container, media, rec } = setup({ store })
 
     const result = await processRenderJob(deps, body, 1)
 
     expect(result).toEqual({ action: 'ack' })
-    expect(containers[0]!.requests).toEqual([])
+    expect(container.requests).toEqual([])
     expect(media.puts).toEqual([])
     expect(store.calls).toEqual([])
     expect(rec.transitions.map((t) => `${t.from}->${t.to}`)).toEqual([
@@ -155,9 +155,7 @@ describe('processRenderJob', () => {
   it('keeps the item rendered when a re-render fails terminally', async () => {
     const { deps, store, rec } = setup({
       store: new FakeStore(makeItem({ status: 'rendered' })),
-      containers: [
-        new FakeContainer({ renderStatus: 400, renderBody: { error: 'invalid_input' } }),
-      ],
+      container: new FakeContainer({ renderStatus: 400, renderBody: { error: 'invalid_input' } }),
     })
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(store.calls).toContain('failed:invalid_input')
@@ -166,9 +164,9 @@ describe('processRenderJob', () => {
 
   it('acks without doing anything when the item is failed or not yet embedded', async () => {
     for (const status of ['failed', 'found'] as const) {
-      const { deps, containers, rec } = setup({ store: new FakeStore(makeItem({ status })) })
+      const { deps, container, rec } = setup({ store: new FakeStore(makeItem({ status })) })
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect(containers[0]!.requests).toEqual([])
+      expect(container.requests).toEqual([])
       expect(rec.transitions).toEqual([])
     }
   })
@@ -177,10 +175,10 @@ describe('processRenderJob', () => {
     const store = new FakeStore(makeItem({ status: 'voiced' }))
     const key = await keyFor()
     store.renders.set(key, { id: 'r1', status: 'done', videoKey: 'v', posterKey: 'p' })
-    const { deps, containers, rec } = setup({ store })
+    const { deps, container, rec } = setup({ store })
 
     expect(await processRenderJob(deps, body, 2)).toEqual({ action: 'ack' })
-    expect(containers[0]!.requests).toEqual([])
+    expect(container.requests).toEqual([])
     expect(rec.transitions.map((t) => `${t.from}->${t.to}`)).toEqual(['voiced->rendered'])
   })
 
@@ -194,9 +192,9 @@ describe('processRenderJob', () => {
     const store = new FakeStore()
     const key = await keyFor()
     store.renders.set(key, { id: 'r1', status: 'failed', videoKey: null, posterKey: null })
-    const { deps, containers } = setup({ store })
+    const { deps, container } = setup({ store })
     await processRenderJob(deps, body, 1)
-    expect(containers[0]!.requests[0]?.path).toBe('/render')
+    expect(container.requests[0]?.path).toBe('/render')
   })
 
   it('retries with backoff on a transient container failure before the last attempt', async () => {
@@ -204,7 +202,7 @@ describe('processRenderJob', () => {
       renderStatus: 502,
       renderBody: { error: 'tts_unavailable' },
     })
-    const { deps, store, rec } = setup({ containers: [container] })
+    const { deps, store, rec } = setup({ container })
 
     const result = await processRenderJob(deps, body, 2)
 
@@ -218,7 +216,7 @@ describe('processRenderJob', () => {
       renderStatus: 502,
       renderBody: { error: 'tts_unavailable' },
     })
-    const { deps, store, rec } = setup({ containers: [container] })
+    const { deps, store, rec } = setup({ container })
 
     const result = await processRenderJob(deps, body, 4)
 
@@ -234,7 +232,7 @@ describe('processRenderJob', () => {
       renderStatus: 400,
       renderBody: { error: 'invalid_input' },
     })
-    const { deps, store, rec } = setup({ containers: [container] })
+    const { deps, store, rec } = setup({ container })
 
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(store.calls).toEqual(['rendering', 'failed:invalid_input'])
@@ -246,12 +244,12 @@ describe('processRenderJob', () => {
   })
 
   it('fails the item without a render row when the script is invalid', async () => {
-    const { deps, store, rec, containers } = setup({
+    const { deps, store, rec, container } = setup({
       store: new FakeStore(makeItem({ script: { nope: true } })),
     })
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(store.renders.size).toBe(0)
-    expect(containers[0]!.requests).toEqual([])
+    expect(container.requests).toEqual([])
     expect(rec.transitions[0]).toMatchObject({ to: 'failed', error: 'script_invalid' })
   })
 
@@ -265,36 +263,52 @@ describe('processRenderJob', () => {
     expect(rec.transitions).toHaveLength(1)
   })
 
-  it('tries the next container slot when the first is busy and reuses it for downloads', async () => {
-    const busy = new FakeContainer({ renderStatus: 409, renderBody: { error: 'busy' } })
-    const free = new FakeContainer()
-    const { deps } = setup({ containers: [busy, free] })
+  it('defers a busy box with a fresh message so the retry budget is untouched', async () => {
+    const busy = new FakeContainer({ renderStatus: 429, renderBody: { error: 'busy' } })
+    const { deps, store } = setup({ container: busy })
 
-    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    const result = await processRenderJob(deps, body, 5)
+
+    expect(result).toEqual({
+      action: 'defer',
+      delaySeconds: BUSY_RETRY_DELAY_SECONDS,
+      message: { itemId: ITEM_ID, deferrals: 1 },
+    })
     expect(path(busy)).toEqual(['POST /render'])
-    expect(path(free)).toContain('GET /render/JOB/video')
-  })
-
-  it('retries when every slot is busy', async () => {
-    const busy = () => new FakeContainer({ renderStatus: 409, renderBody: { error: 'busy' } })
-    const { deps } = setup({ containers: [busy(), busy()] })
-    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'retry', delaySeconds: 30 })
-  })
-
-  it('releases the render row while a busy retry waits so the stuck reaper skips it', async () => {
-    const busy = () => new FakeContainer({ renderStatus: 409, renderBody: { error: 'busy' } })
-    const { deps, store } = setup({ containers: [busy(), busy()] })
-    await processRenderJob(deps, body, 1)
-    expect(store.calls).toContain('retry_pending')
+    expect(store.calls).toEqual(['rendering', 'retry_pending'])
     expect([...store.renders.values()].map((r) => r.status)).toEqual(['queued'])
+  })
+
+  it.each([
+    ['409 with a busy body', 409, { error: 'busy' }],
+    ['429 without a body', 429, null],
+    ['a Cloudflare 524 origin timeout', 524, null],
+  ])('treats %s as busy', async (_name, status, renderBody) => {
+    const { deps } = setup({ container: new FakeContainer({ renderStatus: status, renderBody }) })
+    expect(await processRenderJob(deps, body, 1)).toMatchObject({ action: 'defer' })
+  })
+
+  it('counts consecutive deferrals carried on the message', async () => {
+    const busy = new FakeContainer({ renderStatus: 429, renderBody: { error: 'busy' } })
+    const { deps } = setup({ container: busy })
+    const result = await processRenderJob(deps, { ...body, deferrals: 7 }, 1)
+    expect(result).toMatchObject({ action: 'defer', message: { deferrals: 8 } })
+  })
+
+  it('falls back to normal retries once the box stayed busy past the deferral cap', async () => {
+    const busy = new FakeContainer({ renderStatus: 429, renderBody: { error: 'busy' } })
+    const { deps, store } = setup({ container: busy })
+    const result = await processRenderJob(deps, { ...body, deferrals: BUSY_MAX_DEFERRALS }, 1)
+    expect(result).toEqual({ action: 'retry', delaySeconds: 30 })
+    expect(store.calls).toEqual(['rendering', 'retry_pending'])
   })
 
   it('retries on an R2 upload failure and still cleans up the container job', async () => {
     const media = new FakeMedia()
     media.failPuts = true
-    const { deps, containers } = setup({ media })
+    const { deps, container } = setup({ media })
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'retry', delaySeconds: 30 })
-    expect(path(containers[0]!).at(-1)).toBe('DELETE /render/JOB')
+    expect(path(container).at(-1)).toBe('DELETE /render/JOB')
   })
 
   it('treats a video larger than 25 MB as a permanent failure', async () => {
@@ -310,13 +324,13 @@ describe('processRenderJob', () => {
         templateVersion: TEMPLATE_VERSION,
       },
     })
-    const { deps, rec } = setup({ containers: [container] })
+    const { deps, rec } = setup({ container })
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(rec.transitions[0]).toMatchObject({ to: 'failed', error: 'too_large' })
   })
 
   it('rejects a download whose size disagrees with the metadata', async () => {
-    const { deps, media } = setup({ containers: [new FakeContainer({ videoBytes: 999 })] })
+    const { deps, media } = setup({ container: new FakeContainer({ videoBytes: 999 }) })
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'retry', delaySeconds: 30 })
     expect(media.puts).toEqual([])
   })
@@ -352,7 +366,7 @@ describe('processRenderJob', () => {
           templateVersion: reported,
         },
       })
-      const { deps, store, media, rec } = setup({ containers: [container] })
+      const { deps, store, media, rec } = setup({ container })
 
       const result = await processRenderJob(deps, body, 1)
 
@@ -376,7 +390,7 @@ describe('processRenderJob', () => {
         renderMs: 1,
       },
     })
-    const { deps, store } = setup({ containers: [container] })
+    const { deps, store } = setup({ container })
 
     const result = await processRenderJob(deps, body, 4)
 
@@ -433,12 +447,12 @@ describe('aura-2 narration', () => {
   }
 
   it('sends audio and word timings to the container and records priced tts spend', async () => {
-    const { deps, containers, rec } = setup()
+    const { deps, container, rec } = setup()
     deps.voice = 'aura2-hera'
     deps.edgeVoice = 'en-US-AriaNeural'
     deps.aura = { ai: okAi, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    const sent = container.requests[0]!.body as Record<string, any>
     expect(sent.voice).toBe('aura2-hera')
     expect(sent.narration.audioBase64).toBe('AQID')
     expect(sent.narration.words[0].text).toBe('Hook')
@@ -462,14 +476,14 @@ describe('aura-2 narration', () => {
     claims: [],
   }
   it('re-synthesizes once from a shortened script when aura runs past 58s', async () => {
-    const { deps, containers, rec } = setup({
+    const { deps, container, rec } = setup({
       store: new FakeStore(makeItem({ script: longScript })),
     })
     deps.voice = 'aura2-hera'
     const ai = speakingAi([66, 52])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    const sent = container.requests[0]!.body as Record<string, any>
     expect(ai.novaCalls).toBe(2)
     expect(sent.narration).toBeDefined()
     expect(sent.voice).toBe('aura2-hera')
@@ -481,7 +495,7 @@ describe('aura-2 narration', () => {
   })
 
   it('falls back to edge-tts when the shortened narration is still over the cap', async () => {
-    const { deps, containers } = setup({
+    const { deps, container } = setup({
       store: new FakeStore(makeItem({ script: longScript })),
     })
     deps.voice = 'aura2-hera'
@@ -489,7 +503,7 @@ describe('aura-2 narration', () => {
     const ai = speakingAi([70, 64])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    const sent = container.requests[0]!.body as Record<string, any>
     expect(ai.novaCalls).toBe(2)
     expect(sent.narration).toBeUndefined()
     expect(sent.voice).toBe('en-US-AriaNeural')
@@ -505,12 +519,12 @@ describe('aura-2 narration', () => {
         { text: 'C one. C two.', visual: { type: 'title', title: 'Three' } },
       ],
     }
-    const { deps, containers } = setup({ store: new FakeStore(makeItem({ script })) })
+    const { deps, container } = setup({ store: new FakeStore(makeItem({ script })) })
     deps.voice = 'aura2-hera'
     const ai = speakingAi([75, 62, 54])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    const sent = container.requests[0]!.body as Record<string, any>
     expect(ai.novaCalls).toBe(3)
     expect(sent.narration).toBeDefined()
     expect(sent.voice).toBe('aura2-hera')
@@ -518,21 +532,21 @@ describe('aura-2 narration', () => {
 
   it('sends long decimals to aura and the container as short numbers', async () => {
     const script = { ...longScript, hook: 'Billing gets 0.9982666969299316 here.' }
-    const { deps, containers } = setup({ store: new FakeStore(makeItem({ script })) })
+    const { deps, container } = setup({ store: new FakeStore(makeItem({ script })) })
     deps.aura = { ai: speakingAi(), speaker: 'hera' }
     await processRenderJob(deps, body, 1)
-    const sent = containers[0]!.requests[0]!.body as Record<string, any>
+    const sent = container.requests[0]!.body as Record<string, any>
     expect(sent.script.hook).toBe('Billing gets 0.998 here.')
   })
 
   it('goes straight to edge-tts when nothing can be shortened', async () => {
-    const { deps, containers } = setup()
+    const { deps, container } = setup()
     deps.edgeVoice = 'en-US-AriaNeural'
     const ai = speakingAi([70])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(ai.novaCalls).toBe(1)
-    expect((containers[0]!.requests[0]!.body as Record<string, any>).narration).toBeUndefined()
+    expect((container.requests[0]!.body as Record<string, any>).narration).toBeUndefined()
   })
 
   describe('kokoro fallback', () => {
@@ -549,8 +563,8 @@ describe('aura-2 narration', () => {
       templateVersion: TEMPLATE_VERSION,
     })
     const withKokoro = (provider: string, ai: unknown) => {
-      const containers = [new FakeContainer({ renderBody: renderBody(provider) })]
-      const ctx = setup({ containers })
+      const container = new FakeContainer({ renderBody: renderBody(provider) })
+      const ctx = setup({ container })
       ctx.deps.voice = 'aura2-hera'
       ctx.deps.edgeVoice = 'en-US-AriaNeural'
       ctx.deps.fallbackEngine = 'kokoro'
@@ -560,16 +574,16 @@ describe('aura-2 narration', () => {
     const sentBody = (c: FakeContainer) => c.requests[0]!.body as Record<string, any>
 
     it('keeps aura as primary and asks for no container engine', async () => {
-      const { deps, containers } = withKokoro('supplied', okAi)
+      const { deps, container } = withKokoro('supplied', okAi)
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect(sentBody(containers[0]!).narration).toBeDefined()
-      expect(sentBody(containers[0]!).ttsEngine).toBeUndefined()
+      expect(sentBody(container).narration).toBeDefined()
+      expect(sentBody(container).ttsEngine).toBeUndefined()
     })
 
     it('goes to kokoro on the first delivery when aura fails', async () => {
-      const { deps, containers, rec } = withKokoro('kokoro', brokenAi)
+      const { deps, container, rec } = withKokoro('kokoro', brokenAi)
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      const sent = sentBody(containers[0]!)
+      const sent = sentBody(container)
       expect(sent.narration).toBeUndefined()
       expect(sent.ttsEngine).toBe('kokoro')
       expect(sent.voice).toBe('en-US-AriaNeural')
@@ -586,10 +600,10 @@ describe('aura-2 narration', () => {
           throw new Error('nova down')
         },
       }
-      const { deps, containers, rec } = withKokoro('kokoro', novaDown)
+      const { deps, container, rec } = withKokoro('kokoro', novaDown)
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect(sentBody(containers[0]!).narration).toBeUndefined()
-      expect(sentBody(containers[0]!).ttsEngine).toBe('kokoro')
+      expect(sentBody(container).narration).toBeUndefined()
+      expect(sentBody(container).ttsEngine).toBe('kokoro')
       expect(rec.spends.find((s) => s.category === 'tts')!.meta).toMatchObject({
         provider: 'kokoro',
       })
@@ -603,10 +617,10 @@ describe('aura-2 narration', () => {
             : { results: { channels: [{ alternatives: [{ words: [] }] }] } }
         },
       }
-      const { deps, containers } = withKokoro('kokoro', noWords)
+      const { deps, container } = withKokoro('kokoro', noWords)
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect(sentBody(containers[0]!).narration).toBeUndefined()
-      expect(sentBody(containers[0]!).ttsEngine).toBe('kokoro')
+      expect(sentBody(container).narration).toBeUndefined()
+      expect(sentBody(container).ttsEngine).toBe('kokoro')
     })
 
     it('records edge when kokoro itself failed inside the container', async () => {
@@ -616,17 +630,17 @@ describe('aura-2 narration', () => {
     })
 
     it('asks for kokoro straight away when aura is not configured', async () => {
-      const containers = [new FakeContainer({ renderBody: renderBody('kokoro') })]
-      const { deps } = setup({ containers })
+      const container = new FakeContainer({ renderBody: renderBody('kokoro') })
+      const { deps } = setup({ container })
       deps.fallbackEngine = 'kokoro'
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect(sentBody(containers[0]!).ttsEngine).toBe('kokoro')
+      expect(sentBody(container).ttsEngine).toBe('kokoro')
     })
 
     it('defaults to edge when nothing selects an engine', async () => {
-      const { deps, containers } = setup()
+      const { deps, container } = setup()
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect(sentBody(containers[0]!).ttsEngine).toBe('edge')
+      expect(sentBody(container).ttsEngine).toBe('edge')
     })
   })
 
@@ -664,7 +678,7 @@ describe('aura-2 narration', () => {
           repo: 'acme/widget',
         },
       })
-      const { deps } = setup({ store, containers: [container] })
+      const { deps } = setup({ store, container })
       deps.broll = async () => [pick]
       await processRenderJob(deps, body, 1)
       const call = container.requests[0]!.body as Record<string, unknown>
@@ -677,12 +691,12 @@ describe('aura-2 narration', () => {
     })
 
     it('still renders when the b-roll lookup throws', async () => {
-      const { deps, containers } = setup()
+      const { deps, container } = setup()
       deps.broll = async () => {
         throw new Error('pexels down')
       }
       expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-      expect((containers[0]!.requests[0]!.body as Record<string, unknown>).broll).toBeUndefined()
+      expect((container.requests[0]!.body as Record<string, unknown>).broll).toBeUndefined()
     })
   })
 })

@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import subprocess
 import threading
 import time
@@ -12,9 +13,11 @@ logging.getLogger("phonemizer").setLevel(logging.ERROR)
 VOICE = "af_heart"
 LANGUAGE = "en-us"
 MODEL_DIR = os.environ.get("KOKORO_MODEL_DIR", "/opt/kokoro")
-MODEL_FILE = "kokoro-v1.0.fp16.onnx"
+MODEL_FILE_BY_MACHINE = {"aarch64": "kokoro-v1.0.onnx", "arm64": "kokoro-v1.0.onnx"}
+DEFAULT_MODEL_FILE = "kokoro-v1.0.fp16.onnx"
 VOICES_FILE = "voices-v1.0.bin"
 SAMPLE_RATE = 24_000
+SILENCE_PEAK = 1e-3
 INTRA_OP_THREADS = 2
 BASE_WPM = 112
 TARGET_WPM = 140
@@ -34,6 +37,23 @@ class KokoroError(Exception):
     """Kokoro could not produce usable narration; the caller falls back to another engine."""
 
 
+def model_file(machine: str | None = None) -> str:
+    """fp32 on arm64 (onnxruntime 1.24.1+ returns NaN for fp16 on linux aarch64), fp16 elsewhere."""
+    return MODEL_FILE_BY_MACHINE.get(machine or platform.machine(), DEFAULT_MODEL_FILE)
+
+
+def assert_audible(audio) -> None:
+    import numpy as np
+
+    samples = np.asarray(audio, dtype=np.float32)
+    if samples.size == 0:
+        raise KokoroError("model returned empty audio")
+    if not np.isfinite(samples).all():
+        raise KokoroError("model returned NaN or inf audio")
+    if float(np.abs(samples).max()) < SILENCE_PEAK:
+        raise KokoroError("model returned silent audio")
+
+
 class Engine:
     """The loaded model: phonemize script tokens and render timed audio."""
 
@@ -45,7 +65,7 @@ class Engine:
         options.intra_op_num_threads = INTRA_OP_THREADS
         options.inter_op_num_threads = 1
         session = onnxruntime.InferenceSession(
-            os.path.join(model_dir, MODEL_FILE), sess_options=options, providers=["CPUExecutionProvider"]
+            os.path.join(model_dir, model_file()), sess_options=options, providers=["CPUExecutionProvider"]
         )
         self._kokoro = Kokoro.from_session(session, os.path.join(model_dir, VOICES_FILE))
 
@@ -121,6 +141,7 @@ def encode_mp3(audio, audio_path: str) -> None:
 def _render(engine, phonemes: str, speed: float) -> tuple:
     started = time.monotonic()
     audio, timings = engine.synthesize(phonemes, speed)
+    assert_audible(audio)
     seconds = len(audio) / SAMPLE_RATE
     log.info("kokoro synth speed=%.2f audio=%.1fs wall=%.1fs", speed, seconds, time.monotonic() - started)
     return audio, timings, seconds

@@ -1,4 +1,3 @@
-import { getContainer } from '@cloudflare/containers'
 import {
   createDb,
   createLogger,
@@ -12,20 +11,19 @@ import {
   type ReelScript,
 } from '@reelset/core'
 import { loadRetentionDays, runMaintenance } from './cron'
-import { CONTAINER_SLOTS, DEFAULT_MEDIA_BASE_URL } from './constants'
-import { processRenderJob } from './consumer'
+import { createBoxFetcher } from './box-fetcher'
+import { DEFAULT_MEDIA_BASE_URL } from './constants'
+import { processRenderJob, type JobResult } from './consumer'
 import { pickBroll } from './pexels'
 import type { Env } from './env'
 import { handleParsePaper } from './paper-route'
 import { IG_RUN_QUEUE, handleIgRoute, matchIgRoute, type IgRunMessage } from './instagram/routes'
-import { IG_CONTAINER_SLOT, igConfigured, withIgDeps } from './instagram/wire'
+import { igConfigured, withIgDeps } from './instagram/wire'
 import { runInstagramQueue } from './instagram/service'
 import { createAutoPostDeps, queueAutoInstagramPosts } from './instagram/auto'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import { createMaintenanceStore, createRenderStore, type ItemForRender } from './store'
 import { loadTtsConfig } from './tts-config'
-
-export { ReelContainer } from './container'
 
 const INTERNAL_HOST = 'render.internal'
 
@@ -45,7 +43,7 @@ async function runInstagramBatch(
     batch.ackAll()
     return
   }
-  const container = getContainer(env.REEL_CONTAINER, IG_CONTAINER_SLOT)
+  const container = boxFor(env, log)
   try {
     const outcome = await withIgDeps(env, container, log, runInstagramQueue)
     log.info({ reasons, outcome }, 'instagram queue run done')
@@ -55,10 +53,26 @@ async function runInstagramBatch(
   batch.ackAll()
 }
 
-function containerSlots(env: Env) {
-  const order = Array.from({ length: CONTAINER_SLOTS }, (_, i) => i)
-  const start = Math.floor(Math.random() * CONTAINER_SLOTS)
-  return order.map((i) => getContainer(env.REEL_CONTAINER, `slot-${(i + start) % CONTAINER_SLOTS}`))
+function boxFor(env: Env, log: Logger) {
+  return createBoxFetcher({ baseUrl: env.RENDER_BOX_URL, token: env.RENDER_BOX_TOKEN ?? '', log })
+}
+
+async function applyJobResult(
+  env: Env,
+  message: Message<unknown>,
+  result: JobResult,
+  log: Logger,
+): Promise<void> {
+  if (result.action === 'ack') return message.ack()
+  if (result.action === 'retry') return message.retry({ delaySeconds: result.delaySeconds })
+  if (result.action === 'dead_letter') return message.retry()
+  try {
+    await env.RENDER_JOBS.send(result.message, { delaySeconds: result.delaySeconds })
+    message.ack()
+  } catch (err) {
+    log.error(errorFields(err), 'could not re-enqueue deferred job, retrying delivery')
+    message.retry({ delaySeconds: result.delaySeconds })
+  }
 }
 
 export default {
@@ -67,7 +81,7 @@ export default {
     const igRoute = matchIgRoute(request.method, url.pathname)
     if (igRoute !== 'not_found') {
       const log = makeLogger(env).child({ route: `ig/${igRoute}` })
-      const container = getContainer(env.REEL_CONTAINER, IG_CONTAINER_SLOT)
+      const container = boxFor(env, log)
       return handleIgRoute(igRoute, request, {
         token: env.IG_ADMIN_TOKEN,
         withDeps: (fn) => withIgDeps(env, container, log, fn),
@@ -81,9 +95,8 @@ export default {
     if (route === 'not_found' || url.hostname !== INTERNAL_HOST) {
       return new Response('not found', { status: 404 })
     }
-    const slot = Math.floor(Math.random() * CONTAINER_SLOTS)
-    const container = getContainer(env.REEL_CONTAINER, `slot-${slot}`)
     const log = makeLogger(env).child({ route })
+    const container = boxFor(env, log)
     if (route === 'parse_paper') {
       return handleParsePaper(request, {
         media: env.MEDIA,
@@ -112,7 +125,7 @@ export default {
       const tts = await loadTtsConfig(db, env, log)
       const deps = {
         store: createRenderStore(db, log),
-        containers: containerSlots(env),
+        box: boxFor(env, log),
         media: env.MEDIA,
         transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
@@ -135,9 +148,7 @@ export default {
       await Promise.all(
         batch.messages.map(async (message) => {
           const result = await processRenderJob(deps, message.body, message.attempts)
-          if (result.action === 'ack') message.ack()
-          else if (result.action === 'retry') message.retry({ delaySeconds: result.delaySeconds })
-          else message.retry()
+          await applyJobResult(env, message, result, log)
         }),
       )
     } finally {

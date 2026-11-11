@@ -10,8 +10,17 @@ import {
   type SpendInput,
   type TransitionInput,
 } from '@reelset/core'
-import { renderWithFailover, type ContainerFetcher, type RenderMetadata } from './container-client'
-import { MAX_VIDEO_BYTES, TEMPLATE_VERSION } from './constants'
+import {
+  createContainerClient,
+  type ContainerFetcher,
+  type RenderMetadata,
+} from './container-client'
+import {
+  BUSY_MAX_DEFERRALS,
+  BUSY_RETRY_DELAY_SECONDS,
+  MAX_VIDEO_BYTES,
+  TEMPLATE_VERSION,
+} from './constants'
 import { RenderJobError } from './errors'
 import {
   MAX_NARRATION_SECONDS,
@@ -43,14 +52,19 @@ import type { ItemForRender, RenderStore } from './store'
 export const jobMessageSchema = z.object({
   itemId: z.uuid(),
   attempt: z.number().int().nonnegative().optional(),
+  deferrals: z.number().int().nonnegative().optional(),
 })
+export type JobMessage = z.infer<typeof jobMessageSchema>
 
 export type JobResult =
-  { action: 'ack' } | { action: 'retry'; delaySeconds: number } | { action: 'dead_letter' }
+  | { action: 'ack' }
+  | { action: 'retry'; delaySeconds: number }
+  | { action: 'defer'; delaySeconds: number; message: JobMessage }
+  | { action: 'dead_letter' }
 
 export type ConsumerDeps = {
   store: RenderStore
-  containers: readonly ContainerFetcher[]
+  box: ContainerFetcher
   media: Pick<R2Bucket, 'put'>
   transition: (input: TransitionInput) => Promise<void>
   spend: (input: SpendInput) => Promise<void>
@@ -95,12 +109,33 @@ export async function processRenderJob(
       log.warn('stale transition, another delivery advanced the item; acking')
       return { action: 'ack' }
     }
+    const deferral = busyDeferral(err, parsed.data)
+    if (deferral) {
+      await releaseRenderForRetry(deps, progress.renderKey, log)
+      log.info({ deferrals: deferral.message.deferrals }, 'render box busy, deferring job')
+      return deferral
+    }
     const decision = classifyFailure(err, deliveryAttempts)
     log.error(
       { ...errorFields(err), code: decision.code, terminal: decision.terminal },
       'render job failed',
     )
     return handleFailure(deps, itemId, progress, deliveryAttempts, decision, log)
+  }
+}
+
+/** A busy box is waiting, not failing: re-enqueue a fresh message so the retry budget stays intact. */
+function busyDeferral(
+  err: unknown,
+  message: JobMessage,
+): Extract<JobResult, { action: 'defer' }> | null {
+  if (!(err instanceof RenderJobError) || err.code !== 'busy') return null
+  const deferrals = (message.deferrals ?? 0) + 1
+  if (deferrals > BUSY_MAX_DEFERRALS) return null
+  return {
+    action: 'defer',
+    delaySeconds: BUSY_RETRY_DELAY_SECONDS,
+    message: { itemId: message.itemId, deferrals },
   }
 }
 
@@ -238,29 +273,26 @@ async function renderAndUpload(
 ): Promise<RenderMetadata> {
   const jobId = containerJobId(key)
   const broll = await fetchBroll(deps, item, script, log)
-  const { client, metadata } = await renderWithFailover(
-    deps.containers,
-    {
-      jobId,
-      script,
-      title: containerTitle(item.title),
-      sourceLabel: item.sourceLabel,
-      imageUrls: collectImageUrls(script),
-      voice: narration ? deps.voice : (deps.edgeVoice ?? deps.voice),
-      ttsEngine: narration ? undefined : (deps.fallbackEngine ?? 'edge'),
-      narration: narration
-        ? { audioBase64: audioToBase64(narration.audio), words: wordsToJson(narration.words) }
-        : undefined,
-      source: item.source,
-      canonicalUrl: item.canonicalUrl,
-      sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
-      images: item.images,
-      facts: item.facts,
-      broll: broll.length > 0 ? broll : undefined,
-      demo: item.demo,
-    },
-    log,
-  )
+  const client = createContainerClient(deps.box, log)
+  const metadata = await client.render({
+    jobId,
+    script,
+    title: containerTitle(item.title),
+    sourceLabel: item.sourceLabel,
+    imageUrls: collectImageUrls(script),
+    voice: narration ? deps.voice : (deps.edgeVoice ?? deps.voice),
+    ttsEngine: narration ? undefined : (deps.fallbackEngine ?? 'edge'),
+    narration: narration
+      ? { audioBase64: audioToBase64(narration.audio), words: wordsToJson(narration.words) }
+      : undefined,
+    source: item.source,
+    canonicalUrl: item.canonicalUrl,
+    sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
+    images: item.images,
+    facts: item.facts,
+    broll: broll.length > 0 ? broll : undefined,
+    demo: item.demo,
+  })
   try {
     if (metadata.bytes > MAX_VIDEO_BYTES) throw new RenderJobError('too_large', 'video over 25 MB')
 

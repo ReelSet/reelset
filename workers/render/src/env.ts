@@ -1,14 +1,14 @@
-import type { ReelContainer } from './container'
+import type { JobMessage } from './consumer'
 import type { IgRunMessage } from './instagram/routes'
 
 export type Env = {
   HYPERDRIVE: Hyperdrive
   MEDIA: R2Bucket
-  REEL_CONTAINER: DurableObjectNamespace<ReelContainer>
+  RENDER_BOX_URL: string
+  RENDER_BOX_TOKEN?: string
   TTS_VOICE?: string
   AI?: Ai
   ALERT_WEBHOOK_URL?: string
-  PROXY_URLS?: string
   PEXELS_API_KEY?: string
   IG_ADMIN_TOKEN?: string
   IG_SESSION_KEY?: string
@@ -16,7 +16,7 @@ export type Env = {
   IG_PASSWORD?: string
   IG_TOTP_SECRET?: string
   MEDIA_PUBLIC_BASE_URL?: string
-  RENDER_JOBS: Queue<{ itemId: string }>
+  RENDER_JOBS: Queue<JobMessage>
   IG_RUN: Queue<IgRunMessage>
   LOG_LEVEL?: string
 }

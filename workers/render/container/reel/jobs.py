@@ -13,10 +13,11 @@ JOB_TTL_SECONDS = 30 * 60
 
 
 class JobStore:
-    """One render at a time per container; finished jobs live until DELETE or TTL."""
+    """At most max_running renders at once (default 1); finished jobs live until DELETE or TTL."""
 
-    def __init__(self, root: str | None = None):
+    def __init__(self, root: str | None = None, max_running: int = 1):
         self.root = root or tempfile.mkdtemp(prefix="reel-jobs-")
+        self.max_running = max(1, max_running)
         self._jobs: dict = {}
         self._lock = threading.Lock()
 
@@ -30,13 +31,20 @@ class JobStore:
             job = self._jobs.get(job_id)
             if job and job["state"] == "done":
                 return "done", job["meta"]
-            if any(j["state"] == "running" for j in self._jobs.values()):
-                raise RenderError("busy", "a render is already running")
+            if job and job["state"] == "running":
+                raise RenderError("busy", "this job is already rendering")
+            running = sum(1 for j in self._jobs.values() if j["state"] == "running")
+            if running >= self.max_running:
+                raise RenderError("busy", "render capacity is full")
             directory = self.job_dir(job_id)
             shutil.rmtree(directory, ignore_errors=True)
             os.makedirs(directory)
             self._jobs[job_id] = {"state": "running", "meta": None, "at": time.monotonic()}
             return "new", directory
+
+    def running(self) -> int:
+        with self._lock:
+            return sum(1 for j in self._jobs.values() if j["state"] == "running")
 
     def finish(self, job_id: str, meta: dict) -> None:
         with self._lock:
