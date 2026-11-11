@@ -42,7 +42,7 @@ describe('handleIgRoute', () => {
     return {
       token: TOKEN,
       withDeps: vi.fn(async () => ({ state: 'connected' })) as IgRouteContext['withDeps'],
-      waitUntil: vi.fn(),
+      enqueueRun: vi.fn(async () => {}),
       log: silentLog,
       ...overrides,
     }
@@ -72,10 +72,21 @@ describe('handleIgRoute', () => {
     expect(c.withDeps).not.toHaveBeenCalled()
   })
 
-  it('accepts a queue run in the background', async () => {
+  it('hands a queue run to the instagram-run queue instead of running it in waitUntil', async () => {
     const c = ctx()
     const res = await handleIgRoute('run', req('/admin/ig/run', { token: TOKEN }), c)
     expect(res.status).toBe(202)
-    expect(c.waitUntil).toHaveBeenCalledOnce()
+    expect(c.enqueueRun).toHaveBeenCalledWith({ reason: 'poke' })
+    expect(c.withDeps).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed enqueue as an error so the admin can retry', async () => {
+    const c = ctx({
+      enqueueRun: vi.fn(async () => {
+        throw new Error('queue down')
+      }),
+    })
+    const res = await handleIgRoute('run', req('/admin/ig/run', { token: TOKEN }), c)
+    expect(res.status).toBe(500)
   })
 })

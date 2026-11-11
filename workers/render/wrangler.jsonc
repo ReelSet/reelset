@@ -23,7 +23,10 @@
   "ai": { "binding": "AI" },
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "cf0f4b14f2394a58a23e8241137c45a4" }],
   "queues": {
-    "producers": [{ "queue": "render-jobs", "binding": "RENDER_JOBS" }],
+    "producers": [
+      { "queue": "render-jobs", "binding": "RENDER_JOBS" },
+      { "queue": "instagram-run", "binding": "IG_RUN" },
+    ],
     "consumers": [
       {
         "queue": "render-jobs",
@@ -32,6 +35,13 @@
         "max_concurrency": 1,
         "max_retries": 8,
         "dead_letter_queue": "render-jobs-dlq",
+      },
+      {
+        "queue": "instagram-run",
+        "max_batch_size": 10,
+        "max_batch_timeout": 1,
+        "max_concurrency": 1,
+        "max_retries": 0,
       },
     ],
   },

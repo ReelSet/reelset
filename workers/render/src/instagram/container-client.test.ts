@@ -54,3 +54,26 @@ describe('instagram container client post', () => {
     expect(err).toMatchObject({ code: 'upload_failed', message: 'boom', reachedContainer: true })
   })
 })
+
+describe('instagram container client find', () => {
+  it('sends the caption and the start time in epoch seconds', async () => {
+    const t = fakeContainer(200, {
+      found: true,
+      mediaPk: '9',
+      permalink: 'https://www.instagram.com/p/F/',
+      session: {},
+      proxy: PROXY,
+    })
+    const out = await t.client.find(STATE, 'cap', new Date('2026-11-11T10:26:39.900Z'))
+    expect(out).toMatchObject({ found: true, mediaPk: '9' })
+    expect(t.requests[0]).toEqual({
+      url: expect.stringMatching(/\/instagram\/find$/),
+      body: { ...STATE, caption: 'cap', since: 1794392799 },
+    })
+  })
+
+  it('accepts a not-found answer without media fields', async () => {
+    const t = fakeContainer(200, { found: false, session: {}, proxy: PROXY })
+    expect((await t.client.find(STATE, 'cap', new Date())).found).toBe(false)
+  })
+})

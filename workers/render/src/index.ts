@@ -17,7 +17,7 @@ import { processRenderJob } from './consumer'
 import { pickBroll } from './pexels'
 import type { Env } from './env'
 import { handleParsePaper } from './paper-route'
-import { handleIgRoute, matchIgRoute } from './instagram/routes'
+import { IG_RUN_QUEUE, handleIgRoute, matchIgRoute, type IgRunMessage } from './instagram/routes'
 import { IG_CONTAINER_SLOT, igConfigured, withIgDeps } from './instagram/wire'
 import { runInstagramQueue } from './instagram/service'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
@@ -30,6 +30,28 @@ const INTERNAL_HOST = 'render.internal'
 
 function makeLogger(env: Env): Logger {
   return createLogger({ app: 'render', level: (env.LOG_LEVEL as Logger['level']) ?? 'info' })
+}
+
+// One queue run per batch: a run does at most one post, and several pokes coalesce into it.
+async function runInstagramBatch(
+  env: Env,
+  batch: MessageBatch<IgRunMessage>,
+  log: Logger,
+): Promise<void> {
+  const reasons = batch.messages.map((m) => m.body?.reason ?? 'unknown')
+  if (!igConfigured(env)) {
+    log.warn({ reasons }, 'instagram run skipped: secrets not configured')
+    batch.ackAll()
+    return
+  }
+  const container = getContainer(env.REEL_CONTAINER, IG_CONTAINER_SLOT)
+  try {
+    const outcome = await withIgDeps(env, container, log, runInstagramQueue)
+    log.info({ reasons, outcome }, 'instagram queue run done')
+  } catch (err) {
+    log.error({ reasons, ...errorFields(err) }, 'instagram queue run failed')
+  }
+  batch.ackAll()
 }
 
 function containerSlots(env: Env) {
@@ -48,7 +70,9 @@ export default {
       return handleIgRoute(igRoute, request, {
         token: env.IG_ADMIN_TOKEN,
         withDeps: (fn) => withIgDeps(env, container, log, fn),
-        waitUntil: (p) => ctx.waitUntil(p),
+        enqueueRun: async (message) => {
+          await env.IG_RUN.send(message)
+        },
         log,
       })
     }
@@ -74,6 +98,10 @@ export default {
 
   async queue(batch, env): Promise<void> {
     const log = makeLogger(env).child({ queue: batch.queue })
+    if (batch.queue === IG_RUN_QUEUE) {
+      await runInstagramBatch(env, batch as MessageBatch<IgRunMessage>, log)
+      return
+    }
     const { db, close } = createDb({
       connectionString: env.HYPERDRIVE.connectionString,
       log,
@@ -124,10 +152,9 @@ export default {
       max: 1,
     })
     if (igConfigured(env)) {
-      const container = getContainer(env.REEL_CONTAINER, IG_CONTAINER_SLOT)
       ctx.waitUntil(
-        withIgDeps(env, container, log, runInstagramQueue).catch((err) =>
-          log.error(errorFields(err), 'instagram queue run failed'),
+        env.IG_RUN.send({ reason: 'cron' }).catch((err) =>
+          log.error(errorFields(err), 'instagram queue run enqueue failed'),
         ),
       )
     }

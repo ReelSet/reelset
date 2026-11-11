@@ -23,6 +23,10 @@ describe('instagram post state machine', () => {
     expect(canTransitionPost(S.deleted, S.queued)).toBe(false)
   })
 
+  it('marks a lost upload posted once it is found live on Instagram', () => {
+    expect(canTransitionPost(S.failed, S.posted)).toBe(true)
+  })
+
   it('lets a posting row return to the queue (session needs login)', () => {
     expect(canTransitionPost(S.posting, S.queued)).toBe(true)
   })

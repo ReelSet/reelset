@@ -1,4 +1,5 @@
 import type { ReelContainer } from './container'
+import type { IgRunMessage } from './instagram/routes'
 
 export type Env = {
   HYPERDRIVE: Hyperdrive
@@ -16,5 +17,6 @@ export type Env = {
   IG_TOTP_SECRET?: string
   MEDIA_PUBLIC_BASE_URL?: string
   RENDER_JOBS: Queue<{ itemId: string }>
+  IG_RUN: Queue<IgRunMessage>
   LOG_LEVEL?: string
 }

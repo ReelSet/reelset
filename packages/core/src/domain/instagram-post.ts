@@ -4,7 +4,14 @@ import { InstagramPostStatus } from '../db/enums'
 export const INSTAGRAM_CAPTION_MAX_CHARS = 2200
 export const INSTAGRAM_HASHTAG_MAX = 30
 export const INSTAGRAM_MIN_GAP_MINUTES = 10
-export const INSTAGRAM_POSTING_STUCK_MINUTES = 20
+// The worker's post call times out at 5 minutes inside a queue consumer, so 10 is well past any
+// live upload.
+export const INSTAGRAM_POSTING_STUCK_MINUTES = 10
+// A lost post (worker died mid-upload) is looked up on Instagram for this long before giving up.
+export const INSTAGRAM_LOST_RECHECK_DAYS = 3
+export const INSTAGRAM_LOST_ERROR = 'No result recorded; checking Instagram for the reel'
+export const INSTAGRAM_NOT_FOUND_ERROR =
+  'Upload result was lost and the reel is not on Instagram; safe to queue it again'
 
 const S = InstagramPostStatus
 
@@ -15,7 +22,8 @@ const TRANSITIONS: Record<InstagramPostStatus, readonly InstagramPostStatus[]> =
   posting: [S.posted, S.failed, S.queued],
   posted: [S.deleting],
   deleting: [S.deleted, S.posted],
-  failed: [S.deleted],
+  // A lost upload that turns out to be live on Instagram.
+  failed: [S.deleted, S.posted],
   deleted: [],
 }
 
