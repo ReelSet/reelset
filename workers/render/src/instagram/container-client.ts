@@ -3,7 +3,13 @@ import { errorFields, igProxySchema, type Logger } from '@reelset/core'
 import { CONTAINER_BASE_URL } from '../constants'
 import type { ContainerFetcher } from '../container-client'
 
-export const IG_TIMEOUT_MS = { status: 45_000, login: 90_000, post: 5 * 60_000, delete: 90_000 }
+export const IG_TIMEOUT_MS = {
+  status: 45_000,
+  login: 90_000,
+  post: 5 * 60_000,
+  delete: 90_000,
+  find: 60_000,
+}
 
 const accountResultSchema = z.object({
   state: z.enum(['connected', 'needs_login', 'needs_code', 'challenge', 'unknown']),
@@ -21,6 +27,15 @@ const postResultSchema = z.object({
   proxy: igProxySchema,
 })
 export type IgPostResult = z.infer<typeof postResultSchema>
+
+const findResultSchema = z.object({
+  found: z.boolean(),
+  mediaPk: z.string().optional(),
+  permalink: z.string().url().optional(),
+  session: z.record(z.string(), z.unknown()),
+  proxy: igProxySchema,
+})
+export type IgFindResult = z.infer<typeof findResultSchema>
 
 const deleteResultSchema = z.object({
   deleted: z.boolean(),
@@ -51,6 +66,8 @@ export type IgContainerClient = {
   login(state: IgState, creds: IgCredentials, code?: string): Promise<IgAccountResult>
   post(state: IgState, upload: IgReelUpload): Promise<IgPostResult>
   remove(state: IgState, mediaPk: string): Promise<z.infer<typeof deleteResultSchema>>
+  /** Looks for a reel with this caption published after `since` (lost upload result). */
+  find(state: IgState, caption: string, since: Date): Promise<IgFindResult>
 }
 
 export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger): IgContainerClient {
@@ -101,5 +118,12 @@ export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger):
       call('post', { ...state, ...upload }, postResultSchema, IG_TIMEOUT_MS.post),
     remove: (state, mediaPk) =>
       call('delete', { ...state, mediaPk }, deleteResultSchema, IG_TIMEOUT_MS.delete),
+    find: (state, caption, since) =>
+      call(
+        'find',
+        { ...state, caption, since: Math.floor(since.getTime() / 1000) },
+        findResultSchema,
+        IG_TIMEOUT_MS.find,
+      ),
   }
 }

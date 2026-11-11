@@ -27,6 +27,8 @@ POSTER_DOWNLOAD_TIMEOUT_SECONDS = 20
 DOWNLOAD_USER_AGENT = "reelset-render/2"
 CLIP_DELAY_RANGE = [1, 3]
 ERROR_MESSAGE_MAX = 200
+FIND_RECENT_MEDIA = 12
+FIND_CLOCK_SKEW_SECONDS = 120
 
 _lock = threading.Lock()
 
@@ -340,6 +342,51 @@ def post_reel(
     permalink = f"https://www.instagram.com/p/{media.code}/"
     log.info("published media_pk=%s", media.pk)
     return {"mediaPk": str(media.pk), "code": str(media.code), "permalink": permalink, "session": _session_of(client)}
+
+
+def _caption_key(text: str | None) -> str:
+    return " ".join((text or "").split())
+
+
+def _epoch(value) -> float | None:
+    try:
+        return float(value.timestamp())
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return None
+
+
+def find_reel(session: dict, caption: str, since: float, factory: Callable = new_client) -> dict:
+    """Looks for a reel this account published after `since` with exactly this caption.
+
+    Used when the worker lost an upload's result: the reel may be live even though nothing was
+    recorded. Read-only; one private-API page of the account's own recent media."""
+    client = factory()
+    client.set_settings(session)
+    wanted = _caption_key(caption)
+    try:
+        medias = client.user_medias_v1(client.user_id, FIND_RECENT_MEDIA)
+    except Exception as err:
+        state, message = classify(err)
+        if state in ("needs_login", "challenge", "needs_code"):
+            raise InstagramError(state, message, 401) from err
+        raise InstagramError("lookup_failed", short_message(err)) from err
+    for media in medias:
+        taken = _epoch(getattr(media, "taken_at", None))
+        if taken is not None and taken < since - FIND_CLOCK_SKEW_SECONDS:
+            continue
+        if _caption_key(getattr(media, "caption_text", None)) != wanted:
+            continue
+        permalink = f"https://www.instagram.com/p/{media.code}/"
+        log.info("lost reel found media_pk=%s", media.pk)
+        return {
+            "found": True,
+            "mediaPk": str(media.pk),
+            "code": str(media.code),
+            "permalink": permalink,
+            "session": _session_of(client),
+        }
+    log.info("lost reel not found among recent=%d", len(medias))
+    return {"found": False, "session": _session_of(client)}
 
 
 def delete_media(session: dict, media_pk: str, factory: Callable = new_client) -> dict:

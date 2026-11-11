@@ -1,9 +1,12 @@
 import { z } from 'zod'
 import { errorFields, type Logger } from '@reelset/core'
 import { isAuthorized } from './auth'
-import { checkAccount, connectAccount, runInstagramQueue, type IgDeps } from './service'
+import { checkAccount, connectAccount, type IgDeps } from './service'
 
 export const IG_ROUTE_PREFIX = '/admin/ig/'
+export const IG_RUN_QUEUE = 'instagram-run'
+
+export type IgRunMessage = { reason: 'poke' | 'cron' }
 
 export type IgRoute = 'status' | 'connect' | 'run' | 'not_found'
 
@@ -23,7 +26,12 @@ const connectBodySchema = z.object({
 export type IgRouteContext = {
   token: string | undefined
   withDeps: <T>(fn: (deps: IgDeps) => Promise<T>) => Promise<T>
-  waitUntil: (promise: Promise<unknown>) => void
+  /**
+   * Hands the queue run to the `instagram-run` queue consumer. An upload takes 30-60s and a
+   * fetch's waitUntil is cut ~30s after the response, which killed uploads mid-flight (live on
+   * Instagram, never recorded); a queue consumer gets up to 15 minutes.
+   */
+  enqueueRun: (message: IgRunMessage) => Promise<void>
   log: Logger
 }
 
@@ -43,11 +51,8 @@ export async function handleIgRoute(
       if (!body.success) return Response.json({ error: 'invalid code' }, { status: 400 })
       return Response.json(await ctx.withDeps((deps) => connectAccount(deps, body.data.code)))
     }
-    ctx.waitUntil(
-      ctx
-        .withDeps(runInstagramQueue)
-        .catch((err) => ctx.log.error(errorFields(err), 'instagram queue run failed')),
-    )
+    await ctx.enqueueRun({ reason: 'poke' })
+    ctx.log.info('instagram queue run enqueued')
     return Response.json({ accepted: true }, { status: 202 })
   } catch (err) {
     ctx.log.error({ route, ...errorFields(err) }, 'instagram admin route failed')

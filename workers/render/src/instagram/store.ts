@@ -4,7 +4,10 @@ import {
   failStuckPosts,
   getEncryptedSession,
   getIgAccount,
+  listLostPosts,
   markDeleted,
+  markLostFound,
+  markLostNotFound,
   markPostFailed,
   markPosted,
   releasePostToQueue,
@@ -15,9 +18,10 @@ import {
   type Database,
   type IgAccount,
   type Logger,
+  type LostPost,
 } from '@reelset/core'
 
-export type { ClaimedPost }
+export type { ClaimedPost, LostPost }
 
 export type IgStore = {
   getSession(): Promise<string | null>
@@ -32,6 +36,9 @@ export type IgStore = {
   markDeleted(id: string): Promise<boolean>
   restoreAfterDeleteFailure(id: string, error: string): Promise<boolean>
   failStuck(): Promise<number>
+  nextLost(): Promise<LostPost | null>
+  markLostFound(id: string, result: { mediaPk: string; permalink: string }): Promise<boolean>
+  markLostNotFound(id: string): Promise<boolean>
 }
 
 export function createIgStore(db: Database, log: Logger): IgStore {
@@ -48,5 +55,8 @@ export function createIgStore(db: Database, log: Logger): IgStore {
     markDeleted: (id) => markDeleted(db, id),
     restoreAfterDeleteFailure: (id, error) => restoreAfterDeleteFailure(db, id, error),
     failStuck: () => failStuckPosts(db, log),
+    nextLost: async () => (await listLostPosts(db, 1))[0] ?? null,
+    markLostFound: (id, result) => markLostFound(db, id, result),
+    markLostNotFound: (id) => markLostNotFound(db, id),
   }
 }

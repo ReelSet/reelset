@@ -4,6 +4,9 @@ import type { InstagramPost } from '../db/types'
 import { InstagramPostStatus } from '../db/enums'
 import {
   INSTAGRAM_MIN_GAP_MINUTES,
+  INSTAGRAM_LOST_ERROR,
+  INSTAGRAM_LOST_RECHECK_DAYS,
+  INSTAGRAM_NOT_FOUND_ERROR,
   INSTAGRAM_POSTING_STUCK_MINUTES,
   assertPostTransition,
   igAccountSchema,
@@ -100,13 +103,14 @@ export const markDeleted = (db: Database, id: string) =>
 export const restoreAfterDeleteFailure = (db: Database, id: string, error: string) =>
   moveTo(db, id, S.deleting, S.posted, { error: error.slice(0, 500), delete_requested_at: null })
 
-// A post stuck in `posting` may have reached Instagram, so it is failed for a human, never re-sent.
+// A post stuck in `posting` may have reached Instagram, so it is never re-sent: it is failed as
+// lost, and `listLostPosts` hands it to the Instagram lookup that settles it.
 export async function failStuckPosts(db: Database, log: Logger): Promise<number> {
   const res = await db
     .updateTable('instagram_post')
     .set({
       status: S.failed,
-      error: 'No result recorded; check Instagram before queueing it again',
+      error: INSTAGRAM_LOST_ERROR,
       updated_at: sql`now()`,
     })
     .where('status', '=', S.posting)
@@ -117,6 +121,49 @@ export async function failStuckPosts(db: Database, log: Logger): Promise<number>
   const n = Number(res.numUpdatedRows)
   if (n > 0) log.warn({ count: n }, 'stuck instagram posts failed')
   return n
+}
+
+export type LostPost = { id: string; item_id: string; caption: string; started_at: Date }
+
+/** Failed-as-lost posts still worth looking up on Instagram, newest first. */
+export async function listLostPosts(db: Database, limit = 1): Promise<LostPost[]> {
+  const rows = await db
+    .selectFrom('instagram_post')
+    .select(['id', 'item_id', 'caption', 'started_at'])
+    .where('status', '=', S.failed)
+    .where('error', 'in', [INSTAGRAM_LOST_ERROR, LEGACY_LOST_ERROR])
+    .where('started_at', 'is not', null)
+    .where(sql<boolean>`started_at > now() - make_interval(days => ${INSTAGRAM_LOST_RECHECK_DAYS})`)
+    .orderBy('started_at', 'desc')
+    .limit(limit)
+    .execute()
+  return rows.map((r) => ({ ...r, started_at: new Date(r.started_at as Date) }))
+}
+
+// Written by failStuckPosts before the Instagram lookup existed.
+const LEGACY_LOST_ERROR = 'No result recorded; check Instagram before queueing it again'
+
+export const markLostFound = (
+  db: Database,
+  id: string,
+  r: { mediaPk: string; permalink: string },
+) =>
+  moveTo(db, id, S.failed, S.posted, {
+    media_pk: r.mediaPk,
+    permalink: r.permalink,
+    posted_at: sql`coalesce(started_at, now())`,
+    error: null,
+  })
+
+export async function markLostNotFound(db: Database, id: string): Promise<boolean> {
+  const res = await db
+    .updateTable('instagram_post')
+    .set({ error: INSTAGRAM_NOT_FOUND_ERROR, updated_at: sql`now()` })
+    .where('id', '=', id)
+    .where('status', '=', S.failed)
+    .where('error', 'in', [INSTAGRAM_LOST_ERROR, LEGACY_LOST_ERROR])
+    .executeTakeFirst()
+  return Number(res.numUpdatedRows) === 1
 }
 
 export async function getIgAccount(db: Database): Promise<IgAccount | null> {

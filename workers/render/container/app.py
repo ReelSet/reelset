@@ -133,6 +133,13 @@ class Handler(BaseHTTPRequestHandler):
             work = lambda: instagram.post_reel(  # noqa: E731
                 session, require_str("videoUrl"), poster_url, require_str("caption"), factory
             )
+        elif action == "find":
+            if session is None:
+                raise instagram.InstagramError("needs_login", "no saved session", 401)
+            since = body.get("since")
+            if not isinstance(since, (int, float)) or isinstance(since, bool) or since <= 0:
+                raise instagram.InstagramError("invalid_input", "since must be epoch seconds", 400)
+            work = lambda: instagram.find_reel(session, require_str("caption"), float(since), factory)  # noqa: E731
         elif action == "delete":
             if session is None:
                 raise instagram.InstagramError("needs_login", "no saved session", 401)

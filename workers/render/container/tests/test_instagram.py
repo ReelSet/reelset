@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from reel import instagram
@@ -64,6 +65,14 @@ class FakeClient:
     def media_delete(self, media_id):
         self.calls.append(("media_delete", media_id))
         return True
+
+    medias = []
+
+    def user_medias_v1(self, user_id, amount=0):
+        self.calls.append(("user_medias_v1", user_id, amount))
+        if self.fail:
+            raise self.fail
+        return self.medias
 
 
 class StatusTests(unittest.TestCase):
@@ -275,6 +284,44 @@ class DeleteTests(unittest.TestCase):
         with self.assertRaises(instagram.InstagramError):
             instagram.delete_media({"a": 1}, "9", lambda: client)
         self.assertNotIn(("media_delete", "9_42"), client.calls)
+
+
+class FindTests(unittest.TestCase):
+    def media(self, pk, caption, taken):
+        return SimpleNamespace(
+            pk=pk, code=f"C{pk}", caption_text=caption, taken_at=datetime.fromtimestamp(taken, timezone.utc)
+        )
+
+    def test_finds_the_reel_by_caption_after_the_start_time(self):
+        client = FakeClient()
+        client.medias = [
+            self.media(1, "Other post", 2_000),
+            self.media(2, "OpenAI raises $11B\n\n#ai   #openai", 1_950),
+        ]
+        out = instagram.find_reel({"s": 1}, "OpenAI raises $11B\n#ai #openai", 2_000, lambda: client)
+        self.assertEqual(out["found"], True)
+        self.assertEqual(out["mediaPk"], "2")
+        self.assertEqual(out["permalink"], "https://www.instagram.com/p/C2/")
+        self.assertIn(("user_medias_v1", "42", instagram.FIND_RECENT_MEDIA), client.calls)
+
+    def test_ignores_an_older_post_with_the_same_caption(self):
+        client = FakeClient()
+        client.medias = [self.media(3, "Same caption", 1_000)]
+        out = instagram.find_reel({"s": 1}, "Same caption", 5_000, lambda: client)
+        self.assertEqual(out["found"], False)
+        self.assertNotIn("mediaPk", out)
+
+    def test_dead_session_is_needs_login(self):
+        client = FakeClient(fail=LoginRequired("x"))
+        with self.assertRaises(instagram.InstagramError) as ctx:
+            instagram.find_reel({"s": 1}, "c", 1, lambda: client)
+        self.assertEqual(ctx.exception.code, "needs_login")
+
+    def test_other_failure_is_lookup_failed(self):
+        client = FakeClient(fail=RuntimeError("boom"))
+        with self.assertRaises(instagram.InstagramError) as ctx:
+            instagram.find_reel({"s": 1}, "c", 1, lambda: client)
+        self.assertEqual(ctx.exception.code, "lookup_failed")
 
 
 class UrlTests(unittest.TestCase):

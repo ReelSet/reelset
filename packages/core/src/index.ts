@@ -99,7 +99,9 @@ export {
 export {
   INSTAGRAM_CAPTION_MAX_CHARS,
   INSTAGRAM_HASHTAG_MAX,
+  INSTAGRAM_LOST_ERROR,
   INSTAGRAM_MIN_GAP_MINUTES,
+  INSTAGRAM_NOT_FOUND_ERROR,
   queuedPostEtas,
   IG_LOGIN_FAILURE_ADVICE_AFTER,
   InvalidInstagramTransitionError,
@@ -121,7 +123,10 @@ export {
   getEncryptedSession,
   getIgAccount,
   getIgCheckError,
+  listLostPosts,
   markDeleted,
+  markLostFound,
+  markLostNotFound,
   markPostFailed,
   markPosted,
   releasePostToQueue,
@@ -130,4 +135,5 @@ export {
   setIgAccount,
   setIgCheckError,
   type IgCheckError,
+  type LostPost,
 } from './repos/instagram-post.repo'

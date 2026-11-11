@@ -15,7 +15,7 @@ import {
   type IgState,
 } from './container-client'
 import { posterKeyForVideoKey } from '../keys'
-import type { ClaimedPost, IgStore } from './store'
+import type { ClaimedPost, IgStore, LostPost } from './store'
 
 export type IgDeps = {
   store: IgStore
@@ -229,13 +229,48 @@ async function runDelete(deps: IgDeps, post: ClaimedPost, state: IgState): Promi
   }
 }
 
-// At most one Instagram operation per run; the claim query enforces the gap between posts.
+/**
+ * A post whose upload result was lost (the run died mid-upload) may be live anyway: look for it on
+ * the account by caption and settle it as posted, or as safe to queue again. A failed lookup
+ * leaves it for the next run.
+ */
+export async function recoverLostPost(
+  deps: IgDeps,
+  lost: LostPost,
+  state: IgState,
+): Promise<'found' | 'not_found' | 'unknown'> {
+  const log = deps.log.child({ postId: lost.id, itemId: lost.item_id, op: 'ig-find' })
+  try {
+    const result = await deps.client.find(state, lost.caption, lost.started_at)
+    await saveState(deps, result.session, result.proxy)
+    if (result.found && result.mediaPk && result.permalink) {
+      await deps.store.markLostFound(lost.id, {
+        mediaPk: result.mediaPk,
+        permalink: result.permalink,
+      })
+      log.info({ mediaPk: result.mediaPk }, 'lost instagram post found live, marked posted')
+      return 'found'
+    }
+    await deps.store.markLostNotFound(lost.id)
+    log.warn('lost instagram post is not on the account, marked safe to requeue')
+    return 'not_found'
+  } catch (err) {
+    log.warn(errorFields(err), 'lost instagram post lookup failed, will retry next run')
+    return 'unknown'
+  }
+}
+
+// At most one post or delete per run; the claim query enforces the gap between posts.
 export async function runInstagramQueue(deps: IgDeps): Promise<QueueOutcome> {
-  await deps.store.failStuck()
+  const stuck = await deps.store.failStuck()
+  if (stuck > 0) deps.log.warn({ stuck }, 'instagram posts lost mid-upload, will look them up')
   const account = await deps.store.getAccount()
   if (account?.state !== 'connected') return { ran: 'none', reason: 'not_connected' }
   const state = await loadState(deps)
   if (!state.session) return { ran: 'none', reason: 'not_connected' }
+
+  const lost = await deps.store.nextLost()
+  if (lost) await recoverLostPost(deps, lost, state)
 
   const del = await deps.store.claimDelete()
   if (del) return { ran: 'delete', postId: del.id, ok: await runDelete(deps, del, state) }

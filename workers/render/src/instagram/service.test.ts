@@ -5,7 +5,7 @@ import { silentLog } from '../testing'
 import { IgCallError, type IgContainerClient } from './container-client'
 import { encryptJson, importSessionKey } from './crypto'
 import { checkAccount, connectAccount, runInstagramQueue, type IgDeps } from './service'
-import type { ClaimedPost, IgStore } from './store'
+import type { ClaimedPost, IgStore, LostPost } from './store'
 
 const KEY = await importSessionKey(btoa(String.fromCharCode(...new Uint8Array(32).fill(3))))
 const PROXY = { index: 1, country: 'US', switched: false, down: false }
@@ -17,6 +17,12 @@ const POST: ClaimedPost = {
   media_pk: null,
   attempts: 1,
 }
+const LOST: LostPost = {
+  id: 'p0',
+  item_id: 'i0',
+  caption: 'lost cap',
+  started_at: new Date('2026-11-11T10:26:39Z'),
+}
 const connected: IgAccount = {
   username: 'reelset',
   state: 'connected',
@@ -26,7 +32,12 @@ const connected: IgAccount = {
 }
 
 async function setup(
-  opts: { account?: IgAccount | null; session?: boolean; post?: ClaimedPost | null } = {},
+  opts: {
+    account?: IgAccount | null
+    session?: boolean
+    post?: ClaimedPost | null
+    lost?: LostPost | null
+  } = {},
 ) {
   const calls: string[] = []
   let account = opts.account === undefined ? connected : opts.account
@@ -49,6 +60,9 @@ async function setup(
     markDeleted: vi.fn(async () => true),
     restoreAfterDeleteFailure: vi.fn(async () => true),
     failStuck: vi.fn(async () => 0),
+    nextLost: vi.fn(async () => opts.lost ?? null),
+    markLostFound: vi.fn(async () => true),
+    markLostNotFound: vi.fn(async () => true),
   }
   const client: IgContainerClient = {
     status: vi.fn(async () => ({
@@ -72,6 +86,7 @@ async function setup(
       proxy: PROXY,
     })),
     remove: vi.fn(async () => ({ deleted: true, session: { a: 4 }, proxy: PROXY })),
+    find: vi.fn(async () => ({ found: false, session: { a: 5 }, proxy: PROXY })),
   }
   const deps: IgDeps = {
     store,
@@ -169,6 +184,48 @@ describe('runInstagramQueue', () => {
     expect(out).toMatchObject({ ran: 'delete', ok: false })
     expect(t.store.restoreAfterDeleteFailure).toHaveBeenCalledWith('p1', 'nope')
     expect(t.store.claimPost).not.toHaveBeenCalled()
+  })
+})
+
+describe('lost uploads', () => {
+  it('marks a lost post posted when the reel is live on Instagram, then still posts', async () => {
+    const t = await setup({ lost: LOST })
+    vi.mocked(t.client.find).mockResolvedValueOnce({
+      found: true,
+      mediaPk: '55',
+      permalink: 'https://www.instagram.com/p/L/',
+      session: { a: 5 },
+      proxy: PROXY,
+    })
+    const out = await runInstagramQueue(t.deps)
+    expect(t.client.find).toHaveBeenCalledWith(expect.anything(), 'lost cap', LOST.started_at)
+    expect(t.store.markLostFound).toHaveBeenCalledWith('p0', {
+      mediaPk: '55',
+      permalink: 'https://www.instagram.com/p/L/',
+    })
+    expect(t.store.markLostNotFound).not.toHaveBeenCalled()
+    expect(out).toEqual({ ran: 'post', postId: 'p1', ok: true })
+  })
+
+  it('marks a lost post safe to requeue when it is not on the account', async () => {
+    const t = await setup({ lost: LOST, post: null })
+    await runInstagramQueue(t.deps)
+    expect(t.store.markLostNotFound).toHaveBeenCalledWith('p0')
+    expect(t.store.markLostFound).not.toHaveBeenCalled()
+  })
+
+  it('leaves a lost post for the next run when the lookup fails', async () => {
+    const t = await setup({ lost: LOST, post: null })
+    vi.mocked(t.client.find).mockRejectedValueOnce(new IgCallError('busy', 'busy', true))
+    await runInstagramQueue(t.deps)
+    expect(t.store.markLostFound).not.toHaveBeenCalled()
+    expect(t.store.markLostNotFound).not.toHaveBeenCalled()
+  })
+
+  it('never looks anything up while the account is not connected', async () => {
+    const t = await setup({ lost: LOST, account: { ...connected, state: 'challenge' } })
+    await runInstagramQueue(t.deps)
+    expect(t.client.find).not.toHaveBeenCalled()
   })
 })
 
