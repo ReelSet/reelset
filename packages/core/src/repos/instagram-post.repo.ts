@@ -140,6 +140,19 @@ export async function listLostPosts(db: Database, limit = 1): Promise<LostPost[]
   return rows.map((r) => ({ ...r, started_at: new Date(r.started_at as Date) }))
 }
 
+/** Media already recorded for posts, so a lost-upload lookup never claims another post's reel. */
+export async function listRecentMediaPks(db: Database): Promise<string[]> {
+  const rows = await db
+    .selectFrom('instagram_post')
+    .select('media_pk')
+    .where('media_pk', 'is not', null)
+    .where(
+      sql<boolean>`created_at > now() - make_interval(days => ${INSTAGRAM_LOST_RECHECK_DAYS + 1})`,
+    )
+    .execute()
+  return rows.map((r) => r.media_pk).filter((pk): pk is string => !!pk)
+}
+
 // Written by failStuckPosts before the Instagram lookup existed.
 const LEGACY_LOST_ERROR = 'No result recorded; check Instagram before queueing it again'
 

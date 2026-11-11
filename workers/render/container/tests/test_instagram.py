@@ -55,7 +55,14 @@ class FakeClient:
         self.thumbnail = thumbnail
         if self.fail:
             raise self.fail
-        return SimpleNamespace(pk=777, code="ABC")
+        return SimpleNamespace(pk=777, code="ABC", caption_text=self.published_caption(caption))
+
+    def published_caption(self, caption):
+        return caption
+
+    def media_edit(self, media_id, caption):
+        self.calls.append(("media_edit", media_id, caption))
+        return {"status": "ok"}
 
     def media_info(self, pk):
         return SimpleNamespace(pk=pk, id=f"{pk}_42", user=SimpleNamespace(pk=self.owner))
@@ -78,20 +85,20 @@ class FakeClient:
 class StatusTests(unittest.TestCase):
     def test_no_session_never_calls_instagram(self):
         client = FakeClient()
-        result = instagram.status(None, lambda: client)
+        result = instagram.status(None, factory=lambda: client)
         self.assertEqual(result["state"], "needs_login")
         self.assertEqual(client.calls, [])
 
     def test_valid_session_is_connected_without_login(self):
         client = FakeClient()
-        result = instagram.status({"uuids": {}}, lambda: client)
+        result = instagram.status({"uuids": {}}, factory=lambda: client)
         self.assertEqual(result["state"], "connected")
         self.assertEqual(result["username"], "reelset")
         self.assertEqual(client.calls, ["account_info"])
 
     def test_expired_session_reports_needs_login_and_does_not_relogin(self):
         client = FakeClient(fail=LoginRequired("nope"))
-        result = instagram.status({"uuids": {}}, lambda: client)
+        result = instagram.status({"uuids": {}}, factory=lambda: client)
         self.assertEqual(result["state"], "needs_login")
         self.assertNotIn(("login", ""), client.calls)
 
@@ -99,7 +106,7 @@ class StatusTests(unittest.TestCase):
 class LoginTests(unittest.TestCase):
     def test_success_returns_session(self):
         client = FakeClient()
-        result = instagram.login({"uuids": {"phone": "p"}}, "u", "p", None, "654321", lambda: client)
+        result = instagram.login({"uuids": {"phone": "p"}}, "u", "p", None, "654321", factory=lambda: client)
         self.assertEqual(result["state"], "connected")
         self.assertIn(("login", "654321"), client.calls)
         self.assertEqual(client.settings["uuids"], {"phone": "p"})
@@ -107,18 +114,18 @@ class LoginTests(unittest.TestCase):
 
     def test_totp_secret_used_when_no_code(self):
         client = FakeClient()
-        instagram.login(None, "u", "p", "SECRET", None, lambda: client)
+        instagram.login(None, "u", "p", "SECRET", None, factory=lambda: client)
         self.assertIn(("login", "123456"), client.calls)
 
     def test_missing_2fa_code_asks_for_code(self):
         client = FakeClient(fail=TwoFactorRequired("2fa"))
-        result = instagram.login(None, "u", "p", None, None, lambda: client)
+        result = instagram.login(None, "u", "p", None, None, factory=lambda: client)
         self.assertEqual(result["state"], "needs_code")
         self.assertIsNone(result["session"])
 
     def test_challenge_is_reported_with_guidance(self):
         client = FakeClient(fail=ChallengeRequired("c"))
-        result = instagram.login(None, "u", "p", None, "1", lambda: client)
+        result = instagram.login(None, "u", "p", None, "1", factory=lambda: client)
         self.assertEqual(result["state"], "challenge")
         self.assertIn("Instagram app", result["message"])
 
@@ -161,6 +168,30 @@ class PostTests(unittest.TestCase):
             self.post(FakeClient(fail=LoginRequired("x")))
         self.assertEqual(ctx.exception.code, "needs_login")
         self.assertEqual(ctx.exception.status, 401)
+
+    def test_restores_a_caption_instagram_dropped_at_upload(self):
+        client = FakeClient()
+        client.published_caption = lambda caption: ""
+        out = instagram.post_reel(
+            {"s": 1}, "https://media.reelset.app/r.mp4", None, "my caption", lambda: client,
+            download=lambda url, wd: Path(wd) / "r.mp4", cover=lambda r, p, wd: Path(wd) / "t.jpg",
+        )
+        self.assertEqual(out["mediaPk"], "777")
+        self.assertIn(("media_edit", "777", "my caption"), client.calls)
+
+    def test_a_failed_caption_restore_never_fails_the_post(self):
+        client = FakeClient()
+        client.published_caption = lambda caption: ""
+
+        def boom(media_id, caption):
+            raise RuntimeError("edit refused")
+
+        client.media_edit = boom
+        out = instagram.post_reel(
+            {"s": 1}, "https://media.reelset.app/r.mp4", None, "my caption", lambda: client,
+            download=lambda url, wd: Path(wd) / "r.mp4", cover=lambda r, p, wd: Path(wd) / "t.jpg",
+        )
+        self.assertEqual(out["mediaPk"], "777")
 
     def test_other_failure_is_upload_failed(self):
         with self.assertRaises(instagram.InstagramError) as ctx:
@@ -276,21 +307,58 @@ class FallbackFrameTests(unittest.TestCase):
 class DeleteTests(unittest.TestCase):
     def test_deletes_own_media(self):
         client = FakeClient()
-        self.assertTrue(instagram.delete_media({"a": 1}, "9", lambda: client)["deleted"])
+        self.assertTrue(instagram.delete_media({"a": 1}, "9", factory=lambda: client)["deleted"])
 
     def test_refuses_foreign_media(self):
         client = FakeClient()
         client.owner = "99"
         with self.assertRaises(instagram.InstagramError):
-            instagram.delete_media({"a": 1}, "9", lambda: client)
+            instagram.delete_media({"a": 1}, "9", factory=lambda: client)
         self.assertNotIn(("media_delete", "9_42"), client.calls)
 
 
 class FindTests(unittest.TestCase):
-    def media(self, pk, caption, taken):
+    def media(self, pk, caption, taken, media_type=2):
         return SimpleNamespace(
-            pk=pk, code=f"C{pk}", caption_text=caption, taken_at=datetime.fromtimestamp(taken, timezone.utc)
+            pk=pk,
+            code=f"C{pk}",
+            caption_text=caption,
+            media_type=media_type,
+            taken_at=datetime.fromtimestamp(taken, timezone.utc),
         )
+
+    def test_matches_by_time_when_instagram_dropped_the_caption_and_restores_it(self):
+        client = FakeClient()
+        client.medias = [
+            self.media(9, "", 2_040),
+            self.media(8, "older post", 1_000),
+        ]
+        out = instagram.find_reel({"s": 1}, "OpenAI raises $11B", 2_000, [], factory=lambda: client)
+        self.assertEqual((out["found"], out["mediaPk"], out["match"]), (True, "9", "time"))
+        self.assertTrue(out["captionRestored"])
+        self.assertIn(("media_edit", "9", "OpenAI raises $11B"), client.calls)
+
+    def test_time_match_skips_media_recorded_for_other_posts_and_photos(self):
+        client = FakeClient()
+        client.medias = [
+            self.media(10, "", 2_010),
+            self.media(11, "", 2_020, media_type=1),
+        ]
+        out = instagram.find_reel({"s": 1}, "cap", 2_000, ["10"], factory=lambda: client)
+        self.assertEqual(out["found"], False)
+
+    def test_time_match_ignores_reels_published_long_after_the_upload(self):
+        client = FakeClient()
+        client.medias = [self.media(12, "", 2_000 + instagram.FIND_WINDOW_SECONDS + 60)]
+        out = instagram.find_reel({"s": 1}, "cap", 2_000, [], factory=lambda: client)
+        self.assertEqual(out["found"], False)
+
+    def test_caption_match_does_not_edit(self):
+        client = FakeClient()
+        client.medias = [self.media(13, "cap", 2_010)]
+        out = instagram.find_reel({"s": 1}, "cap", 2_000, [], factory=lambda: client)
+        self.assertEqual((out["match"], out["captionRestored"]), ("caption", False))
+        self.assertFalse(any(c[0] == "media_edit" for c in client.calls if isinstance(c, tuple)))
 
     def test_finds_the_reel_by_caption_after_the_start_time(self):
         client = FakeClient()
@@ -298,7 +366,7 @@ class FindTests(unittest.TestCase):
             self.media(1, "Other post", 2_000),
             self.media(2, "OpenAI raises $11B\n\n#ai   #openai", 1_950),
         ]
-        out = instagram.find_reel({"s": 1}, "OpenAI raises $11B\n#ai #openai", 2_000, lambda: client)
+        out = instagram.find_reel({"s": 1}, "OpenAI raises $11B\n#ai #openai", 2_000, factory=lambda: client)
         self.assertEqual(out["found"], True)
         self.assertEqual(out["mediaPk"], "2")
         self.assertEqual(out["permalink"], "https://www.instagram.com/p/C2/")
@@ -307,20 +375,20 @@ class FindTests(unittest.TestCase):
     def test_ignores_an_older_post_with_the_same_caption(self):
         client = FakeClient()
         client.medias = [self.media(3, "Same caption", 1_000)]
-        out = instagram.find_reel({"s": 1}, "Same caption", 5_000, lambda: client)
+        out = instagram.find_reel({"s": 1}, "Same caption", 5_000, factory=lambda: client)
         self.assertEqual(out["found"], False)
         self.assertNotIn("mediaPk", out)
 
     def test_dead_session_is_needs_login(self):
         client = FakeClient(fail=LoginRequired("x"))
         with self.assertRaises(instagram.InstagramError) as ctx:
-            instagram.find_reel({"s": 1}, "c", 1, lambda: client)
+            instagram.find_reel({"s": 1}, "c", 1, factory=lambda: client)
         self.assertEqual(ctx.exception.code, "needs_login")
 
     def test_other_failure_is_lookup_failed(self):
         client = FakeClient(fail=RuntimeError("boom"))
         with self.assertRaises(instagram.InstagramError) as ctx:
-            instagram.find_reel({"s": 1}, "c", 1, lambda: client)
+            instagram.find_reel({"s": 1}, "c", 1, factory=lambda: client)
         self.assertEqual(ctx.exception.code, "lookup_failed")
 
 

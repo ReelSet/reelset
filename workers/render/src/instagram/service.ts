@@ -241,14 +241,18 @@ export async function recoverLostPost(
 ): Promise<'found' | 'not_found' | 'unknown'> {
   const log = deps.log.child({ postId: lost.id, itemId: lost.item_id, op: 'ig-find' })
   try {
-    const result = await deps.client.find(state, lost.caption, lost.started_at)
+    const exclude = await deps.store.recentMediaPks()
+    const result = await deps.client.find(state, lost.caption, lost.started_at, exclude)
     await saveState(deps, result.session, result.proxy)
     if (result.found && result.mediaPk && result.permalink) {
       await deps.store.markLostFound(lost.id, {
         mediaPk: result.mediaPk,
         permalink: result.permalink,
       })
-      log.info({ mediaPk: result.mediaPk }, 'lost instagram post found live, marked posted')
+      log.info(
+        { mediaPk: result.mediaPk, match: result.match, captionRestored: result.captionRestored },
+        'lost instagram post found live, marked posted',
+      )
       return 'found'
     }
     await deps.store.markLostNotFound(lost.id)

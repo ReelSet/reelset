@@ -64,16 +64,16 @@ describe('instagram container client find', () => {
       session: {},
       proxy: PROXY,
     })
-    const out = await t.client.find(STATE, 'cap', new Date('2026-11-11T10:26:39.900Z'))
+    const out = await t.client.find(STATE, 'cap', new Date('2026-11-11T10:26:39.900Z'), ['5'])
     expect(out).toMatchObject({ found: true, mediaPk: '9' })
     expect(t.requests[0]).toEqual({
       url: expect.stringMatching(/\/instagram\/find$/),
-      body: { ...STATE, caption: 'cap', since: 1794392799 },
+      body: { ...STATE, caption: 'cap', since: 1794392799, excludeMediaPks: ['5'] },
     })
   })
 
   it('accepts a not-found answer without media fields', async () => {
     const t = fakeContainer(200, { found: false, session: {}, proxy: PROXY })
-    expect((await t.client.find(STATE, 'cap', new Date())).found).toBe(false)
+    expect((await t.client.find(STATE, 'cap', new Date(), [])).found).toBe(false)
   })
 })

@@ -61,6 +61,7 @@ async function setup(
     restoreAfterDeleteFailure: vi.fn(async () => true),
     failStuck: vi.fn(async () => 0),
     nextLost: vi.fn(async () => opts.lost ?? null),
+    recentMediaPks: vi.fn(async () => ['77']),
     markLostFound: vi.fn(async () => true),
     markLostNotFound: vi.fn(async () => true),
   }
@@ -198,7 +199,9 @@ describe('lost uploads', () => {
       proxy: PROXY,
     })
     const out = await runInstagramQueue(t.deps)
-    expect(t.client.find).toHaveBeenCalledWith(expect.anything(), 'lost cap', LOST.started_at)
+    expect(t.client.find).toHaveBeenCalledWith(expect.anything(), 'lost cap', LOST.started_at, [
+      '77',
+    ])
     expect(t.store.markLostFound).toHaveBeenCalledWith('p0', {
       mediaPk: '55',
       permalink: 'https://www.instagram.com/p/L/',
