@@ -19,10 +19,18 @@ If creation says "out of capacity", retry later or in another availability domai
 
 ## 2. Create the tunnel
 
-Cloudflare Zero Trust -> Networks -> Tunnels -> Create tunnel (Cloudflared). Name it `reelset-box`, copy the token from the install command (the long string after `--token`). Add a public hostname:
+Done once from a laptop with `cloudflared` (a locally-managed tunnel; no Zero Trust onboarding):
 
-- Hostname: `box.reelset.app`
-- Service: `HTTP`, URL `render:8080` (cloudflared and the render container share the `reelset` docker network)
+```bash
+cloudflared tunnel login                                   # authorize reelset.app in the browser
+cloudflared tunnel create reelset-box
+cloudflared tunnel route dns reelset-box box.reelset.app   # CNAME to the tunnel
+cloudflared tunnel token reelset-box                       # -> TUNNEL_TOKEN for setup.sh
+```
+
+The tunnel has no remote ingress config: `setup.sh` runs cloudflared with `--url http://render:8080`
+(cloudflared and the render container share the `reelset` docker network). The token is kept in
+`reelset/.env.local` as `BOX_TUNNEL_TOKEN`.
 
 ## 3. Run setup
 
