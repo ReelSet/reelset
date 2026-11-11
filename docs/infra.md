@@ -112,3 +112,10 @@ Admin (`/admin/instagram`) queues rows in `instagram_post`; the render worker po
 - Deploy: `scripts/maintenance/deploy-render.sh` (uploads the IG secrets and `RENDER_BOX_TOKEN` from `.env.local` with the worker version; first deploy also creates the `render-api.reelset.app` custom domain; no Docker build).
 - Box capacity: Instagram calls share the one box with renders and are not limited by `MAX_RENDERS`, so a post during a render competes for the 2 cores.
 - Container route contract: `POST /instagram/{status,login,post,delete}` with `{session, proxyIndex, ...}`; replies include `proxy {index, country, switched, down}`; the container keeps no state and logs no credentials.
+
+## Northflank box power (replaces the Oracle VM)
+
+- The render container runs as a Northflank deployment service `render-box` (nf-compute-200: 2 vCPU / 4 GB, 1 instance, public HTTP port 8080, health check `/health`, image `ghcr.io/reelset/reelset-render:latest`, multi-arch amd64 + arm64; Northflank runs amd64). `RENDER_BOX_URL` is its `*.code.run` URL; `BOX_TOKEN`, `PROXY_URLS`, `MAX_RENDERS` are service runtime env.
+- Auto power: the render worker (`src/box-power.ts`) calls the Northflank API (`NORTHFLANK_API_TOKEN` secret, `NORTHFLANK_PROJECT_ID`, `NORTHFLANK_SERVICE_ID` vars). A paused/booting box (connection failure or non-JSON 502/503/504) triggers `resume` (debounced 60 s, skipped if the service is already running) and reads as `busy`, so the consumer defers the job 45 s. `/transcript`, `/youtube/search`, `/parse/paper` return 503 meanwhile; ingest retries transcripts with backoff (30/60/120 s) and degrades paper parsing to plain text.
+- The `*/5` cron reads `GET /health` (`{ok, running, inflight, idleSeconds}`) and pauses the service when `running == 0 && inflight == 0 && idleSeconds >= 600`. An unreachable box is left alone.
+- Cost: billed per second only while running, `CONTAINER_USD_PER_SECOND` = 2 vCPU x $0.01667/h + 4 GB x $0.00833/h.
