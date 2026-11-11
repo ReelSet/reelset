@@ -7,6 +7,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from reel import instagram, pipeline, transcript, validation, youtube_search
+from reel.activity import Activity
 from reel.errors import RenderError
 from reel.jobs import JobStore
 
@@ -37,6 +38,7 @@ def is_authorized(token: str, path: str, header: str | None) -> bool:
     return hmac.compare_digest((header or "").encode(), expected)
 
 
+activity = Activity()
 jobs = JobStore(max_running=max_renders_from_env(os.environ.get("MAX_RENDERS")))
 
 
@@ -73,11 +75,29 @@ class Handler(BaseHTTPRequestHandler):
         self._json(401, {"error": "unauthorized"})
         return False
 
+    def handle_one_request(self):
+        self._tracked = False
+        try:
+            super().handle_one_request()
+        finally:
+            if self._tracked:
+                activity.finish()
+
+    def _track(self) -> None:
+        if self.path != "/health" and not self._tracked:
+            self._tracked = True
+            activity.start()
+
     def do_GET(self):
         if not self._authorized():
             return
         if self.path == "/health":
-            return self._json(200, {"ok": True, "running": jobs.running()})
+            inflight, idle = activity.snapshot()
+            return self._json(
+                200,
+                {"ok": True, "running": jobs.running(), "inflight": inflight, "idleSeconds": idle},
+            )
+        self._track()
         match = ASSET_RE.match(self.path)
         if not match:
             return self._json(404, {"error": "not_found"})
@@ -96,6 +116,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         if not self._authorized():
             return
+        self._track()
         match = JOB_RE.match(self.path)
         if not match:
             return self._json(404, {"error": "not_found"})
@@ -105,6 +126,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._authorized():
             return
+        self._track()
         try:
             if self.path == "/transcript":
                 video_id = validation.validate_video_id(self._read_json())
