@@ -95,13 +95,13 @@ export function parsePowerState(body: unknown): BoxPowerState {
       ? (body as { data: unknown }).data
       : null
   if (typeof data !== 'object' || data === null) return 'unknown'
-  const paused = (data as { servicePaused?: unknown }).servicePaused
-  if (paused === true) return 'paused'
-  if (paused === false) return 'running'
-  return 'unknown'
+  const deployment = (data as { deployment?: { instances?: unknown } }).deployment
+  const instances = deployment?.instances
+  if (typeof instances !== 'number') return 'unknown'
+  return instances === 0 ? 'paused' : 'running'
 }
 
-/** A paused or booting Northflank service answers with its own non-JSON 502/503/504 instead of the box. */
+/** A paused service answers 503 with an empty body (checked live), so a non-JSON 502/503/504 means the box is down. */
 export function isBoxDownResponse(res: Response): boolean {
   const down = res.status === 502 || res.status === 503 || res.status === 504
   return down && !(res.headers.get('content-type') ?? '').includes('application/json')
