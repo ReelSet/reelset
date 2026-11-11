@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { createDb, createLogger, paperEvidenceTexts, parsedPaperSchema, parseItemImages } from '@reelset/core'
 import { sql } from 'kysely'
-import { createLlmClient, parseModelOutput } from '../../workers/ingest/src/pipeline/gemini'
+import { createLlm } from '../../workers/ingest/src/pipeline/llm'
+import { parseModelOutput } from '../../workers/ingest/src/pipeline/output'
 import { SYSTEM_PROMPT, buildUserPrompt } from '../../workers/ingest/src/pipeline/prompt'
 import { buildEvidenceRows, selectPromptChunks } from '../../workers/ingest/src/pipeline/decide'
 import { narrationWordCount } from '../../workers/ingest/src/pipeline/shots'
@@ -16,7 +17,7 @@ const [out, ...specs] = process.argv.slice(2)
 mkdirSync(out!, { recursive: true })
 const log = createLogger({ app: 'smoke', level: 'error' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 1 })
-const llm = createLlmClient(process.env.GEMINI_API_KEY!, process.env.GEMINI_MODEL ?? 'gemini-2.5-flash', log)
+const { client: llm } = createLlm(process.env, log)
 try {
   for (const spec of specs) {
     const [name, rest] = spec.split('=')

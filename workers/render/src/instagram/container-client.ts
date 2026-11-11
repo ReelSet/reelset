@@ -44,10 +44,12 @@ export class IgCallError extends Error {
 
 export type IgCredentials = { username: string; password: string; totpSecret?: string }
 
+export type IgReelUpload = { videoUrl: string; posterUrl: string | null; caption: string }
+
 export type IgContainerClient = {
   status(state: IgState): Promise<IgAccountResult>
   login(state: IgState, creds: IgCredentials, code?: string): Promise<IgAccountResult>
-  post(state: IgState, videoUrl: string, caption: string): Promise<IgPostResult>
+  post(state: IgState, upload: IgReelUpload): Promise<IgPostResult>
   remove(state: IgState, mediaPk: string): Promise<z.infer<typeof deleteResultSchema>>
 }
 
@@ -95,8 +97,8 @@ export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger):
     status: (state) => call('status', state, accountResultSchema, IG_TIMEOUT_MS.status),
     login: (state, creds, code) =>
       call('login', { ...state, ...creds, code }, accountResultSchema, IG_TIMEOUT_MS.login),
-    post: (state, videoUrl, caption) =>
-      call('post', { ...state, videoUrl, caption }, postResultSchema, IG_TIMEOUT_MS.post),
+    post: (state, upload) =>
+      call('post', { ...state, ...upload }, postResultSchema, IG_TIMEOUT_MS.post),
     remove: (state, mediaPk) =>
       call('delete', { ...state, mediaPk }, deleteResultSchema, IG_TIMEOUT_MS.delete),
   }

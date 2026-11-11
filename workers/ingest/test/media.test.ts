@@ -3,6 +3,7 @@ import { createLogger, type ItemImage } from '@reelset/core'
 import { captureRepoDemo, extractReadmeDemos, kindOfType, type DemoFetchers } from '../src/demo'
 import {
   applyVerdict,
+  createClaudeVetter,
   normalizeVet,
   urlHash,
   vetImages,
@@ -222,6 +223,7 @@ describe('vetImages', () => {
     reason: 'ok',
     role: 'figure',
     caption: 'Latency by region',
+    text: '',
     focus: { x: 0.3, y: 0.6 },
     ...over,
   })
@@ -259,7 +261,7 @@ describe('vetImages', () => {
 
   it('skips cleanly on a 402 quota error: images stay as captured, no further calls', async () => {
     const ask = vi.fn(async () => {
-      throw new QuotaExhaustedError(402, 'Gemini HTTP 402: credits depleted')
+      throw new QuotaExhaustedError(402, 'Claude HTTP 402: credits depleted')
     })
     const input = [img(1), img(2), img(3)]
     const out = await vetImages(input, { ask, download: png, cache: memCache(), log })
@@ -311,5 +313,62 @@ describe('vetImages', () => {
     expect(v.focus).toEqual({ x: 1, y: 0 })
     expect(normalizeVet({ keep: 'yes' })).toBeNull()
     expect(applyVerdict(img(1), verdict({ role: 'hero' }))?.role).toBe('hero')
+  })
+
+  it("keepAll annotates a post's own images without dropping them, and carries the text", async () => {
+    const answers = [
+      verdict({ text: 'GPT-6 scores 41% on RLI' }),
+      verdict({
+        role: 'junk',
+        keep: false,
+        caption: 'meme about agents',
+        text: 'me: one more prompt',
+      }),
+    ]
+    const ask = vi.fn(async () => ({ text: JSON.stringify(answers.shift()) }))
+    const out = await vetImages(
+      [img(1), img(2)],
+      { ask, download: png, cache: memCache(), log },
+      { keepAll: true },
+    )
+    expect(out).toHaveLength(2)
+    expect(out[0]).toMatchObject({ role: 'figure', text: 'GPT-6 scores 41% on RLI' })
+    expect(out[1]).toMatchObject({ caption: 'meme about agents', text: 'me: one more prompt' })
+    expect(out[1]).not.toHaveProperty('role')
+  })
+})
+
+describe('createClaudeVetter', () => {
+  it('sends the image before the vet prompt at low effort and returns the text', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const fetchImpl = (async (_u: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return new Response(
+        JSON.stringify({
+          id: 'm',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-haiku-5-5',
+          content: [{ type: 'text', text: '{"keep":true}' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1500, output_tokens: 80 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as unknown as typeof fetch
+    const ask = createClaudeVetter('k', 'claude-haiku-5-5', log, { fetch: fetchImpl })
+    const res = await ask({ mime: 'image/png', base64: 'AAAA' })
+    expect(res.text).toBe('{"keep":true}')
+    const content = (bodies[0]!.messages as { content: { type: string }[] }[])[0]!.content
+    expect(content.map((b) => b.type)).toEqual(['image', 'text'])
+    expect(bodies[0]!.output_config).toEqual({ effort: 'low' })
+    expect(bodies[0]).not.toHaveProperty('temperature')
+  })
+
+  it('rejects image types Claude cannot read without calling the API', async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch
+    const ask = createClaudeVetter('k', 'm', log, { fetch: fetchImpl })
+    await expect(ask({ mime: 'image/svg+xml', base64: 'AAAA' })).rejects.toThrow(/not supported/)
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 })

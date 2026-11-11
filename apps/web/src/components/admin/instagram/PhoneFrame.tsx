@@ -23,7 +23,9 @@ export function PhoneFrame({
           />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-3 pb-3 pt-10 text-white">
             <p className="text-[11px] font-semibold">@{username ?? 'reelset'}</p>
-            <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-white/85">{caption}</p>
+            <p className="mt-0.5 line-clamp-2 whitespace-pre-line text-[11px] leading-snug text-white/85">
+              {caption}
+            </p>
           </div>
         </div>
       </div>

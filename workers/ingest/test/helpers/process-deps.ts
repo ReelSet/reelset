@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import { EMBEDDING_DIMENSIONS } from '@reelset/core'
+import type { LlmRequest } from '../../src/pipeline/output'
 import type { ProcessDeps } from '../../src/pipeline/process'
 import { createFakeDb, type RecordedQuery } from './fake-db'
 import { testLog } from './mock-fetch'
@@ -15,6 +16,7 @@ export type World = {
   transitionLost: boolean
   mentions: Record<string, unknown>[]
   chunks: { id: string; text: string }[]
+  images?: unknown
 }
 
 export function makeWorld(overrides: Partial<World> = {}): World {
@@ -80,6 +82,7 @@ export function makeDeps(
           tldr: world.status === 'found' ? null : 'A fast queue library for Workers.',
           topics: ['queues'],
           queued_at: world.queuedAt,
+          ...(world.images !== undefined ? { images: world.images } : {}),
         },
       ]
     }
@@ -102,7 +105,7 @@ export function makeDeps(
     return undefined
   }
   const fake = createFakeDb(handler)
-  const generate = vi.fn(async (_req: { system: string; user: string }) => {
+  const generate = vi.fn(async (_req: LlmRequest) => {
     const next = llmOutputs.shift()
     if (next === undefined) throw new Error('llm called more often than scripted')
     if (next instanceof Error) throw next
@@ -120,7 +123,7 @@ export function makeDeps(
     embedder: { embed },
     transcripts: { fetch: transcriptFetch },
     renderQueue: { send },
-    llmModel: 'gemini-test',
+    llmModel: 'claude-test',
     narrationLimits: {},
     embeddingModel: 'embed-test',
   }

@@ -8,7 +8,7 @@ import {
   createClaudeClient,
   parseClaudeMessage,
 } from '../src/pipeline/claude'
-import { createLlm, llmCostFor, parseLlmProvider } from '../src/pipeline/llm'
+import { createLlm, llmCostFor } from '../src/pipeline/llm'
 import { QuotaExhaustedError } from '../src/pipeline/quota'
 import { json, testLog } from './helpers/mock-fetch'
 
@@ -70,6 +70,49 @@ describe('createClaudeClient request building', () => {
       effort: 'high',
     }).generate({ system: 's', user: 'u' })
     expect(calls[0]!.output_config).toEqual({ effort: 'high' })
+  })
+
+  it('puts attached images before the text as base64 blocks, skipping unsupported types', async () => {
+    const { llm, calls } = client(() => json(message()))
+    await llm.generate({
+      system: 's',
+      user: 'USER',
+      images: [
+        { mime: 'image/jpg', base64: 'AAA' },
+        { mime: 'image/svg+xml', base64: 'BBB' },
+        { mime: 'image/png', base64: 'CCC' },
+      ],
+    })
+    const content = (calls[0]!.body.messages as { content: unknown }[])[0]!.content
+    expect(content).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAA' } },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'CCC' } },
+      { type: 'text', text: 'USER' },
+    ])
+  })
+
+  it('retries text only when the API rejects an attached image', async () => {
+    const { llm, calls } = client((body) => {
+      const content = (body.messages as { content: unknown }[])[0]!.content
+      if (Array.isArray(content)) {
+        return json(
+          {
+            type: 'error',
+            error: { type: 'invalid_request_error', message: 'image exceeds 5 MB maximum' },
+          },
+          400,
+        )
+      }
+      return json(message())
+    })
+    const out = await llm.generate({
+      system: 's',
+      user: 'USER',
+      images: [{ mime: 'image/png', base64: 'AAA' }],
+    })
+    expect(out.text).toBe('{"ok":true}')
+    expect(calls).toHaveLength(2)
+    expect((calls[1]!.body.messages as { content: unknown }[])[0]!.content).toBe('USER')
   })
 })
 
@@ -196,28 +239,16 @@ describe('cost', () => {
     expect(claudeCostUsd({ inputTokens: 200_000, outputTokens: 1_000_000 })).toBeCloseTo(0.1 + 2.5)
   })
 
-  it('routes provider costs', () => {
+  it('prices script calls at Haiku rates', () => {
     const usage = { inputTokens: 100_000, outputTokens: 100_000 }
-    expect(llmCostFor('anthropic', usage)).toBeCloseTo(0.01 + 0.05)
-    expect(llmCostFor('gemini', usage)).toBeCloseTo(0.175)
+    expect(llmCostFor(usage)).toBeCloseTo(0.01 + 0.05)
   })
 })
 
-describe('provider selection', () => {
-  it('defaults to gemini and rejects unknown providers', () => {
-    expect(parseLlmProvider(undefined)).toBe('gemini')
-    expect(parseLlmProvider('anthropic')).toBe('anthropic')
-    expect(() => parseLlmProvider('openai')).toThrow(/LLM_PROVIDER/)
-  })
-
-  it('requires the matching key and picks the model', () => {
-    expect(() => createLlm({ LLM_PROVIDER: 'anthropic' }, testLog)).toThrow(/CLAUDE_API_KEY/)
-    expect(createLlm({ LLM_PROVIDER: 'anthropic', CLAUDE_API_KEY: 'k' }, testLog).model).toBe(
-      'claude-haiku-5-5',
-    )
-    const gemini = createLlm({ GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-x' }, testLog)
-    expect(gemini.provider).toBe('gemini')
-    expect(gemini.model).toBe('gemini-x')
-    expect(createLlm({ GEMINI_API_KEY: 'k', LLM_MODEL: 'm' }, testLog).model).toBe('m')
+describe('llm selection', () => {
+  it('requires the Claude key and picks the model', () => {
+    expect(() => createLlm({}, testLog)).toThrow(/CLAUDE_API_KEY/)
+    expect(createLlm({ CLAUDE_API_KEY: 'k' }, testLog).model).toBe('claude-haiku-5-5')
+    expect(createLlm({ CLAUDE_API_KEY: 'k', LLM_MODEL: 'm' }, testLog).model).toBe('m')
   })
 })

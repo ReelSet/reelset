@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SCREEN_NAMES, SFX_NAMES } from '@reelset/core'
 import { readFileSync } from 'node:fs'
-import { parseModelOutput } from '../src/pipeline/gemini'
+import { parseModelOutput } from '../src/pipeline/output'
 import { PROMPT_VERSION, SYSTEM_PROMPT } from '../src/pipeline/prompt'
 import {
   clipHeadline,
@@ -159,7 +159,7 @@ describe('parseModelOutput with shots', () => {
 
 describe('prompt', () => {
   it('is versioned and lists every screen and sfx the renderer knows', () => {
-    expect(PROMPT_VERSION).toBe('reel-v6')
+    expect(PROMPT_VERSION).toBe('reel-v7')
     for (const name of SCREEN_NAMES) expect(SYSTEM_PROMPT).toContain(`${name}:`)
     for (const name of SFX_NAMES) expect(SYSTEM_PROMPT).toContain(name)
     expect(SYSTEM_PROMPT).toContain('100 to 112 words')

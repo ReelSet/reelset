@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { IgAccount } from '@reelset/core'
+import { posterKeyFor, videoKeyFor } from '../keys'
 import { silentLog } from '../testing'
 import { IgCallError, type IgContainerClient } from './container-client'
 import { encryptJson, importSessionKey } from './crypto'
@@ -90,18 +91,37 @@ describe('runInstagramQueue', () => {
     expect(t.store.claimPost).not.toHaveBeenCalled()
   })
 
-  it('posts the claimed job with the full media url and stores the result', async () => {
+  it('posts the claimed job with the full media urls and stores the result', async () => {
     const t = await setup()
     const out = await runInstagramQueue(t.deps)
     expect(out).toEqual({ ran: 'post', postId: 'p1', ok: true })
     expect(t.client.post).toHaveBeenCalledWith(
       expect.objectContaining({ session: expect.anything() }),
-      'https://media.reelset.app/reels/i1/k.mp4',
-      'cap',
+      {
+        videoUrl: 'https://media.reelset.app/reels/i1/k.mp4',
+        posterUrl: 'https://media.reelset.app/reels/i1/k.jpg',
+        caption: 'cap',
+      },
     )
     expect(t.store.markPosted).toHaveBeenCalledWith('p1', {
       mediaPk: '99',
       permalink: 'https://www.instagram.com/p/X/',
+    })
+  })
+
+  it('sends the same render poster the app shows as the cover', async () => {
+    const t = await setup({ post: { ...POST, video_key: videoKeyFor('i1', 'render-2') } })
+    await runInstagramQueue(t.deps)
+    const upload = vi.mocked(t.client.post).mock.calls[0]?.[1]
+    expect(upload?.posterUrl).toBe(`https://media.reelset.app/${posterKeyFor('i1', 'render-2')}`)
+  })
+
+  it('sends no poster when the video key is not a render key, so the cover falls back', async () => {
+    const t = await setup({ post: { ...POST, video_key: 'legacy/clip.mov' } })
+    await runInstagramQueue(t.deps)
+    expect(vi.mocked(t.client.post).mock.calls[0]?.[1]).toMatchObject({
+      videoUrl: 'https://media.reelset.app/legacy/clip.mov',
+      posterUrl: null,
     })
   })
 
@@ -197,8 +217,7 @@ describe('connectAccount / checkAccount', () => {
     await runInstagramQueue(t.deps)
     expect(t.client.post).toHaveBeenCalledWith(
       expect.objectContaining({ proxyIndex: null }),
-      expect.any(String),
-      'cap',
+      expect.objectContaining({ caption: 'cap' }),
     )
     const blob = vi.mocked(t.store.saveSession).mock.calls[0]?.[0] ?? ''
     expect(blob).not.toContain('proxyIndex')

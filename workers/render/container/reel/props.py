@@ -103,6 +103,22 @@ def _word(w: Word) -> dict:
     return {"text": w.text, "start": round(w.start, 3), "end": round(w.end, 3)}
 
 
+POSTER_MIN_SECOND = 0.5
+POSTER_MAX_SECOND = 8.0
+POSTER_HOOK_LEAD_SECONDS = 0.15
+POSTER_UNKNOWN_HOOK_SECOND = 3.0
+
+
+def _clamp_poster_second(second: float) -> float:
+    return max(POSTER_MIN_SECOND, min(POSTER_MAX_SECOND, second))
+
+
 def poster_second(spans: list) -> float:
     """Frame for the poster: late enough that the hook text has landed, inside the hook scene."""
-    return max(0.5, min(8.0, spans[0][1] - 0.15))
+    return _clamp_poster_second(spans[0][1] - POSTER_HOOK_LEAD_SECONDS)
+
+
+def fallback_poster_second(duration: float | None) -> float:
+    """Best guess at poster_second when the hook timing is gone (only the finished video is left)."""
+    guess = POSTER_UNKNOWN_HOOK_SECOND if duration is None else min(POSTER_UNKNOWN_HOOK_SECOND, duration / 2)
+    return _clamp_poster_second(guess)

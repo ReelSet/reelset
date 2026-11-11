@@ -8,10 +8,8 @@ export interface Env {
   RENDER: Fetcher
   GEMINI_API_KEY: string
   CLAUDE_API_KEY?: string
-  LLM_PROVIDER?: string
   LLM_MODEL?: string
   LLM_EFFORT?: string
-  GEMINI_MODEL?: string
   GEMINI_EMBEDDING_MODEL?: string
   GITHUB_TOKEN?: string
   FIRECRAWL_API_KEY?: string
@@ -20,5 +18,4 @@ export interface Env {
   LOG_LEVEL?: string
 }
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite'
 export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001'

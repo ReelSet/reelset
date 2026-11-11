@@ -1,8 +1,9 @@
 import type { SpendCategory, SpendInput } from '@reelset/core'
 
-// Rough gemini-3.1-flash-lite list prices used only for the spend guard; billing lives with the provider.
-const LLM_INPUT_USD_PER_MTOK = 0.25
-const LLM_OUTPUT_USD_PER_MTOK = 1.5
+// List prices (USD per MTok) for the spend guard only; LLM rates are claude-haiku-5-5, update with ASK_MODEL.
+const LLM_RATES = { input: 0.1, output: 0.5 }
+const LLM_LARGE_PROMPT_RATES = { input: 0.5, output: 2.5 }
+const LARGE_PROMPT_TOKENS = 100_000
 const EMBEDDING_USD_PER_MTOK = 0.15
 
 export function estimateTokens(text: string): number {
@@ -10,7 +11,8 @@ export function estimateTokens(text: string): number {
 }
 
 export function llmCostUsd(inputTokens: number, outputTokens: number): number {
-  return (inputTokens * LLM_INPUT_USD_PER_MTOK + outputTokens * LLM_OUTPUT_USD_PER_MTOK) / 1_000_000
+  const rates = inputTokens > LARGE_PROMPT_TOKENS ? LLM_LARGE_PROMPT_RATES : LLM_RATES
+  return (inputTokens * rates.input + outputTokens * rates.output) / 1_000_000
 }
 
 export function embeddingCostUsd(tokens: number): number {

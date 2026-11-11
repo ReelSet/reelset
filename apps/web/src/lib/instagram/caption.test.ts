@@ -5,6 +5,7 @@ import {
   countHashtags,
   topicHashtags,
   validateQueueRequest,
+  VIDEO_KEY_MAX_CHARS,
 } from './caption'
 
 const base = {
@@ -83,18 +84,31 @@ describe('checkCaption', () => {
 
 describe('validateQueueRequest', () => {
   const itemId = '0b5d2f3e-6a1c-4e0b-9a55-1c2d3e4f5a6b'
+  const videoKey = `reels/${itemId}/abc.mp4`
   it('normalizes and accepts a valid request', () => {
-    expect(validateQueueRequest({ itemId, caption: '  hi\r\nthere ' })).toEqual({
+    expect(validateQueueRequest({ itemId, videoKey, caption: '  hi\r\nthere ' })).toEqual({
       ok: true,
       itemId,
+      videoKey,
       caption: 'hi\nthere',
     })
   })
 
   it('rejects bad ids, empty and oversize captions', () => {
-    expect(validateQueueRequest({ itemId: 'x', caption: 'hi' })).toMatchObject({ ok: false })
-    expect(validateQueueRequest({ itemId, caption: '   ' })).toMatchObject({ ok: false })
-    expect(validateQueueRequest({ itemId, caption: 'x'.repeat(2201) })).toMatchObject({ ok: false })
-    expect(validateQueueRequest(null)).toMatchObject({ ok: false })
+    const bad = [
+      { itemId: 'x', videoKey, caption: 'hi' },
+      { itemId, videoKey, caption: '   ' },
+      { itemId, videoKey, caption: 'x'.repeat(2201) },
+      null,
+    ]
+    for (const raw of bad) expect(validateQueueRequest(raw)).toMatchObject({ ok: false })
+  })
+
+  it('requires the video key of the previewed render', () => {
+    for (const key of [undefined, '', 'k'.repeat(VIDEO_KEY_MAX_CHARS + 1)]) {
+      expect(validateQueueRequest({ itemId, videoKey: key, caption: 'hi' })).toMatchObject({
+        ok: false,
+      })
+    }
   })
 })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { decideOnError, retryDelaySeconds, stageFor } from '../src/pipeline/decide'
 import { handleMessage, type MessageLike } from '../src/pipeline/consumer'
 import { processItem } from '../src/pipeline/process'
@@ -52,6 +52,60 @@ describe('processItem', () => {
     expect(spend.map((q) => q.params[0])).toEqual(expect.arrayContaining(['llm', 'embedding']))
     expect(t.fake.find('update item set embedding')).toHaveLength(1)
     expect(t.fake.find('update evidence_chunk')).toHaveLength(1)
+  })
+
+  it('shows a reddit post its own images and cites what the vetter read in them', async () => {
+    const world = makeWorld({
+      canonicalKey: 'reddit:abc',
+      mentions: [
+        {
+          id: 'm1',
+          source: 'reddit',
+          external_id: 'abc',
+          url: 'https://www.reddit.com/r/LocalLLaMA/comments/abc/',
+          title: 'New benchmark results',
+          body: null,
+          raw: { extraTexts: ['Wild jump compared to last month. '.repeat(4)] },
+        },
+      ],
+      images: [
+        {
+          url: 'https://i.redd.it/abc.png',
+          kind: 'figure',
+          role: 'figure',
+          caption: 'Benchmark bar chart',
+          text: 'Model X 41% Model Y 30%',
+        },
+      ],
+    })
+    const t = makeDeps(world, [validOutput()])
+    const promptImage = vi.fn(async () => ({ mime: 'image/png', base64: 'AAAA' }))
+    t.deps.promptImage = promptImage
+    await processItem(t.deps, ITEM_ID, 1)
+
+    expect(promptImage).toHaveBeenCalledWith('https://i.redd.it/abc.png')
+    const call = t.generate.mock.calls[0]![0]
+    expect(call.images).toEqual([{ mime: 'image/png', base64: 'AAAA' }])
+    expect(call.user).toContain('ITEM_IMAGES:')
+    expect(call.user).toContain('image 0 (attached): figure: Benchmark bar chart')
+    expect(call.user).toContain('https://i.redd.it/abc.png')
+    const evidence = t.fake.find('insert into "evidence_chunk"')[0]!
+    expect(evidence.params).toContain(
+      'Image 1 in the post: Benchmark bar chart. Text in the image: Model X 41% Model Y 30%',
+    )
+  })
+
+  it('attaches no pictures for non-reddit items', async () => {
+    const t = makeDeps(
+      makeWorld({ images: [{ url: 'https://example.com/a.png', kind: 'og', caption: 'Hero' }] }),
+      [validOutput()],
+    )
+    const promptImage = vi.fn()
+    t.deps.promptImage = promptImage
+    await processItem(t.deps, ITEM_ID, 1)
+    expect(promptImage).not.toHaveBeenCalled()
+    expect(t.generate.mock.calls[0]![0].images).toEqual([])
+    expect(t.generate.mock.calls[0]![0].user).toContain('- image 0: og: Hero')
   })
 
   it('puts source text in untrusted blocks with the item chunk ids', async () => {

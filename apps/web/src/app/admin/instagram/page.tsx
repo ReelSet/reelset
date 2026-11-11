@@ -109,6 +109,7 @@ export default async function InstagramPage({ searchParams }: Props) {
           <Composer
             key={composer.id}
             itemId={composer.id}
+            videoKey={composer.video_key}
             title={composer.title}
             videoUrl={mediaUrl(mediaBase, composer.video_key) ?? ''}
             posterUrl={mediaUrl(mediaBase, composer.poster_key)}

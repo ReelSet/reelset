@@ -1,6 +1,6 @@
 import { MAX_TLDR_CHARS } from '../config'
 
-export const PROMPT_VERSION = 'reel-v6'
+export const PROMPT_VERSION = 'reel-v7'
 
 export type PromptChunk = { id: string; text: string }
 
@@ -10,6 +10,7 @@ export type PromptInput = {
   canonicalUrl: string
   chunks: readonly PromptChunk[]
   imageUrls: readonly string[]
+  itemImages?: string
   paperAssets?: string
   brief?: string
   rejection?: string
@@ -25,6 +26,7 @@ Rules:
 - Neutral, plain language. No profanity, slurs or insults, even when quoting.
 - Every claim in "claims" must cite the chunk_id values (UUIDs) of the sources that support it. Copy them exactly from the ALLOWED_CHUNK_IDS list. Never invent, shorten or alter an id, and never cite anything else (not arXiv ids, DOIs or section names).
 - Image visuals may only use a URL from the ALLOWED_IMAGE_URLS list. If the list is empty, do not use image visuals.
+- ITEM_IMAGES lists the item's real images by index (the "image" number for ImageFull and FigureZoom). When pictures are attached to this message they are the Reddit post's own images, in ITEM_IMAGES order: for an image post the picture IS the content (a screenshot, chart, meme or announcement), so look at it and explain what it shows, and put ImageFull on the beat that talks about it. Facts read from a picture count as sourced only when they also appear in an "Image N in the post" source, which you cite.
 - Character limits below are hard limits. Aim for about 80% of each limit and count characters before answering. Every quote visual needs a non-empty attribution.
 - Total narration (hook + all beats + outro) must be 100 to 112 words and at most 760 characters: the voice reads about 14 characters per second and the video must stay under 58 seconds. Aim for 106 words: a hook of 10 to 14 words, 4 beats of 20 to 26 words, an outro of 8 to 14 words. Count the words and characters of the final text before answering. Plain text only: no markdown, backticks or emoji, since the text is read aloud.
 - Spoken numbers: the voice reads long digit strings one digit at a time, which blows the time budget. In the narration say a number with at most 3 significant digits ("about 0.998", "99.8 percent", "roughly 1 in 1000"); never speak a decimal with more than 3 digits after the point. The full source value may still go in a shot's props.
@@ -114,6 +116,7 @@ export function buildUserPrompt(input: PromptInput): string {
       ? [`<untrusted_source kind="brief">\n${escapeUntrusted(input.brief)}\n</untrusted_source>`]
       : []),
     `ALLOWED_IMAGE_URLS:\n${escapeUntrusted(images)}`,
+    ...(input.itemImages ? [`ITEM_IMAGES:\n${escapeUntrusted(input.itemImages)}`] : []),
     ...(input.paperAssets ? [`PAPER_ASSETS:\n${escapeUntrusted(input.paperAssets)}`] : []),
     `ALLOWED_CHUNK_IDS:\n${input.chunks.map((c) => c.id).join('\n')}`,
     `SOURCES:\n${sources}`,
@@ -124,4 +127,18 @@ export function buildUserPrompt(input: PromptInput): string {
     )
   }
   return parts.join('\n\n')
+}
+
+/** One line per item image, by the index shots use; marks the ones attached as pictures. */
+export function itemImagesPrompt(
+  images: readonly { url: string; kind: string; role?: string; caption?: string }[],
+  attached: number,
+): string | undefined {
+  if (images.length === 0) return undefined
+  return images
+    .map((img, i) => {
+      const what = [img.role ?? img.kind, img.caption].filter(Boolean).join(': ')
+      return `- image ${i}${i < attached ? ' (attached)' : ''}: ${what} ${img.url}`
+    })
+    .join('\n')
 }

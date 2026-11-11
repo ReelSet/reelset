@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseModelOutput } from '../src/pipeline/gemini'
+import { parseModelOutput } from '../src/pipeline/output'
 import { NARRATION_LIMITS } from '../src/pipeline/process'
 import { SYSTEM_PROMPT, STYLE_GUIDE } from '../src/pipeline/prompt'
 import { readableKeyPoint, repairShots } from '../src/pipeline/shots'

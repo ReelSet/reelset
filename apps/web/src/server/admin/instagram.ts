@@ -19,6 +19,8 @@ import type { CommandResult } from '@/server/admin/commands'
 export const REELS_PAGE_SIZE = 24
 export const QUEUE_LIMIT = 40
 const UNIQUE_VIOLATION = '23505'
+const STALE_PREVIEW_MESSAGE =
+  'This reel was re-rendered after you opened it. Reload and check the preview, then queue again.'
 
 const itemSource = sql<string>`coalesce(
   (select m.source::text from mention m where m.item_id = item.id order by m.score desc nulls last limit 1),
@@ -43,9 +45,28 @@ export async function livePostPermalink(db: Database, itemId: string): Promise<s
   return row?.permalink ?? null
 }
 
+// Same render the feed serves (lib/ranking/sql.ts), so preview, post and app all show one reel.
+const SERVED_RENDER_ORDER = sql.raw(
+  'coalesce(r.template_version, 0) desc, r.finished_at desc nulls last, r.created_at desc, r.id desc',
+)
+
 const latestDone = (column: string) =>
   sql`(select r.${sql.raw(column)} from render r where r.item_id = item.id
-    and r.status = 'done' and r.video_key is not null order by r.finished_at desc nulls last limit 1)`
+    and r.status = 'done' and r.video_key is not null order by ${SERVED_RENDER_ORDER} limit 1)`
+
+// The render a queue request posts: the item's served render, only while the item is rendered.
+export function servedRenderQuery(db: Database, itemId: string) {
+  return db
+    .selectFrom('render as r')
+    .innerJoin('item', 'item.id', 'r.item_id')
+    .select('r.video_key')
+    .where('r.item_id', '=', itemId)
+    .where('r.status', '=', RenderStatus.done)
+    .where('r.video_key', 'is not', null)
+    .where('item.status', '=', 'rendered')
+    .orderBy(SERVED_RENDER_ORDER)
+    .limit(1)
+}
 
 export async function publishedReels(db: Database, offset: number) {
   const rows = await db
@@ -117,11 +138,8 @@ export async function postQueue(db: Database) {
       'instagram_post.started_at',
       'instagram_post.posted_at',
       'instagram_post.delete_requested_at',
-      sql<
-        string | null
-      >`(select r.poster_key from render r where r.item_id = item.id and r.status = 'done' and r.poster_key is not null order by r.finished_at desc nulls last limit 1)`.as(
-        'poster_key',
-      ),
+      sql<string | null>`(select r.poster_key from render r where r.item_id = instagram_post.item_id
+        and r.video_key = instagram_post.video_key limit 1)`.as('poster_key'),
     ])
     .where('instagram_post.status', '!=', InstagramPostStatus.deleted)
     .orderBy('instagram_post.created_at', 'desc')
@@ -142,25 +160,23 @@ export const readCheckError = (db: Database) => getIgCheckError(db)
 
 export async function queueInstagramPost(
   db: Database,
-  input: { itemId: unknown; caption: unknown; adminId: string },
+  input: { itemId: unknown; videoKey: unknown; caption: unknown; adminId: string },
   log: Logger,
 ): Promise<CommandResult> {
-  const valid = validateQueueRequest({ itemId: input.itemId, caption: input.caption })
+  const valid = validateQueueRequest({
+    itemId: input.itemId,
+    videoKey: input.videoKey,
+    caption: input.caption,
+  })
   if (!valid.ok) return { ok: false, message: valid.message }
   const l = log.child({ fn: 'queueInstagramPost', itemId: valid.itemId })
 
-  const render = await db
-    .selectFrom('render')
-    .innerJoin('item', 'item.id', 'render.item_id')
-    .select('render.video_key')
-    .where('render.item_id', '=', valid.itemId)
-    .where('render.status', '=', RenderStatus.done)
-    .where('render.video_key', 'is not', null)
-    .where('item.status', '=', 'rendered')
-    .orderBy('render.finished_at', 'desc')
-    .limit(1)
-    .executeTakeFirst()
+  const render = await servedRenderQuery(db, valid.itemId).executeTakeFirst()
   if (!render?.video_key) return { ok: false, message: 'This item has no finished reel to post' }
+  if (render.video_key !== valid.videoKey) {
+    l.warn({ previewed: valid.videoKey, served: render.video_key }, 'preview is stale, not queued')
+    return { ok: false, message: STALE_PREVIEW_MESSAGE }
+  }
 
   try {
     const row = await db
