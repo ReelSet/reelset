@@ -77,7 +77,8 @@ run_tunnel() {
   docker rm -f cloudflared >/dev/null 2>&1 || true
   docker run -d --name cloudflared --restart unless-stopped --network "$NETWORK" \
     --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
-    cloudflare/cloudflared:latest tunnel --no-autoupdate run --token "$(env_value TUNNEL_TOKEN)" >/dev/null
+    cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://render:8080 \
+    run --token "$(env_value TUNNEL_TOKEN)" >/dev/null
 }
 
 install_updater() {
