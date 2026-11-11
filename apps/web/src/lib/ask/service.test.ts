@@ -1,6 +1,7 @@
 import { createLogger } from '@reelset/core'
 import { describe, expect, it, vi } from 'vitest'
 import type { EvidenceChunk } from './evidence'
+import { ClaudeError, ClaudeRefusalError } from './claude'
 import { GeminiError } from './gemini'
 import {
   AI_UNAVAILABLE_MESSAGE,
@@ -130,7 +131,7 @@ describe('runAsk', () => {
     expect(deltas).toEqual(['Yes, ', 'mostly.'])
   })
 
-  it('serves the cache without calling Gemini and logs it as cached with its answer', async () => {
+  it('serves the cache without calling the providers and logs it as cached with its answer', async () => {
     const cached = { answer: 'cached', citations: [] }
     const { deps, logged } = makeDeps({ findCached: vi.fn(async () => cached) })
     const result = await runAsk(deps, input)
@@ -193,14 +194,28 @@ describe('runAsk', () => {
     },
   )
 
-  it('keeps the generic error for non-provider failures', async () => {
+  it('reports ai_unavailable when answer generation is out of credit', async () => {
     const { deps } = makeDeps({
-      embed: vi.fn(async () => {
-        throw new GeminiError('prompt blocked: SAFETY', 400)
+      generate: vi.fn(async () => {
+        throw new ClaudeError('generate returned 400: credit balance is too low', true, 400)
       }),
     })
-    expect(await runAsk(deps, input)).toMatchObject({ outcome: 'error' })
-    expect(await runAsk(deps, input)).not.toHaveProperty('reason')
+    expect(await runAsk(deps, input)).toMatchObject({ reason: 'ai_unavailable' })
+  })
+
+  it.each([
+    ['a refusal', new ClaudeRefusalError('cyber')],
+    ['a bad request', new GeminiError('embed returned 400', 400)],
+    ['a plain bug', new Error('bug')],
+  ])('keeps the generic error for %s', async (_label, failure) => {
+    const { deps } = makeDeps({
+      generate: vi.fn(async () => {
+        throw failure
+      }),
+    })
+    const result = await runAsk(deps, input)
+    expect(result).toMatchObject({ outcome: 'error' })
+    expect(result).not.toHaveProperty('reason')
   })
 
   it('survives a failing ask_query insert', async () => {

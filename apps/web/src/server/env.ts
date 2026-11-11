@@ -1,3 +1,9 @@
+import type { AskModelConfig } from '@/lib/ask/claude'
+import type { GeminiEmbeddingConfig } from '@/lib/ask/gemini'
+
+const DEFAULT_ASK_MODEL = 'claude-haiku-5-5'
+const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001'
+
 export function requireEnv(name: string): string {
   const value = process.env[name]
   if (!value) throw new Error(`missing env var ${name}`)
@@ -8,12 +14,17 @@ export function mediaBaseUrl(): string {
   return requireEnv('MEDIA_PUBLIC_BASE_URL')
 }
 
-export type GeminiConfig = { apiKey: string; model: string; embeddingModel: string }
-
-export function geminiConfig(): GeminiConfig {
+// Gemini serves only Ask question embeddings; vectors must match the 768-dim ingest embeddings.
+export function geminiEmbeddingConfig(): GeminiEmbeddingConfig {
   return {
     apiKey: requireEnv('GEMINI_API_KEY'),
-    model: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
-    embeddingModel: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
+    embeddingModel: process.env.GEMINI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL,
+  }
+}
+
+export function askModelConfig(): AskModelConfig {
+  return {
+    apiKey: requireEnv('CLAUDE_API_KEY'),
+    model: process.env.ASK_MODEL || DEFAULT_ASK_MODEL,
   }
 }

@@ -9,6 +9,7 @@ import {
   isJunkImage,
   mergeImages,
   normalizeImageUrl,
+  redditPostImages,
   type ImageFetchers,
 } from '../src/images'
 
@@ -190,5 +191,110 @@ describe('captureItemImages', () => {
       { log, fetchers: boom },
     )
     expect(out).toEqual([])
+  })
+})
+
+describe('redditPostImages', () => {
+  const media = (id: string, m = 'image/jpeg', e = 'Image') => ({
+    [id]: {
+      e,
+      m,
+      status: 'valid',
+      id,
+      s: { x: 1080, y: 1920, u: `https://preview.redd.it/${id}.jpg?width=1080&amp;s=abc` },
+    },
+  })
+
+  it('rebuilds gallery items as i.redd.it originals, in gallery order, skipping gifs', () => {
+    const out = redditPostImages({
+      url: 'https://www.reddit.com/gallery/abc',
+      gallery_data: { items: [{ media_id: 'bbb' }, { media_id: 'gif1' }, { media_id: 'aaa' }] },
+      media_metadata: {
+        ...media('aaa', 'image/png'),
+        ...media('bbb'),
+        ...media('gif1', 'image/gif', 'AnimatedImage'),
+      },
+    })
+    expect(out).toEqual([
+      { url: 'https://i.redd.it/bbb.jpg', kind: 'figure', width: 1080, height: 1920 },
+      { url: 'https://i.redd.it/aaa.jpg', kind: 'figure', width: 1080, height: 1920 },
+    ])
+  })
+
+  it('takes the extension from the signed preview url, falling back to the mime type', () => {
+    const out = redditPostImages({
+      media_metadata: {
+        ccc: {
+          e: 'Image',
+          m: 'image/jpeg',
+          s: { u: 'https://preview.redd.it/ccc.jpeg?width=1080' },
+        },
+        ddd: { e: 'Image', m: 'image/png' },
+      },
+    })
+    expect(out.map((i) => i.url)).toEqual([
+      'https://i.redd.it/ccc.jpeg',
+      'https://i.redd.it/ddd.png',
+    ])
+  })
+
+  it('picks up images embedded in a text post and caps at four', () => {
+    const meta = Object.assign({}, ...['a1', 'a2', 'a3', 'a4', 'a5'].map((id) => media(id)))
+    const out = redditPostImages({
+      url: 'https://www.reddit.com/r/x/comments/1/',
+      media_metadata: meta,
+    })
+    expect(out.map((i) => i.url)).toEqual([
+      'https://i.redd.it/a1.jpg',
+      'https://i.redd.it/a2.jpg',
+      'https://i.redd.it/a3.jpg',
+      'https://i.redd.it/a4.jpg',
+    ])
+  })
+
+  it('uses a direct image link with the preview size', () => {
+    expect(
+      redditPostImages({
+        url: 'https://i.redd.it/o35079f7mo0i1.png',
+        preview: {
+          images: [{ source: { url: 'https://preview.redd.it/o.png', width: 1448, height: 1086 } }],
+        },
+      }),
+    ).toEqual([
+      { url: 'https://i.redd.it/o35079f7mo0i1.png', kind: 'figure', width: 1448, height: 1086 },
+    ])
+  })
+
+  it('falls back to the preview frame of a video post, decoding entities', () => {
+    const out = redditPostImages({
+      url: 'https://v.redd.it/eeiovcpw7f0i1',
+      preview: {
+        images: [
+          {
+            source: {
+              url: 'https://external-preview.redd.it/bWg.png?format=pjpg&amp;auto=webp&amp;s=c4e',
+              width: 1920,
+              height: 1080,
+            },
+          },
+        ],
+      },
+    })
+    expect(out).toEqual([
+      {
+        url: 'https://external-preview.redd.it/bWg.png?format=pjpg&auto=webp&s=c4e',
+        kind: 'thumbnail',
+        width: 1920,
+        height: 1080,
+      },
+    ])
+  })
+
+  it('returns nothing for a plain text post or junk input', () => {
+    expect(redditPostImages({ url: 'https://www.reddit.com/r/x/comments/1/' })).toEqual([])
+    expect(redditPostImages(null)).toEqual([])
+    expect(
+      redditPostImages({ media_metadata: { 'bad/id': { e: 'Image', m: 'image/png' } } }),
+    ).toEqual([])
   })
 })

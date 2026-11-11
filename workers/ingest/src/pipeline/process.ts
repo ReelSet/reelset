@@ -19,13 +19,8 @@ import {
 } from '@reelset/core'
 import { EMBED_BATCH_SIZE } from '../config'
 import type { RenderJobMessage } from '../env'
-import {
-  approxTokens,
-  embeddingCostUsd,
-  parseModelOutput,
-  type Embedder,
-  type LlmClient,
-} from './gemini'
+import { approxTokens, embeddingCostUsd, type Embedder } from './gemini'
+import { parseModelOutput, type LlmClient, type LlmImage } from './output'
 import {
   buildEvidenceRows,
   hasEnoughEvidence,
@@ -45,8 +40,8 @@ import type { ScrapeFallback } from '../types'
 import { buildSourceBrief, type BriefInput, type SourceBrief } from './brief'
 import { enrichItem } from '../brief-fetch'
 import { paperAssetsPrompt, resolvePaperShots } from './paper-shots'
-import { llmCostFor, type LlmProvider } from './llm'
-import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt } from './prompt'
+import { LLM_PROVIDER, llmCostFor } from './llm'
+import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt, itemImagesPrompt } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
 
@@ -61,12 +56,13 @@ export type ProcessDeps = {
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
   llmModel: string
   narrationLimits?: { min?: number; max?: number }
-  llmProvider?: LlmProvider
   embeddingModel: string
   alertWebhookUrl?: string
   githubToken?: string
-  /** Gemini image vetting; absent in tests and when not configured. */
+  /** Claude image vetting; absent in tests and when not configured. */
   vet?: Omit<VetDeps, 'log'>
+  /** Downloads an item image so the script model can look at it; absent means text only. */
+  promptImage?: (url: string) => Promise<LlmImage | null>
 }
 
 export type ProcessOutcome =
@@ -93,6 +89,7 @@ type ItemRow = {
 }
 
 const GENERATION_ATTEMPTS = 2
+const MAX_PROMPT_IMAGES = 4
 export const NARRATION_LIMITS = { min: 100, max: 112, maxSpokenChars: MAX_SPOKEN_CHARS }
 
 async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefined> {
@@ -176,7 +173,10 @@ async function storeImages(
       },
       { log, githubToken: deps.githubToken },
     )
-    const images = deps.vet ? await vetImages(captured, { ...deps.vet, log }) : captured
+    const keepAll = isRedditPost(item.canonical_key)
+    const images = deps.vet
+      ? await vetImages(captured, { ...deps.vet, log }, { keepAll })
+      : captured
     await deps.db
       .updateTable('item')
       .set({ images: JSON.stringify(images) })
@@ -201,6 +201,46 @@ async function storeDemo(deps: ProcessDeps, item: ItemRow, log: Logger): Promise
     .set({ demo: JSON.stringify(demo ?? { none: true }) })
     .where('id', '=', item.id)
     .execute()
+}
+
+function isRedditPost(canonicalKey: string): boolean {
+  return canonicalKey.startsWith('reddit:')
+}
+
+/** What the vetting model read in each of a post's own images, as evidence the script can cite. */
+export function postImageTexts(images: readonly ItemImage[]): string[] {
+  return images
+    .filter((img) => img.kind !== 'avatar' && (img.caption || img.text))
+    .map((img, i) =>
+      [
+        `Image ${i + 1} in the post${img.caption ? `: ${img.caption}` : ''}.`,
+        img.text ? `Text in the image: ${img.text}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    )
+}
+
+/** Downloads the post's own pictures for the script model; a failed download is just skipped. */
+async function loadPromptImages(
+  deps: ProcessDeps,
+  item: ItemRow,
+  images: readonly ItemImage[],
+  log: Logger,
+): Promise<LlmImage[]> {
+  if (!deps.promptImage || !isRedditPost(item.canonical_key)) return []
+  const picked = images.filter((img) => img.kind !== 'avatar').slice(0, MAX_PROMPT_IMAGES)
+  const loaded = await Promise.all(
+    picked.map((img) =>
+      deps.promptImage!(img.url).catch((err) => {
+        log.warn({ url: img.url.slice(0, 80), ...errorFields(err) }, 'prompt image download failed')
+        return null
+      }),
+    ),
+  )
+  const out = loaded.filter((img): img is LlmImage => img !== null)
+  log.info({ wanted: picked.length, attached: out.length }, 'post images attached to the prompt')
+  return out
 }
 
 function paperTexts(paper: ParsedPaper | null, source: string): string[] | null {
@@ -305,6 +345,12 @@ async function summarize(
     })),
     { log, githubToken: deps.githubToken, scrape: deps.scrape },
   )
+  const postId = isRedditPost(item.canonical_key)
+    ? item.canonical_key.slice('reddit:'.length)
+    : null
+  const imageTexts = postId ? postImageTexts(images) : []
+  if (imageTexts.length > 0)
+    log.info({ images: imageTexts.length }, 'post image text added as evidence')
   const rows = buildEvidenceRows(
     mentions.map((m) => ({
       id: m.id,
@@ -312,6 +358,7 @@ async function summarize(
       title: m.title,
       body: m.body,
       extraTexts: [
+        ...(m.source === 'reddit' && m.external_id === postId ? imageTexts : []),
         ...(paperTexts(paper, m.source) ??
           (m.source === 'papers' ? pdfTexts : null) ??
           parseExtraTexts(m.raw)),
@@ -392,8 +439,10 @@ async function summarize(
     ...allowedImageSet(
       mentions.map((m) => ({ source: m.source, externalId: m.external_id })),
       [...stored.map((c) => c.text), ...mentions.map((m) => m.body ?? '')],
+      images.map((img) => img.url),
     ),
   ]
+  const promptImages = await loadPromptImages(deps, item, images, log)
 
   log.info({ chunks: stored.length, promptChunks: promptChunks.length }, 'evidence ready')
 
@@ -410,20 +459,23 @@ async function summarize(
         canonicalUrl: item.canonical_url,
         chunks: promptChunks,
         imageUrls,
+        itemImages: paper ? undefined : itemImagesPrompt(images, promptImages.length),
         paperAssets: paper ? paperAssetsPrompt(paper, images) : undefined,
         brief: brief.text || undefined,
         rejection,
       }),
+      images: promptImages,
     })
     await recordSpend(
       db,
       {
         category: 'llm',
         units: result.usage.inputTokens + result.usage.outputTokens,
-        costUsd: llmCostFor(deps.llmProvider ?? 'gemini', result.usage),
+        costUsd: llmCostFor(result.usage),
         meta: {
           model: deps.llmModel,
-          provider: deps.llmProvider ?? 'gemini',
+          provider: LLM_PROVIDER,
+          images: promptImages.length,
           itemId: item.id,
           attempt,
         },

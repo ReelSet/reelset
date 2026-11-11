@@ -6,7 +6,6 @@ Nothing here logs in unless `login` is called, and `login` never retries."""
 import json
 import logging
 import os
-import subprocess
 import tempfile
 import threading
 import urllib.request
@@ -14,12 +13,17 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit
 
+from . import props, video
+from .errors import RenderError
 from .proxies import parse_proxy_urls
 
 log = logging.getLogger("reel.instagram")
 
 MAX_VIDEO_BYTES = 100 * 1024 * 1024
+MAX_POSTER_BYTES = 10 * 1024 * 1024
+COVER_ASPECT_TOLERANCE = 0.01
 DOWNLOAD_TIMEOUT_SECONDS = 120
+POSTER_DOWNLOAD_TIMEOUT_SECONDS = 20
 DOWNLOAD_USER_AGENT = "reelset-render/2"
 CLIP_DELAY_RANGE = [1, 3]
 ERROR_MESSAGE_MAX = 200
@@ -106,10 +110,10 @@ def _allowed_hosts() -> set:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
-def validate_video_url(url: str) -> str:
+def validate_media_url(url: str, label: str = "video") -> str:
     parts = urlsplit(url)
     if parts.scheme != "https" or (parts.hostname or "").lower() not in _allowed_hosts():
-        raise InstagramError("invalid_input", "video url must be https on the media host", 400)
+        raise InstagramError("invalid_input", f"{label} url must be https on the media host", 400)
     return url
 
 
@@ -216,54 +220,117 @@ def login(
     return {"state": "connected", "username": verified, "message": None, "session": _session_of(client)}
 
 
-def download_video(url: str, workdir: Path) -> Path:
-    validate_video_url(url)
-    dest = workdir / "reel.mp4"
+def _download(url: str, dest: Path, max_bytes: int, timeout: int, label: str) -> Path:
+    validate_media_url(url, label)
     # media.reelset.app sits behind Cloudflare, which answers 403 to the default Python-urllib agent.
     request = urllib.request.Request(url, headers={"User-Agent": DOWNLOAD_USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as res, open(dest, "wb") as out:
+        with urllib.request.urlopen(request, timeout=timeout) as res, open(dest, "wb") as out:
             size = 0
             while chunk := res.read(256 * 1024):
                 size += len(chunk)
-                if size > MAX_VIDEO_BYTES:
-                    raise InstagramError("too_large", "video is larger than 100 MB", 422)
+                if size > max_bytes:
+                    raise InstagramError("too_large", f"{label} is larger than {max_bytes // (1024 * 1024)} MB", 422)
                 out.write(chunk)
     except InstagramError:
         raise
     except Exception as err:
-        log.error("video download failed err=%s", type(err).__name__)
-        raise InstagramError("download_failed", f"could not download the reel video ({short_message(err)})", 502) from err
-    log.info("downloaded video bytes=%d", size)
+        log.error("%s download failed err=%s", label, type(err).__name__)
+        raise InstagramError("download_failed", f"could not download the reel {label} ({short_message(err)})", 502) from err
+    log.info("downloaded %s bytes=%d", label, size)
     return dest
 
 
-def make_thumbnail(video: Path, workdir: Path) -> Path:
-    thumb = workdir / "thumb.jpg"
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-ss", "1", "-i", str(video), "-frames:v", "1", str(thumb)],
-        check=True,
-    )
-    return thumb
+def download_video(url: str, workdir: Path) -> Path:
+    return _download(url, workdir / "reel.mp4", MAX_VIDEO_BYTES, DOWNLOAD_TIMEOUT_SECONDS, "video")
+
+
+def download_poster(url: str, workdir: Path) -> Path:
+    return _download(url, workdir / "poster.jpg", MAX_POSTER_BYTES, POSTER_DOWNLOAD_TIMEOUT_SECONDS, "poster")
+
+
+def probe_video(path: Path) -> tuple | None:
+    """(width, height, seconds) of the first video stream, or None when ffprobe cannot read it."""
+    try:
+        info = video.probe(str(path))
+        stream = next(s for s in info.get("streams", []) if s.get("codec_type") == "video")
+        width, height = int(stream["width"]), int(stream["height"])
+        seconds = float(info["format"]["duration"])
+    except (RenderError, StopIteration, KeyError, TypeError, ValueError):
+        return None
+    return (width, height, seconds) if width > 0 and height > 0 else None
+
+
+def check_poster_fits(poster: Path, shape: tuple | None) -> None:
+    """instagrapi center-crops a cover narrower than 9:16, so the poster must have the video's own aspect."""
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(poster) as im:
+            width, height = im.size
+    except (OSError, UnidentifiedImageError) as err:
+        raise InstagramError("bad_poster", "poster is not a readable image", 422) from err
+    if shape is None:
+        return
+    if abs(width / height - shape[0] / shape[1]) > COVER_ASPECT_TOLERANCE:
+        raise InstagramError("bad_poster", f"poster is {width}x{height}, video is {shape[0]}x{shape[1]}", 422)
+
+
+def extract_cover_frame(path: Path, workdir: Path, shape: tuple | None) -> Path:
+    """Frame near where the render takes its poster, for reels whose poster is missing or unusable."""
+    cover = workdir / "frame.jpg"
+    second = props.fallback_poster_second(shape[2] if shape else None)
+    try:
+        video.run_ffmpeg(video.build_poster_cmd(str(path), str(cover), second), str(workdir))
+    except RenderError as err:
+        raise InstagramError("cover_failed", f"could not extract a cover frame ({err.message})", 502) from err
+    if not cover.exists():
+        raise InstagramError("cover_failed", f"no video frame at {second:.2f}s for the cover", 502)
+    log.info("cover frame extracted second=%.2f", second)
+    return cover
+
+
+def choose_cover(
+    path: Path,
+    poster_url: str | None,
+    workdir: Path,
+    fetch_poster: Callable = download_poster,
+    extract_frame: Callable = extract_cover_frame,
+    probe: Callable = probe_video,
+) -> Path:
+    """The render's poster, the exact image the app shows; a video frame only when it is unusable."""
+    shape = probe(path)
+    if not poster_url:
+        log.warning("cover source=frame reason=no_poster_url")
+        return extract_frame(path, workdir, shape)
+    try:
+        poster = fetch_poster(poster_url, workdir)
+        check_poster_fits(poster, shape)
+    except InstagramError as err:
+        log.warning("cover source=frame reason=%s detail=%s", err.code, err.message)
+        return extract_frame(path, workdir, shape)
+    log.info("cover source=poster")
+    return poster
 
 
 def post_reel(
     session: dict,
     video_url: str,
+    poster_url: str | None,
     caption: str,
     factory: Callable = new_client,
     download: Callable = download_video,
-    thumbnail: Callable = make_thumbnail,
+    cover: Callable = choose_cover,
 ) -> dict:
     """Uploads one reel with the saved session; a dead session is reported, never re-logged in."""
     client = factory()
     client.set_settings(session)
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
-        video = download(video_url, workdir)
-        thumb = thumbnail(video, workdir)
+        reel = download(video_url, workdir)
+        thumb = cover(reel, poster_url, workdir)
         try:
-            media = client.clip_upload(video, caption, thumbnail=thumb)
+            media = client.clip_upload(reel, caption, thumbnail=thumb)
         except Exception as err:
             state, message = classify(err)
             if state in ("needs_login", "challenge", "needs_code"):

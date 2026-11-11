@@ -7,7 +7,7 @@ import {
   type Logger,
   type ParsedPaper,
 } from '@reelset/core'
-import { USER_AGENT } from './config'
+import { ARCTIC_BASE_URL, USER_AGENT } from './config'
 import { decodeEntities } from './html'
 import { mainContentHtml } from './article'
 
@@ -335,6 +335,83 @@ async function articleImages(url: string, f: ImageFetchers, log: Logger): Promis
 }
 
 const IMAGE_EXT = /\.(?:jpe?g|png|webp|gif)(?:[?#]|$)/i
+const REDDIT_MAX_IMAGES = 4
+const REDDIT_MEDIA_EXT: Record<string, string> = {
+  'image/jpeg': 'jpeg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+const DIRECT_IMAGE_HOST = /^https:\/\/(?:i\.redd\.it|i\.imgur\.com)\//
+const PREVIEW_HOST = /^https:\/\/(?:external-)?preview\.redd\.it\//
+
+type RedditMedia = {
+  e?: unknown
+  m?: unknown
+  status?: unknown
+  s?: { x?: unknown; y?: unknown; u?: unknown }
+}
+type RedditPreviewSource = { url?: unknown; width?: unknown; height?: unknown }
+
+const num = (v: unknown) => (typeof v === 'number' && v > 0 && v < 20000 ? v : undefined)
+
+// i.redd.it serves the upload's own extension (.jpg and .jpeg both occur for image/jpeg), which the
+// signed preview URL keeps; the mime type is only a fallback.
+function redditMediaExt(id: string, m: RedditMedia): string | undefined {
+  const preview = typeof m.s?.u === 'string' ? m.s.u : ''
+  const fromPreview = new RegExp(`/${id}\\.(jpe?g|png|webp)(?:[?#]|$)`, 'i').exec(preview)?.[1]
+  if (fromPreview) return fromPreview.toLowerCase()
+  return typeof m.m === 'string' ? REDDIT_MEDIA_EXT[m.m] : undefined
+}
+
+/**
+ * A Reddit post's own pictures: gallery items and images embedded in the text (media_metadata,
+ * rebuilt as i.redd.it originals), a direct image link, or else the preview frame of a video or
+ * link post. Animated images are skipped.
+ */
+export function redditPostImages(post: unknown): ItemImage[] {
+  if (!post || typeof post !== 'object') return []
+  const p = post as {
+    url?: unknown
+    media_metadata?: unknown
+    gallery_data?: { items?: { media_id?: unknown }[] } | null
+    preview?: { images?: { source?: RedditPreviewSource }[] } | null
+  }
+  const out: ItemImage[] = []
+  const meta =
+    p.media_metadata && typeof p.media_metadata === 'object'
+      ? (p.media_metadata as Record<string, RedditMedia>)
+      : {}
+  const galleryIds = (p.gallery_data?.items ?? [])
+    .map((i) => i.media_id)
+    .filter((id): id is string => typeof id === 'string')
+  const ids = galleryIds.length > 0 ? galleryIds : Object.keys(meta)
+  for (const id of ids) {
+    const m = meta[id]
+    if (!m || m.e !== 'Image' || (m.status !== undefined && m.status !== 'valid')) continue
+    if (!/^[a-z0-9]+$/i.test(id)) continue
+    const ext = redditMediaExt(id, m)
+    if (!ext) continue
+    out.push(image(`https://i.redd.it/${id}.${ext}`, 'figure', num(m.s?.x), num(m.s?.y)))
+    if (out.length >= REDDIT_MAX_IMAGES) return out
+  }
+  if (out.length > 0) return out
+
+  const source = p.preview?.images?.[0]?.source
+  const width = num(source?.width)
+  const height = num(source?.height)
+  const direct =
+    typeof p.url === 'string' ? normalizeImageUrl(p.url, 'https://www.reddit.com/') : null
+  if (direct && DIRECT_IMAGE_HOST.test(direct) && IMAGE_EXT.test(direct)) {
+    return [image(direct, 'figure', width, height)]
+  }
+  const preview =
+    typeof source?.url === 'string'
+      ? normalizeImageUrl(source.url, 'https://www.reddit.com/')
+      : null
+  if (preview && PREVIEW_HOST.test(preview)) return [image(preview, 'thumbnail', width, height)]
+  return []
+}
 
 /** Real source imagery for one item, best effort. Never throws. Direct fetches only. */
 export async function captureItemImages(input: CaptureInput, deps: Deps): Promise<ItemImage[]> {
@@ -413,18 +490,12 @@ export async function captureItemImages(input: CaptureInput, deps: Deps): Promis
     const data = await safe(
       log,
       'reddit post',
-      () => f.json(`https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${id}&fields=id,url`),
+      () => f.json(`${ARCTIC_BASE_URL}/api/posts/ids?ids=${encodeURIComponent(id)}`),
       null,
     )
-    const post = (data as { data?: { url?: string }[] } | null)?.data?.[0]
-    const url = post?.url ? normalizeImageUrl(post.url, 'https://www.reddit.com/') : null
-    if (
-      url &&
-      /(?:^https:\/\/(?:i|preview)\.redd\.it\/)/.test(url) &&
-      (IMAGE_EXT.test(url) || /i\.redd\.it/.test(url))
-    ) {
-      out = [image(url, 'figure')]
-    }
+    const post = (data as { data?: unknown[] } | null)?.data?.[0]
+    out = redditPostImages(post)
+    log.info({ post: id, images: out.length }, 'reddit post images')
   } else if (key.startsWith('hn:')) {
     out = []
   } else if (/^https?:\/\//.test(input.canonicalUrl)) {

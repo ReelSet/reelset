@@ -34,13 +34,13 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 - No `vercel.json`. Project setting Root Directory = `apps/web`, "Include files outside the Root Directory" on (default), Framework Preset Next.js.
 - Vercel detects the npm workspaces lockfile at the repo root and runs `npm install` there, so `@reelset/core` resolves; `next.config.ts` has `transpilePackages: ['@reelset/core']`.
 - Build/output commands stay default (`next build`). `npm run build -w @reelset/web` passes locally.
-- Env vars: see the web list in `docs/contracts.md` (`DATABASE_URL` must be the transaction pooler URL; set `ADMIN_EMAILS` and `ADMIN_HOST`).
+- Env vars: see the web list in `docs/contracts.md` (`DATABASE_URL` must be the transaction pooler URL; set `ADMIN_EMAILS` and `ADMIN_HOST`). Ask needs `CLAUDE_API_KEY` for answers and `GEMINI_API_KEY` for question embeddings; `GEMINI_MODEL` is not read by web.
 - PWA icons live in `apps/web/public` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) and are referenced by `src/app/manifest.ts`.
 
 ## Still to do
 
 - Vercel project for `apps/web` + env vars + domains `reelset.app`, `admin.reelset.app`
-- Secrets: `GEMINI_API_KEY` (embeddings, image vetting, and scripts while `LLM_PROVIDER=gemini`), `CLAUDE_API_KEY` (scripts when `LLM_PROVIDER=anthropic`), `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
+- Secrets: `GEMINI_API_KEY` (embeddings only), `CLAUDE_API_KEY` (scripts and image vetting), `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
 - Fill `HYPERDRIVE` id in both `wrangler.jsonc` files, then `wrangler deploy` ingest + render
 
 ## Narration engines (render container)
@@ -53,25 +53,25 @@ Chain: Aura-2 + Nova-3 (Workers AI, `tts_provider=aura2`) -> Kokoro in the conta
 - Local smoke (v14 paper script, 110 tokens, linux/amd64 under emulation, 2 CPUs): 57.0 s of audio, -16.4 LUFS, 110 timed words for 110 tokens, 52.6 s wall (two passes), 24 kHz mono 128k mp3. Model load about 2-3 s once per process; container RSS about 1 GB. Not measured on the Cloudflare `standard-3` instance. Image 3.35 GB.
 - Rollback: set `tts_provider` to `edge` (the worker then sends `ttsEngine: edge` and Kokoro never runs). A missing or unloadable model only makes Kokoro raise, and edge-tts takes over for that render.
 
-## Switching the script LLM to Claude Haiku 5.5
+## Script LLM: Claude Haiku 5.5
 
-Production runs `LLM_PROVIDER=anthropic` (Gemini credits were depleted: HTTP 402 paused the pipeline); the code default is still `gemini`. The switch was:
+Scripts and image vetting run on Claude only (Gemini credits were depleted: HTTP 402 paused the pipeline); Gemini is kept for embeddings. The `LLM_PROVIDER` switch was removed. Setup:
 
 ```bash
 cd workers/ingest
 unset CLOUDFLARE_API_TOKEN
 wrangler secret put CLAUDE_API_KEY          # paste the key from reelset/.env.local
-# in wrangler.jsonc vars: "LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5", "LLM_EFFORT": "medium" (committed; production runs this)
+# in wrangler.jsonc vars: "LLM_MODEL": "claude-haiku-5-5", "LLM_EFFORT": "medium" (committed; production runs this)
 wrangler deploy
 ```
 
-Roll back by setting `LLM_PROVIDER` back to `gemini` in `workers/ingest/wrangler.jsonc` and redeploying. Embeddings and image vetting keep using `GEMINI_API_KEY` either way, so those need Gemini credits regardless. Offline check without touching the database: `npx tsx --env-file=.env.local scripts/maintenance/gen-claude-samples.ts <outDir> <slug>=<itemId> ... [--effort low|medium|high] [--dry]` (live Claude calls, writes script, usage, cost and brief per item as JSON; `--dry` only writes the prompt). Regenerating stored scripts: `LLM_PROVIDER=anthropic scripts/maintenance/regen-scripts.ts`.
+Embeddings keep using `GEMINI_API_KEY`, so they need Gemini credits regardless. Offline check without touching the database: `npx tsx --env-file=.env.local scripts/maintenance/gen-claude-samples.ts <outDir> <slug>=<itemId> ... [--effort low|medium|high] [--dry]` (live Claude calls, writes script, usage, cost and brief per item as JSON; `--dry` only writes the prompt). Regenerating stored scripts: `scripts/maintenance/regen-scripts.ts`.
 
 ## Template upgrade sweep and ingest gating
 
 - The render cron's template-upgrade sweep (re-renders already rendered items on the newest template) is off unless `app_setting` `render_upgrade_enabled` is `true` (`scripts/maintenance/set-setting.ts renderUpgradeEnabled true`). New items always render on the current template through the queue. `feed_min_template` stays 6 until the old reels are deliberately retired.
 - Template 8 renders take 7-12 minutes on the `standard-3` container (Pexels b-roll vetting plus Remotion), so the first queue attempt can time out; the retry returns the container's cached result.
-- The ingest pipeline pause probe is a Gemini embedding call. While Gemini prepay credits are depleted (HTTP 402) the pause is renewed every probe and no new items are scripted, whatever `LLM_PROVIDER` is. Top up Gemini credits to resume ingest.
+- The ingest pipeline pause probe is a Gemini embedding call. While Gemini prepay credits are depleted (HTTP 402) the pause is renewed every probe and no new items are scripted. Top up Gemini credits to resume ingest.
 
 ## Render container fonts and image
 
@@ -88,7 +88,7 @@ Roll back by setting `LLM_PROVIDER` back to `gemini` in `workers/ingest/wrangler
 
 Admin (`/admin/instagram`) queues rows in `instagram_post`; the render worker posts them through instagrapi running in the render container. Nothing runs on a laptop.
 
-- Flow: admin "Queue post" inserts a `queued` row, then pokes `POST https://render-api.reelset.app/admin/ig/run`. The worker (poke or 5-minute cron) claims one row with `FOR UPDATE SKIP LOCKED`, at least 10 minutes after the previous attempt, calls the container `/instagram/post`, and writes `posted` (media_pk, permalink) or `failed`. A row stuck in `posting` for 20 minutes is failed ("outcome unknown"), never re-sent. Delete requests (`delete_requested_at` on a `posted` row) go through `/instagram/delete`.
+- Flow: admin "Queue post" inserts a `queued` row, then pokes `POST https://render-api.reelset.app/admin/ig/run`. The worker (poke or 5-minute cron) claims one row with `FOR UPDATE SKIP LOCKED`, at least 10 minutes after the previous attempt, calls the container `/instagram/post` (video URL plus the render's poster URL, which becomes the reel cover so Instagram matches the app; a video frame is used only if the poster is missing or unusable), and writes `posted` (media_pk, permalink) or `failed`. A row stuck in `posting` for 20 minutes is failed ("outcome unknown"), never re-sent. Delete requests (`delete_requested_at` on a `posted` row) go through `/instagram/delete`.
 - Public surface: the worker has a custom domain `render-api.reelset.app` (DNS on Cloudflare, created by `wrangler deploy`). Only `POST /admin/ig/{status,connect,run}` answer there, each needs `Authorization: Bearer IG_ADMIN_TOKEN` (constant-time check, 404 otherwise). The internal routes (`/transcript`, `/youtube/search`, `/parse/paper`) only answer for the `render.internal` service-binding host.
 - Worker secrets: `IG_ADMIN_TOKEN`, `IG_SESSION_KEY` (32 random bytes, base64), `IG_USERNAME`, `IG_PASSWORD`, optional `IG_TOTP_SECRET`, plus the existing `PROXY_URLS`. Vercel env: `IG_ADMIN_URL`, `IG_ADMIN_TOKEN`. Values live in `reelset/.env.local`.
 - Session: instagrapi settings (session + device ids) plus the pinned proxy index are AES-GCM encrypted by the worker and stored in `app_setting` key `ig_session_enc`; the account card state is `app_setting` `ig_account` (no secrets). Seed from a local login with `npx tsx --env-file=.env.local scripts/maintenance/seed-ig-session.ts` (reads `~/.reelset/ig_session.json`, prints nothing sensitive).

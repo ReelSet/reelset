@@ -77,20 +77,24 @@ export function checkCaption(text: string): CaptionCheck {
   return { chars, hashtags, errors }
 }
 
+export const VIDEO_KEY_MAX_CHARS = 512
+
 export const queuePostSchema = z.object({
   itemId: z.guid(),
+  videoKey: z.string().min(1).max(VIDEO_KEY_MAX_CHARS),
   caption: z.string().transform(normalizeCaption),
 })
 
 export type QueueValidation =
-  { ok: true; itemId: string; caption: string } | { ok: false; message: string }
+  { ok: true; itemId: string; videoKey: string; caption: string } | { ok: false; message: string }
 
 export function validateQueueRequest(raw: unknown): QueueValidation {
   const parsed = queuePostSchema.safeParse(raw)
   if (!parsed.success) return { ok: false, message: 'Invalid post request' }
   const check = checkCaption(parsed.data.caption)
   if (check.errors.length) return { ok: false, message: check.errors[0] ?? 'Invalid caption' }
-  return { ok: true, itemId: parsed.data.itemId, caption: parsed.data.caption }
+  const { itemId, videoKey, caption } = parsed.data
+  return { ok: true, itemId, videoKey, caption }
 }
 
 export const credits = {

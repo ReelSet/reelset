@@ -1,17 +1,13 @@
 import { createDb, createLogger, errorFields, type Logger } from '@reelset/core'
-import {
-  DEFAULT_EMBEDDING_MODEL,
-  DEFAULT_GEMINI_MODEL,
-  type Env,
-  type IngestItemMessage,
-} from './env'
+import { DEFAULT_EMBEDDING_MODEL, type Env, type IngestItemMessage } from './env'
 import { createFirecrawlFallback } from './firecrawl'
 import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { handleMessage } from './pipeline/consumer'
 import { createEmbedder } from './pipeline/gemini'
-import { createLlm } from './pipeline/llm'
-import { createDbVetCache, createGeminiVetter, downloadForVet } from './pipeline/image-vet'
+import { DEFAULT_CLAUDE_MODEL } from './pipeline/claude'
+import { LLM_PROVIDER, createLlm } from './pipeline/llm'
+import { createClaudeVetter, createDbVetCache, downloadForVet } from './pipeline/image-vet'
 import type { ProcessDeps } from './pipeline/process'
 import { createTranscriptClient } from './pipeline/transcript'
 import { createPaperClient } from './paper-client'
@@ -117,7 +113,7 @@ export default {
       return
     }
     const llm = createLlm(env, log)
-    log.info({ provider: llm.provider, model: llm.model }, 'llm selected')
+    log.info({ provider: LLM_PROVIDER, model: llm.model }, 'llm selected')
     await withDb(env, log, async (db) => {
       const deps: ProcessDeps = {
         db,
@@ -135,19 +131,15 @@ export default {
           : undefined,
         renderQueue: env.RENDER_JOBS,
         llmModel: llm.model,
-        llmProvider: llm.provider,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
         alertWebhookUrl: env.ALERT_WEBHOOK_URL,
         githubToken: env.GITHUB_TOKEN,
         vet: {
-          ask: createGeminiVetter(
-            env.GEMINI_API_KEY,
-            env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
-            log,
-          ),
+          ask: createClaudeVetter(env.CLAUDE_API_KEY ?? '', DEFAULT_CLAUDE_MODEL, log),
           download: downloadForVet,
           cache: createDbVetCache(db),
         },
+        promptImage: downloadForVet,
       }
       log.info({ size: batch.messages.length }, 'ingest-items batch start')
       for (const message of batch.messages) await handleMessage(deps, message)

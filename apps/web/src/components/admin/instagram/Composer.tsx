@@ -8,6 +8,7 @@ import { PhoneFrame } from './PhoneFrame'
 
 type Props = {
   itemId: string
+  videoKey: string
   title: string
   videoUrl: string
   posterUrl: string | null
@@ -32,6 +33,7 @@ function Counter({ used, max, label }: { used: number; max: number; label: strin
 
 export function Composer({
   itemId,
+  videoKey,
   title,
   videoUrl,
   posterUrl,
@@ -44,7 +46,8 @@ export function Composer({
 }: Props) {
   const [caption, setCaption] = useState(draftCaption)
   const textarea = useRef<HTMLTextAreaElement>(null)
-  const check = useMemo(() => checkCaption(normalizeCaption(caption)), [caption])
+  const postCaption = useMemo(() => normalizeCaption(caption), [caption])
+  const check = useMemo(() => checkCaption(postCaption), [postCaption])
   const invalid = check.errors.length > 0
   const disabled = invalid || blockedReason !== null
 
@@ -89,11 +92,13 @@ export function Composer({
           ) : null}
         </div>
 
-        {blockedReason || notice ? <p className="text-xs text-warn">{blockedReason ?? notice}</p> : null}
+        {blockedReason || notice ? (
+          <p className="text-xs text-warn">{blockedReason ?? notice}</p>
+        ) : null}
 
         <ConfirmForm
           action={queueAction}
-          fields={{ itemId, caption: normalizeCaption(caption), returnTo }}
+          fields={{ itemId, videoKey, caption: postCaption, returnTo }}
           triggerLabel="Queue post"
           title="Post this reel to Instagram?"
           confirmLabel="Queue post"
@@ -109,7 +114,7 @@ export function Composer({
           <div className="rounded-md border border-line bg-bg p-3 text-xs">
             <p className="mb-1 font-medium">{title}</p>
             <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-muted">
-              {normalizeCaption(caption)}
+              {postCaption}
             </p>
           </div>
           <p className="text-xs text-faint">
@@ -119,7 +124,12 @@ export function Composer({
         </ConfirmForm>
       </div>
 
-      <PhoneFrame videoUrl={videoUrl} posterUrl={posterUrl} username={username} caption={caption} />
+      <PhoneFrame
+        videoUrl={videoUrl}
+        posterUrl={posterUrl}
+        username={username}
+        caption={postCaption}
+      />
     </div>
   )
 }

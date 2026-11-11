@@ -123,8 +123,10 @@ export function extractImageUrls(text: string): string[] {
 export function allowedImageSet(
   mentions: readonly { source: string; externalId: string }[],
   texts: readonly string[],
+  itemImageUrls: readonly string[] = [],
 ): Set<string> {
   const allowed = new Set<string>()
+  for (const url of itemImageUrls) allowed.add(normalizeForMatch(url))
   for (const text of texts)
     for (const url of extractImageUrls(text)) allowed.add(normalizeForMatch(url))
   for (const m of mentions) {

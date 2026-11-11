@@ -11,12 +11,13 @@ import {
 import { sql } from 'kysely'
 import type { CitationDto } from '@/lib/api-types'
 import { ASK_TOP_K, type EvidenceChunk } from '@/lib/ask/evidence'
-import { embedQuestion, generateAnswer } from '@/lib/ask/gemini'
+import { generateAnswer } from '@/lib/ask/claude'
+import { embedQuestion } from '@/lib/ask/gemini'
 import { isOverHourlyLimit } from '@/lib/ask/gate'
 import { askSpendInput } from '@/lib/ask/pricing'
 import type { AskDeps, AskLogEntry } from '@/lib/ask/service'
 import { getDb } from './db'
-import { geminiConfig } from './env'
+import { askModelConfig, geminiEmbeddingConfig } from './env'
 
 type RetrievedRow = {
   id: string
@@ -96,7 +97,7 @@ export function createAskDeps(log: Logger): AskDeps {
       if (!row?.answer || !Array.isArray(row.citations)) return null
       return { answer: row.answer, citations: row.citations as CitationDto[] }
     },
-    embed: (text) => embedQuestion(geminiConfig(), text, log),
+    embed: (text) => embedQuestion(geminiEmbeddingConfig(), text, log),
     retrieve: async (embedding) => {
       const vector = toVectorLiteral(embedding)
       const result = await sql<RetrievedRow>`
@@ -119,7 +120,7 @@ export function createAskDeps(log: Logger): AskDeps {
       }))
     },
     generate: (question, chunks, onText) =>
-      generateAnswer(geminiConfig(), question, chunks, log, onText),
+      generateAnswer(askModelConfig(), question, chunks, log, onText),
     recordSpend: (category, units, costUsd) =>
       recordSpend(db, askSpendInput(category, units, costUsd), log),
     logQuery: async (entry) => {

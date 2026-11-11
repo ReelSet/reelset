@@ -5,6 +5,13 @@ const MAX_CITATIONS = 50
 
 export type ModelAnswer = { answer: string; citations: string[] }
 
+export type GeneratedAnswer = {
+  text: string
+  inputTokens: number
+  outputTokens: number
+  parsed: ModelAnswer | null
+}
+
 export function parseCitationIds(raw: string): string[] {
   const ids = raw
     .split(/[\s,]+/)

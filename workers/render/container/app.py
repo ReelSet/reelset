@@ -128,8 +128,10 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "post":
             if session is None:
                 raise instagram.InstagramError("needs_login", "no saved session", 401)
+            raw_poster = body.get("posterUrl")
+            poster_url = raw_poster if isinstance(raw_poster, str) and raw_poster else None
             work = lambda: instagram.post_reel(  # noqa: E731
-                session, require_str("videoUrl"), require_str("caption"), factory
+                session, require_str("videoUrl"), poster_url, require_str("caption"), factory
             )
         elif action == "delete":
             if session is None:

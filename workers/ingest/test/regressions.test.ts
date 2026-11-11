@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { POST_FIELDS } from '../src/config'
-import { parseModelOutput, repairModelOutput, truncateAtWord } from '../src/pipeline/gemini'
+import { parseModelOutput, repairModelOutput, truncateAtWord } from '../src/pipeline/output'
 import { SYSTEM_PROMPT } from '../src/pipeline/prompt'
 import { readmeLooksSpammy, spamReason, type GithubRepo } from '../src/sources/github'
 import { redditAdapter } from '../src/sources/reddit'

@@ -20,7 +20,7 @@ import {
   parseFacts,
   selectPromptChunks,
 } from '../../workers/ingest/src/pipeline/decide'
-import { parseModelOutput } from '../../workers/ingest/src/pipeline/gemini'
+import { parseModelOutput } from '../../workers/ingest/src/pipeline/output'
 import { NARRATION_LIMITS } from '../../workers/ingest/src/pipeline/process'
 import { paperAssetsPrompt, resolvePaperShots } from '../../workers/ingest/src/pipeline/paper-shots'
 import {

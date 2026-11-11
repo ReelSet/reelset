@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CONTAINER_USD_PER_SECOND } from './constants'
 import { RenderJobError } from './errors'
-import { containerJobId, posterKeyFor, videoKeyFor } from './keys'
+import { containerJobId, posterKeyFor, posterKeyForVideoKey, videoKeyFor } from './keys'
 import {
   upgradeBatchSize,
   classifyFailure,
@@ -27,6 +27,16 @@ describe('keys', () => {
   it('builds r2 keys per contract', () => {
     expect(videoKeyFor('item-1', 'abc')).toBe('reels/item-1/abc.mp4')
     expect(posterKeyFor('item-1', 'abc')).toBe('reels/item-1/abc.jpg')
+  })
+
+  it('maps a video key to the poster key of the same render', () => {
+    expect(posterKeyForVideoKey(videoKeyFor('item-1', 'abc'))).toBe(posterKeyFor('item-1', 'abc'))
+  })
+
+  it('returns no poster key for keys videoKeyFor did not build', () => {
+    for (const key of ['reels/item-1/abc.webm', 'other/item-1/abc.mp4', 'reels/abc.mp4', '']) {
+      expect(posterKeyForVideoKey(key)).toBeNull()
+    }
   })
 
   it('derives a container job id that satisfies the container validator', () => {

@@ -1,9 +1,10 @@
 import { elapsedMs, errorFields, type AskOutcome, type Logger } from '@reelset/core'
 import type { CitationDto } from '@/lib/api-types'
+import type { GeneratedAnswer } from './answer-stream'
 import { filterCitations, selectEvidence, type EvidenceChunk } from './evidence'
 import { decideSpendGate } from './gate'
-import { isProviderUnavailable, type GenerateResult, type ModelAnswer } from './gemini'
 import { embeddingCostUsd, estimateTokens, llmCostUsd, type AskSpendKind } from './pricing'
+import { isProviderUnavailable } from './provider-error'
 import type { QuestionCheck } from './question'
 
 export const NO_EVIDENCE_MESSAGE =
@@ -53,7 +54,7 @@ export type AskDeps = {
     question: string,
     chunks: EvidenceChunk[],
     onText: (text: string) => void,
-  ): Promise<GenerateResult & { parsed: ModelAnswer | null }>
+  ): Promise<GeneratedAnswer>
   recordSpend(kind: AskSpendKind, units: number, costUsd: number): Promise<void>
   logQuery(entry: AskLogEntry): Promise<void>
   completeQuery(reservationId: string, entry: AskLogEntry): Promise<void>

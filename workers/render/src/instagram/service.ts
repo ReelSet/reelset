@@ -10,9 +10,11 @@ import {
   IgCallError,
   type IgContainerClient,
   type IgCredentials,
+  type IgReelUpload,
   type IgSession,
   type IgState,
 } from './container-client'
+import { posterKeyForVideoKey } from '../keys'
 import type { ClaimedPost, IgStore } from './store'
 
 export type IgDeps = {
@@ -150,11 +152,27 @@ export type QueueOutcome =
 
 const OUTCOME_UNKNOWN = 'Upload outcome unknown. Check Instagram before queueing this reel again.'
 
+function mediaUrl(base: string, key: string): string {
+  return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`
+}
+
+// The app shows the render's poster image as the cover, so Instagram gets that same file.
+function reelUpload(deps: IgDeps, post: ClaimedPost): IgReelUpload {
+  const posterKey = posterKeyForVideoKey(post.video_key)
+  return {
+    videoUrl: mediaUrl(deps.mediaBaseUrl, post.video_key),
+    posterUrl: posterKey ? mediaUrl(deps.mediaBaseUrl, posterKey) : null,
+    caption: post.caption,
+  }
+}
+
 async function runPost(deps: IgDeps, post: ClaimedPost, state: IgState): Promise<boolean> {
   const log = deps.log.child({ postId: post.id, itemId: post.item_id })
-  const url = `${deps.mediaBaseUrl.replace(/\/$/, '')}/${post.video_key.replace(/^\//, '')}`
+  const upload = reelUpload(deps, post)
+  if (!upload.posterUrl)
+    log.warn({ videoKey: post.video_key }, 'no poster key for video, cover falls back to a frame')
   try {
-    const result = await deps.client.post(state, url, post.caption)
+    const result = await deps.client.post(state, upload)
     await saveState(deps, result.session, result.proxy)
     await deps.store.markPosted(post.id, { mediaPk: result.mediaPk, permalink: result.permalink })
     await writeAccount(deps, { message: switchNote(result.proxy), proxy: result.proxy }, (n) => n)

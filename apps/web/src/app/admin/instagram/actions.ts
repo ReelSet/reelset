@@ -23,7 +23,12 @@ export async function queuePostAction(formData: FormData): Promise<void> {
   await runAdminAction(formData, 'instagram-queue', async ({ adminId, log }) => {
     const result = await queueInstagramPost(
       getDb(),
-      { itemId: formData.get('itemId'), caption: formData.get('caption'), adminId },
+      {
+        itemId: formData.get('itemId'),
+        videoKey: formData.get('videoKey'),
+        caption: formData.get('caption'),
+        adminId,
+      },
       log,
     )
     const worker = workerConfigFromEnv()
