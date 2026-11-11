@@ -7,8 +7,6 @@ import { importSessionKey } from './crypto'
 import type { IgDeps } from './service'
 import { createIgStore } from './store'
 
-export const IG_CONTAINER_SLOT = 'instagram'
-
 export function igConfigured(env: Env): boolean {
   return Boolean(env.IG_USERNAME && env.IG_PASSWORD && env.IG_SESSION_KEY)
 }

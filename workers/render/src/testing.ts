@@ -102,17 +102,20 @@ export class FakeContainer implements ContainerFetcher {
     const videoBytes = this.opts.videoBytes ?? 1000
     if (request.method === 'POST' && path === '/render') {
       const status = this.opts.renderStatus ?? 200
-      const body = this.opts.renderBody ?? {
-        jobId: (entry.body as { jobId: string }).jobId,
-        bytes: 1000,
-        posterBytes: 50,
-        durationMs: 30_000,
-        ttsDurationMs: 29_000,
-        ttsChars: 400,
-        renderMs: 20_000,
-        cover: true,
-        templateVersion: TEMPLATE_VERSION,
-      }
+      const body =
+        this.opts.renderBody !== undefined
+          ? this.opts.renderBody
+          : {
+              jobId: (entry.body as { jobId: string }).jobId,
+              bytes: 1000,
+              posterBytes: 50,
+              durationMs: 30_000,
+              ttsDurationMs: 29_000,
+              ttsChars: 400,
+              renderMs: 20_000,
+              cover: true,
+              templateVersion: TEMPLATE_VERSION,
+            }
       return Response.json(body, { status })
     }
     if (request.method === 'GET' && path.endsWith('/video'))

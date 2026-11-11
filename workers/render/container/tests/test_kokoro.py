@@ -120,15 +120,13 @@ class FakeEngine:
         self.calls.append(speed)
         seconds = self.fixed_pause_seconds + (self.seconds_at_speed_one - self.fixed_pause_seconds) / speed
         samples = int(seconds * kokoro_tts.SAMPLE_RATE)
-        return _Silence(samples), timings_for(phonemes) if self.timings else []
+        return tone(samples), timings_for(phonemes) if self.timings else []
 
 
-class _Silence:
-    def __init__(self, n):
-        self.n = n
+def tone(samples: int):
+    import numpy as np
 
-    def __len__(self):
-        return self.n
+    return np.full(samples, 0.1, dtype=np.float32)
 
 
 class EncodeTests(unittest.TestCase):
@@ -140,7 +138,43 @@ class EncodeTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn(kokoro_tts.LEVEL_FILTER, command)
         self.assertEqual(command[command.index("-ar", command.index("-af")) + 1], "24000")
-        self.assertIn("kokoro-v1.0.fp16.onnx", kokoro_tts.MODEL_FILE)
+
+
+class ModelFileTests(unittest.TestCase):
+    def test_arm64_uses_fp32_and_everything_else_fp16(self):
+        self.assertEqual(kokoro_tts.model_file("aarch64"), "kokoro-v1.0.onnx")
+        self.assertEqual(kokoro_tts.model_file("arm64"), "kokoro-v1.0.onnx")
+        self.assertEqual(kokoro_tts.model_file("x86_64"), "kokoro-v1.0.fp16.onnx")
+
+
+class AudibleGuardTests(unittest.TestCase):
+    def test_accepts_normal_audio(self):
+        kokoro_tts.assert_audible(tone(2400))
+
+    def test_rejects_nan_inf_silence_and_empty(self):
+        import numpy as np
+
+        bad = {
+            "nan": np.full(2400, np.nan, dtype=np.float32),
+            "partial nan": np.concatenate([tone(100), np.array([np.nan], dtype=np.float32)]),
+            "inf": np.concatenate([tone(100), np.array([np.inf], dtype=np.float32)]),
+            "silent": np.zeros(2400, dtype=np.float32),
+            "empty": np.zeros(0, dtype=np.float32),
+        }
+        for name, audio in bad.items():
+            with self.subTest(name), self.assertRaises(KokoroError):
+                kokoro_tts.assert_audible(audio)
+
+    def test_synthesize_raises_instead_of_encoding_broken_audio(self):
+        import numpy as np
+
+        for audio in (np.full(48_000, np.nan, dtype=np.float32), np.zeros(48_000, dtype=np.float32)):
+            engine = FakeEngine()
+            engine.synthesize = mock.Mock(return_value=(audio, timings_for("hello")))
+            with self.subTest(), mock.patch.object(kokoro_tts, "encode_mp3") as encode:
+                with self.assertRaises(KokoroError):
+                    kokoro_tts.synthesize("Hello", "/tmp/n.mp3", engine=engine)
+                encode.assert_not_called()
 
 
 class KokoroSynthesisTests(unittest.TestCase):

@@ -7,18 +7,10 @@
   "workers_dev": false,
   "routes": [{ "pattern": "render-api.reelset.app", "custom_domain": true }],
   "observability": { "enabled": true },
-  "containers": [
-    {
-      "class_name": "ReelContainer",
-      "image": "./container/Dockerfile",
-      "instance_type": "standard-3",
-      "max_instances": 4,
-    },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ReelContainer"] },
+    { "tag": "v2", "deleted_classes": ["ReelContainer"] },
   ],
-  "durable_objects": {
-    "bindings": [{ "name": "REEL_CONTAINER", "class_name": "ReelContainer" }],
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReelContainer"] }],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "reelset-media" }],
   "ai": { "binding": "AI" },
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "cf0f4b14f2394a58a23e8241137c45a4" }],
@@ -30,7 +22,7 @@
     "consumers": [
       {
         "queue": "render-jobs",
-        "max_batch_size": 3,
+        "max_batch_size": 1,
         "max_batch_timeout": 2,
         "max_concurrency": 1,
         "max_retries": 8,
@@ -46,5 +38,5 @@
     ],
   },
   "triggers": { "crons": ["*/5 * * * *"] },
-  "vars": { "TTS_VOICE": "en-US-AriaNeural" },
+  "vars": { "TTS_VOICE": "en-US-AriaNeural", "RENDER_BOX_URL": "https://box.reelset.app" },
 }

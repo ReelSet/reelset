@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import os
@@ -21,7 +22,22 @@ ASSET_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})/(video|poster)$")
 JOB_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})$")
 ASSETS = {"video": ("video.mp4", "video/mp4"), "poster": ("poster.jpg", "image/jpeg")}
 
-jobs = JobStore()
+BOX_TOKEN = os.environ.get("BOX_TOKEN", "")
+OPEN_PATHS = ("/health",)
+
+
+def max_renders_from_env(raw: str | None) -> int:
+    return int(raw) if raw and raw.isdigit() and int(raw) > 0 else 1
+
+
+def is_authorized(token: str, path: str, header: str | None) -> bool:
+    if not token or path in OPEN_PATHS:
+        return True
+    expected = f"Bearer {token}".encode()
+    return hmac.compare_digest((header or "").encode(), expected)
+
+
+jobs = JobStore(max_running=max_renders_from_env(os.environ.get("MAX_RENDERS")))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -50,9 +66,18 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as err:
             raise RenderError("invalid_input", "body is not valid JSON") from err
 
+    def _authorized(self) -> bool:
+        if is_authorized(BOX_TOKEN, self.path, self.headers.get("Authorization")):
+            return True
+        log.warning("unauthorized %s %s from %s", self.command, self.path, self.address_string())
+        self._json(401, {"error": "unauthorized"})
+        return False
+
     def do_GET(self):
+        if not self._authorized():
+            return
         if self.path == "/health":
-            return self._json(200, {"ok": True})
+            return self._json(200, {"ok": True, "running": jobs.running()})
         match = ASSET_RE.match(self.path)
         if not match:
             return self._json(404, {"error": "not_found"})
@@ -69,6 +94,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
 
     def do_DELETE(self):
+        if not self._authorized():
+            return
         match = JOB_RE.match(self.path)
         if not match:
             return self._json(404, {"error": "not_found"})
@@ -76,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"deleted": True})
 
     def do_POST(self):
+        if not self._authorized():
+            return
         try:
             if self.path == "/transcript":
                 video_id = validation.validate_video_id(self._read_json())

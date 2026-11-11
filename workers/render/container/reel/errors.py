@@ -15,7 +15,7 @@ class RenderError(Exception):
         "too_large": 422,
         "tts_unavailable": 502,
         "ffmpeg_failed": 500,
-        "busy": 409,
+        "busy": 429,
     }
 
     @property
