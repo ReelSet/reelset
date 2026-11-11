@@ -12,6 +12,7 @@ import {
 } from '@reelset/core'
 import { loadRetentionDays, runMaintenance } from './cron'
 import { createBoxFetcher } from './box-fetcher'
+import { createBoxPower, pauseIdleBox, type BoxPower } from './box-power'
 import { DEFAULT_MEDIA_BASE_URL } from './constants'
 import { processRenderJob, type JobResult } from './consumer'
 import { pickBroll } from './pexels'
@@ -53,8 +54,20 @@ async function runInstagramBatch(
   batch.ackAll()
 }
 
+function powerFor(env: Env, log: Logger): BoxPower | undefined {
+  const { NORTHFLANK_API_TOKEN: apiToken, NORTHFLANK_PROJECT_ID: projectId } = env
+  const serviceId = env.NORTHFLANK_SERVICE_ID
+  if (!apiToken || !projectId || !serviceId) return undefined
+  return createBoxPower({ apiToken, projectId, serviceId, log })
+}
+
 function boxFor(env: Env, log: Logger) {
-  return createBoxFetcher({ baseUrl: env.RENDER_BOX_URL, token: env.RENDER_BOX_TOKEN ?? '', log })
+  return createBoxFetcher({
+    baseUrl: env.RENDER_BOX_URL,
+    token: env.RENDER_BOX_TOKEN ?? '',
+    log,
+    power: powerFor(env, log),
+  })
 }
 
 async function applyJobResult(
@@ -180,6 +193,14 @@ export default {
           }
           await env.IG_RUN.send({ reason: 'cron' })
         })().catch((err) => log.error(errorFields(err), 'instagram queue run enqueue failed')),
+      )
+    }
+    const power = powerFor(env, log)
+    if (power) {
+      ctx.waitUntil(
+        pauseIdleBox({ boxUrl: env.RENDER_BOX_URL, power, log }).catch((err) =>
+          log.error(errorFields(err), 'render box idle check failed'),
+        ),
       )
     }
     ctx.waitUntil(
