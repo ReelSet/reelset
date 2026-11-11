@@ -1,12 +1,12 @@
 ARG TARGETARCH
 # Kokoro weights (Apache-2.0) from the kokoro-onnx model-files-v1.1 release, pinned by sha256 (the v1.0 release files lack the duration output). int8 muffles 6-11 kHz. amd64 keeps fp16; arm64 uses fp32 because onnxruntime 1.24.1+ returns NaN for fp16 on linux aarch64 (microsoft/onnxruntime#32600).
 FROM scratch AS kokoro-model-amd64
-ADD --checksum=sha256:f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96 https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.fp16.onnx /kokoro-v1.0.fp16.onnx
-ADD --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin /voices-v1.0.bin
+ADD --chmod=0644 --checksum=sha256:f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96 https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.fp16.onnx /kokoro-v1.0.fp16.onnx
+ADD --chmod=0644 --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin /voices-v1.0.bin
 
 FROM scratch AS kokoro-model-arm64
-ADD --checksum=sha256:beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.onnx /kokoro-v1.0.onnx
-ADD --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin /voices-v1.0.bin
+ADD --chmod=0644 --checksum=sha256:beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.onnx /kokoro-v1.0.onnx
+ADD --chmod=0644 --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin /voices-v1.0.bin
 
 FROM kokoro-model-${TARGETARCH} AS kokoro-model
 
@@ -31,7 +31,7 @@ COPY requirements.txt .
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY --from=kokoro-model --chmod=0644 / /opt/kokoro/
+COPY --from=kokoro-model / /opt/kokoro/
 ENV KOKORO_MODEL_DIR=/opt/kokoro
 
 COPY remotion/package.json remotion/package-lock.json ./remotion/
