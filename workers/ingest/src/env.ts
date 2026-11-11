@@ -8,8 +8,6 @@ export interface Env {
   RENDER: Fetcher
   GEMINI_API_KEY: string
   CLAUDE_API_KEY?: string
-  LLM_MODEL?: string
-  LLM_EFFORT?: string
   GEMINI_EMBEDDING_MODEL?: string
   GITHUB_TOKEN?: string
   FIRECRAWL_API_KEY?: string

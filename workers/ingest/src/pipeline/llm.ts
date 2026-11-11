@@ -1,33 +1,39 @@
-import type { Logger } from '@reelset/core'
 import {
-  claudeCostUsd,
-  createClaudeClient,
-  DEFAULT_CLAUDE_MODEL,
+  SETTINGS,
+  getSetting,
   type ClaudeEffort,
-} from './claude'
-import type { LlmClient, LlmUsage } from './output'
+  type ClaudeModel,
+  type Database,
+  type Logger,
+} from '@reelset/core'
+import { createClaudeClient } from './claude'
+import type { LlmClient } from './output'
 
 export const LLM_PROVIDER = 'anthropic'
 
-export type LlmEnv = {
-  LLM_MODEL?: string
-  LLM_EFFORT?: string
-  CLAUDE_API_KEY?: string
+export type LlmModels = {
+  scriptModel: ClaudeModel
+  scriptEffort: ClaudeEffort
+  imageVetModel: ClaudeModel
 }
 
-export type LlmSelection = { model: string; client: LlmClient }
+export type LlmConfig = { apiKey?: string; model: ClaudeModel; effort: ClaudeEffort }
 
-const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+export type LlmSelection = { model: ClaudeModel; effort: ClaudeEffort; client: LlmClient }
 
-/** Script generation runs on Claude only; Gemini is kept for embeddings. */
-export function createLlm(env: LlmEnv, log: Logger): LlmSelection {
-  if (!env.CLAUDE_API_KEY) throw new Error('CLAUDE_API_KEY is required for script generation')
-  const model = env.LLM_MODEL || DEFAULT_CLAUDE_MODEL
-  const effort =
-    env.LLM_EFFORT && EFFORTS.has(env.LLM_EFFORT) ? (env.LLM_EFFORT as ClaudeEffort) : undefined
-  return { model, client: createClaudeClient(env.CLAUDE_API_KEY, model, log, { effort }) }
+/** Admin-selected models from app_setting; an invalid row falls back to its default. */
+export async function loadLlmModels(db: Database, log: Logger): Promise<LlmModels> {
+  const [scriptModel, scriptEffort, imageVetModel] = await Promise.all([
+    getSetting(db, SETTINGS.scriptModel, log),
+    getSetting(db, SETTINGS.scriptEffort, log),
+    getSetting(db, SETTINGS.imageVetModel, log),
+  ])
+  return { scriptModel, scriptEffort, imageVetModel }
 }
 
-export function llmCostFor(usage: LlmUsage): number {
-  return claudeCostUsd(usage)
+/** Script generation client on Claude; throws without CLAUDE_API_KEY. */
+export function createLlm(config: LlmConfig, log: Logger): LlmSelection {
+  if (!config.apiKey) throw new Error('CLAUDE_API_KEY is required for script generation')
+  const { model, effort } = config
+  return { model, effort, client: createClaudeClient(config.apiKey, model, log, { effort }) }
 }

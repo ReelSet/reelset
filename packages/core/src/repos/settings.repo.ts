@@ -1,6 +1,12 @@
 import { sql } from 'kysely'
 import { z } from 'zod'
 import type { Database } from '../db/client'
+import {
+  DEFAULT_CLAUDE_MODEL,
+  claudeEffortSchema,
+  claudeModelSchema,
+  type ClaudeEffort,
+} from '../domain/claude-model'
 import type { Logger } from '../lib/logger'
 
 export type SettingDef<T> = { key: string; schema: z.ZodType<T>; default: T }
@@ -74,10 +80,21 @@ export const SETTINGS = {
     z.enum(['edge', 'aura2', 'kokoro']),
     'edge' as 'edge' | 'aura2' | 'kokoro',
   ),
+  scriptModel: def('script_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
+  // Medium: low skips the self-checks that keep narration on length; higher adds cost, no gain seen.
+  scriptEffort: def('script_effort', claudeEffortSchema, 'medium' as ClaudeEffort),
+  imageVetModel: def('image_vet_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
+  askModel: def('ask_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
   renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
+
+/** The allowed values of an enum setting, or null for any other schema. */
+export function settingEnumOptions(setting: SettingDef<unknown>): readonly string[] | null {
+  if (!(setting.schema instanceof z.ZodEnum)) return null
+  return setting.schema.options.map(String)
+}
 
 export function parseSetting<T>(setting: SettingDef<T>, raw: unknown, log: Logger): T {
   if (raw === undefined || raw === null) return setting.default

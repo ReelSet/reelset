@@ -123,7 +123,7 @@ export function makeDeps(
     embedder: { embed },
     transcripts: { fetch: transcriptFetch },
     renderQueue: { send },
-    llmModel: 'claude-test',
+    llmModel: 'claude-haiku-5-5',
     narrationLimits: {},
     embeddingModel: 'embed-test',
   }

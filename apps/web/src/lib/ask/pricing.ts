@@ -1,18 +1,14 @@
-import type { SpendCategory, SpendInput } from '@reelset/core'
+import { claudeCostUsd, type ClaudeModel, type SpendCategory, type SpendInput } from '@reelset/core'
 
-// List prices (USD per MTok) for the spend guard only; LLM rates are claude-haiku-5-5, update with ASK_MODEL.
-const LLM_RATES = { input: 0.1, output: 0.5 }
-const LLM_LARGE_PROMPT_RATES = { input: 0.5, output: 2.5 }
-const LARGE_PROMPT_TOKENS = 100_000
+// gemini-embedding-001 list price for the spend guard; Claude prices live in the core table.
 const EMBEDDING_USD_PER_MTOK = 0.15
 
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
-export function llmCostUsd(inputTokens: number, outputTokens: number): number {
-  const rates = inputTokens > LARGE_PROMPT_TOKENS ? LLM_LARGE_PROMPT_RATES : LLM_RATES
-  return (inputTokens * rates.input + outputTokens * rates.output) / 1_000_000
+export function llmCostUsd(model: ClaudeModel, inputTokens: number, outputTokens: number): number {
+  return claudeCostUsd(model, { inputTokens, outputTokens })
 }
 
 export function embeddingCostUsd(tokens: number): number {
@@ -21,6 +17,11 @@ export function embeddingCostUsd(tokens: number): number {
 
 export type AskSpendKind = Extract<SpendCategory, 'llm' | 'embedding'>
 
-export function askSpendInput(kind: AskSpendKind, units: number, costUsd: number): SpendInput {
-  return { category: 'ask', units, costUsd, meta: { kind } }
+export function askSpendInput(
+  kind: AskSpendKind,
+  units: number,
+  costUsd: number,
+  model?: ClaudeModel,
+): SpendInput {
+  return { category: 'ask', units, costUsd, meta: model ? { kind, model } : { kind } }
 }

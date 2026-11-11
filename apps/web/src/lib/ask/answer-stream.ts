@@ -1,3 +1,5 @@
+import type { ClaudeModel } from '@reelset/core'
+
 const MARKER = 'CITATIONS:'
 const MARKER_LINE = /(?:^|\n)CITATIONS:/
 const MAX_ANSWER_CHARS = 6000
@@ -7,6 +9,7 @@ export type ModelAnswer = { answer: string; citations: string[] }
 
 export type GeneratedAnswer = {
   text: string
+  model: ClaudeModel
   inputTokens: number
   outputTokens: number
   parsed: ModelAnswer | null

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { elapsedMs, errorFields, type Logger } from '@reelset/core'
+import { elapsedMs, errorFields, type ClaudeModel, type Logger } from '@reelset/core'
 import { createAnswerSplitter, type GeneratedAnswer } from './answer-stream'
 import type { EvidenceChunk } from './evidence'
 import { ASK_SYSTEM_PROMPT, buildAnswerPrompt } from './prompt'
@@ -7,7 +7,7 @@ import { ProviderError, isUnavailableStatus } from './provider-error'
 
 // Low: the answer restates evidence already in the prompt, and thinking delays the first word.
 const ASK_EFFORT = 'low'
-// A ceiling, not a target: low-effort thinking plus a ~300-token answer; worst case about $0.004.
+// A ceiling, not a target: low-effort thinking plus a ~300-token answer.
 const MAX_OUTPUT_TOKENS = 8_000
 const REQUEST_TIMEOUT_MS = 20_000
 const STREAM_DEADLINE_MS = 45_000
@@ -15,7 +15,7 @@ const SDK_RETRIES = 1
 const ERROR_BODY_CHARS = 160
 const BILLING_BODY = /credit balance|billing|purchase credits|spend limit|usage limit/i
 
-export type AskModelConfig = { apiKey: string; model: string }
+export type AskModelConfig = { apiKey: string; model: ClaudeModel }
 
 export class ClaudeError extends ProviderError {
   constructor(message: string, unavailable: boolean, status?: number) {
@@ -53,10 +53,10 @@ function createClient(config: AskModelConfig, fetchImpl?: typeof fetch): Anthrop
   })
 }
 
-// No temperature/prefill/budget_tokens (400 on Haiku 5.5); no cache_control, prompt is under 512 tokens.
+// No temperature/prefill/budget_tokens (400 on the 5.5 models); no cache_control, prompt < 512 tokens.
 async function streamMessage(
   client: Anthropic,
-  model: string,
+  model: ClaudeModel,
   prompt: string,
   onDelta: (text: string) => void,
 ): Promise<Anthropic.Message> {
@@ -119,5 +119,5 @@ export async function generateAnswer(
 
   const { text, parsed } = splitter.finish()
   if (!text.trim()) throw new ClaudeError(`empty generation (stop_reason=${stopReason})`, true)
-  return { text, ...usage, parsed }
+  return { text, model: config.model, ...usage, parsed }
 }

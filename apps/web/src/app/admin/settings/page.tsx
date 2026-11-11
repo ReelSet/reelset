@@ -1,14 +1,6 @@
 import { formatSettingInput, settingFields } from '@/lib/admin/settings-form'
-import {
-  Flash,
-  PageTitle,
-  Section,
-  Table,
-  buttonPrimary,
-  input,
-  td,
-  th,
-} from '@/components/admin/ui'
+import { Flash, PageTitle, Section, Table, buttonPrimary, td, th } from '@/components/admin/ui'
+import { SettingValueInput } from '@/components/admin/SettingValueInput'
 import { SubmitButton } from '@/components/admin/SubmitButton'
 import { saveSettingAction } from '@/app/admin/actions'
 import { assertAdmin } from '@/server/admin/guard'
@@ -49,21 +41,7 @@ export default async function SettingsPage({ searchParams }: Props) {
                     <form action={saveSettingAction} className="flex items-start gap-2">
                       <input type="hidden" name="name" value={field.name} />
                       <input type="hidden" name="returnTo" value="/admin/settings" />
-                      {field.kind === 'list' ? (
-                        <textarea
-                          name="value"
-                          defaultValue={text}
-                          rows={Math.min(8, Math.max(2, text.split('\n').length))}
-                          className={`${input} w-96 font-mono text-xs`}
-                        />
-                      ) : (
-                        <input
-                          name="value"
-                          defaultValue={text}
-                          inputMode="decimal"
-                          className={`${input} w-32`}
-                        />
-                      )}
+                      <SettingValueInput field={field} text={text} />
                       <SubmitButton className={buttonPrimary} pendingLabel="Saving">
                         Save
                       </SubmitButton>

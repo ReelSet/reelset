@@ -1,5 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { errorFields, type Database, type ItemImage, type Logger } from '@reelset/core'
+import {
+  DEFAULT_CLAUDE_MODEL,
+  claudeCostUsd,
+  errorFields,
+  type Database,
+  type ItemImage,
+  type Logger,
+} from '@reelset/core'
 import { z } from 'zod'
 import { asClaudeQuotaError, imageBlock, parseClaudeMessage, type ClaudeMessage } from './claude'
 import type { LlmImage, LlmUsage } from './output'
@@ -8,9 +15,10 @@ import { QuotaExhaustedError } from './quota'
 export const MAX_VET_IMAGES = 6
 export const MAX_VET_BYTES = 3.5 * 1024 * 1024
 export const VET_COST_CAP_USD = 0.004
-// claude-haiku-5-5: $0.10 / $0.50 per 1M tokens. An image is up to ~1600 input tokens plus the
-// prompt, the answer (with a short think) ~300.
-const COST_PER_IMAGE_USD = (2000 * 0.1 + 300 * 0.5) / 1_000_000
+// An image is up to ~1600 input tokens plus the prompt; the answer with a short think ~300.
+const VET_TOKENS_PER_IMAGE = { inputTokens: 2000, outputTokens: 300 }
+// Budget unit, Haiku-priced on purpose so a pricier vet model keeps the same images-per-item cap.
+const COST_PER_IMAGE_USD = claudeCostUsd(DEFAULT_CLAUDE_MODEL, VET_TOKENS_PER_IMAGE)
 // v2: verdicts from the Claude prompt, which also transcribes text; older Gemini verdicts lack it.
 const CACHE_PREFIX = 'img_vet:v2:'
 const VET_MAX_TOKENS = 2000
@@ -195,7 +203,7 @@ export async function downloadForVet(url: string): Promise<LlmImage | null> {
   return { mime, base64: btoa(binary) }
 }
 
-/** Image vetting on Claude (Haiku): one image plus the vet prompt, low effort, JSON back. */
+/** Image vetting on the given Claude model: one image plus the prompt, low effort, JSON back. */
 export function createClaudeVetter(
   apiKey: string,
   model: string,

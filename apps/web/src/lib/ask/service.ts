@@ -1,4 +1,10 @@
-import { elapsedMs, errorFields, type AskOutcome, type Logger } from '@reelset/core'
+import {
+  elapsedMs,
+  errorFields,
+  type AskOutcome,
+  type ClaudeModel,
+  type Logger,
+} from '@reelset/core'
 import type { CitationDto } from '@/lib/api-types'
 import type { GeneratedAnswer } from './answer-stream'
 import { filterCitations, selectEvidence, type EvidenceChunk } from './evidence'
@@ -55,7 +61,12 @@ export type AskDeps = {
     chunks: EvidenceChunk[],
     onText: (text: string) => void,
   ): Promise<GeneratedAnswer>
-  recordSpend(kind: AskSpendKind, units: number, costUsd: number): Promise<void>
+  recordSpend(
+    kind: AskSpendKind,
+    units: number,
+    costUsd: number,
+    model?: ClaudeModel,
+  ): Promise<void>
   logQuery(entry: AskLogEntry): Promise<void>
   completeQuery(reservationId: string, entry: AskLogEntry): Promise<void>
 }
@@ -157,7 +168,8 @@ export async function runAsk(
     await deps.recordSpend(
       'llm',
       generated.inputTokens + generated.outputTokens,
-      llmCostUsd(generated.inputTokens, generated.outputTokens),
+      llmCostUsd(generated.model, generated.inputTokens, generated.outputTokens),
+      generated.model,
     )
     const tokens = { inputTokens: generated.inputTokens, outputTokens: generated.outputTokens }
 
