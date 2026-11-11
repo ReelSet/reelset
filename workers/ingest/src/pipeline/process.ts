@@ -2,6 +2,7 @@ import { sql } from 'kysely'
 import {
   MAX_SPOKEN_CHARS,
   StaleTransitionError,
+  claudeCostUsd,
   contentHash,
   errorFields,
   recordSpend,
@@ -11,6 +12,7 @@ import {
   paperEvidenceTexts,
   parseItemImages,
   transitionItem,
+  type ClaudeModel,
   type Database,
   type ItemImage,
   type ItemStatus,
@@ -40,7 +42,7 @@ import type { ScrapeFallback } from '../types'
 import { buildSourceBrief, type BriefInput, type SourceBrief } from './brief'
 import { enrichItem } from '../brief-fetch'
 import { paperAssetsPrompt, resolvePaperShots } from './paper-shots'
-import { LLM_PROVIDER, llmCostFor } from './llm'
+import { LLM_PROVIDER } from './llm'
 import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt, itemImagesPrompt } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
@@ -54,7 +56,7 @@ export type ProcessDeps = {
   papers?: PaperClient
   scrape?: ScrapeFallback
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
-  llmModel: string
+  llmModel: ClaudeModel
   narrationLimits?: { min?: number; max?: number }
   embeddingModel: string
   alertWebhookUrl?: string
@@ -471,7 +473,7 @@ async function summarize(
       {
         category: 'llm',
         units: result.usage.inputTokens + result.usage.outputTokens,
-        costUsd: llmCostFor(result.usage),
+        costUsd: claudeCostUsd(deps.llmModel, result.usage),
         meta: {
           model: deps.llmModel,
           provider: LLM_PROVIDER,

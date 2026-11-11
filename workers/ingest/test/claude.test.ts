@@ -4,11 +4,10 @@ import {
   ClaudeError,
   ClaudeRefusalError,
   asClaudeQuotaError,
-  claudeCostUsd,
   createClaudeClient,
   parseClaudeMessage,
 } from '../src/pipeline/claude'
-import { createLlm, llmCostFor } from '../src/pipeline/llm'
+import { createLlm } from '../src/pipeline/llm'
 import { QuotaExhaustedError } from '../src/pipeline/quota'
 import { json, testLog } from './helpers/mock-fetch'
 
@@ -210,45 +209,30 @@ describe('error mapping', () => {
   })
 })
 
-describe('cost', () => {
-  it('uses the small rate card at or under 100K prompt tokens', () => {
-    expect(claudeCostUsd({ inputTokens: 1_000_000 / 100, outputTokens: 0 })).toBeCloseTo(0.001)
-    expect(claudeCostUsd({ inputTokens: 0, outputTokens: 1_000_000 })).toBeCloseTo(0.5)
-  })
-
-  it('prices cache reads at 0.1x and cache writes at 1.25x of the input rate', () => {
-    expect(
-      claudeCostUsd({
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 100_000,
-        cacheWriteTokens: 0,
-      }),
-    ).toBeCloseTo(0.001)
-    expect(
-      claudeCostUsd({
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 100_000,
-      }),
-    ).toBeCloseTo(0.0125)
-  })
-
-  it('switches to the large rate card above 100K prompt tokens', () => {
-    expect(claudeCostUsd({ inputTokens: 200_000, outputTokens: 1_000_000 })).toBeCloseTo(0.1 + 2.5)
-  })
-
-  it('prices script calls at Haiku rates', () => {
-    const usage = { inputTokens: 100_000, outputTokens: 100_000 }
-    expect(llmCostFor(usage)).toBeCloseTo(0.01 + 0.05)
-  })
-})
-
 describe('llm selection', () => {
-  it('requires the Claude key and picks the model', () => {
-    expect(() => createLlm({}, testLog)).toThrow(/CLAUDE_API_KEY/)
-    expect(createLlm({ CLAUDE_API_KEY: 'k' }, testLog).model).toBe('claude-haiku-5-5')
-    expect(createLlm({ CLAUDE_API_KEY: 'k', LLM_MODEL: 'm' }, testLog).model).toBe('m')
+  it('requires the Claude key', () => {
+    expect(() => createLlm({ model: 'claude-haiku-5-5', effort: 'medium' }, testLog)).toThrow(
+      /CLAUDE_API_KEY/,
+    )
+  })
+
+  it('sends the configured model and effort', async () => {
+    const calls: Record<string, unknown>[] = []
+    const fetchImpl = (async (_u: unknown, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body)))
+      return json(message({ model: 'claude-sonnet-5-5' }))
+    }) as unknown as typeof fetch
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      const llm = createLlm({ apiKey: 'k', model: 'claude-sonnet-5-5', effort: 'high' }, testLog)
+      expect(llm).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high' })
+      await llm.client.generate({ system: 's', user: 'u' })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(calls[0]).toMatchObject({
+      model: 'claude-sonnet-5-5',
+      output_config: { effort: 'high' },
+    })
   })
 })

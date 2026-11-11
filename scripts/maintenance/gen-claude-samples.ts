@@ -3,6 +3,10 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { sql } from 'kysely'
 import {
+  DEFAULT_CLAUDE_MODEL,
+  claudeCostUsd,
+  claudeEffortSchema,
+  claudeModelSchema,
   createDb,
   createLogger,
   paperEvidenceTexts,
@@ -11,7 +15,7 @@ import {
   type ParsedPaper,
 } from '@reelset/core'
 import { enrichItem } from '../../workers/ingest/src/brief-fetch'
-import { createClaudeClient, claudeCostUsd } from '../../workers/ingest/src/pipeline/claude'
+import { createClaudeClient } from '../../workers/ingest/src/pipeline/claude'
 import { buildSourceBrief } from '../../workers/ingest/src/pipeline/brief'
 import {
   buildEvidenceRows,
@@ -31,7 +35,7 @@ import {
 import { allowedImageSet, validateGenerated } from '../../workers/ingest/src/pipeline/safety'
 import { narrationWordCount, numberValues } from '../../workers/ingest/src/pipeline/shots'
 
-// Usage: gen-claude-samples.ts <outDir> <slug>=<itemId> [...] [--effort low|medium|high] [--attempts N]
+// Usage: gen-claude-samples.ts <outDir> <slug>=<itemId> [...] [--model <id>] [--effort low|medium|high] [--attempts N]
 // Live Claude calls for real items without writing to the database. Writes <outDir>/<slug>.json
 // (script, usage, cost, attempts, brief) for side-by-side review.
 const args = process.argv.slice(2)
@@ -39,7 +43,8 @@ const flag = (name: string) => {
   const i = args.indexOf(name)
   return i >= 0 ? args.splice(i, 2)[1] : undefined
 }
-const effort = (flag('--effort') ?? 'medium') as 'low' | 'medium' | 'high'
+const effort = claudeEffortSchema.parse(flag('--effort') ?? 'medium')
+const model = claudeModelSchema.parse(flag('--model') ?? DEFAULT_CLAUDE_MODEL)
 const attempts = Number(flag('--attempts') ?? 3)
 const dry = args.includes('--dry')
 if (dry) args.splice(args.indexOf('--dry'), 1)
@@ -48,7 +53,6 @@ mkdirSync(outDir!, { recursive: true })
 
 const log = createLogger({ app: 'gen-claude-samples', level: 'warn' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 1 })
-const model = process.env.LLM_MODEL || 'claude-haiku-5-5'
 const llm = createClaudeClient(process.env.CLAUDE_API_KEY!, model, log, { effort })
 
 async function loadPaper(arxivId: string): Promise<ParsedPaper | null> {
@@ -157,7 +161,7 @@ async function one(slug: string, itemId: string) {
       system: SYSTEM_PROMPT,
       user: buildUserPrompt({ ...userBase, rejection }),
     })
-    const cost = claudeCostUsd(res.usage)
+    const cost = claudeCostUsd(model, res.usage)
     totalCost += cost
     const parsed = parseModelOutput(res.text, promptIds, sourceText, NARRATION_LIMITS)
     let outcome = 'accepted'

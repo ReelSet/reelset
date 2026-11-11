@@ -1,16 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { errorFields, type Logger } from '@reelset/core'
+import { SETTINGS, errorFields, type ClaudeEffort, type Logger } from '@reelset/core'
 import { QuotaExhaustedError } from './quota'
 import type { LlmClient, LlmImage, LlmUsage } from './output'
-
-export const DEFAULT_CLAUDE_MODEL = 'claude-haiku-5-5'
-
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-
-// Medium (the model default) is pinned explicitly: scripts need grounded numbers and a sharp
-// hook, which benefit from some reasoning, while low skips the self-checks that keep narration at
-// 100-112 words. Higher levels cost far more output tokens for no measurable gain on this task.
-export const DEFAULT_CLAUDE_EFFORT: ClaudeEffort = 'medium'
 
 // Room for adaptive thinking plus a ~1.5K-token JSON script.
 const MAX_OUTPUT_TOKENS = 16_000
@@ -35,10 +26,7 @@ type ApiErrorLike = { status?: number; message?: string }
 
 const BILLING_BODY = /credit balance|billing|purchase credits|spend limit|usage limit/i
 
-/**
- * 401 (bad or revoked key) and 402 (billing) cannot succeed on retry, so they pause the pipeline
- * like exhausted quota does. A 400 or 429 only counts when the body says credits or limits.
- */
+// 401/402 never succeed on retry, so they pause like quota; 400/429 only with a credits body.
 export function asClaudeQuotaError(err: unknown): unknown {
   if (!(err instanceof Anthropic.APIError)) return err
   const { status, message } = err as ApiErrorLike
@@ -64,26 +52,6 @@ export function claudeUsage(usage: ClaudeUsage): LlmUsage {
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
   }
-}
-
-// USD per 1M tokens for claude-haiku-5-5. Two rate cards chosen by total prompt size.
-const HAIKU_SMALL = { input: 0.1, output: 0.5 }
-const HAIKU_LARGE = { input: 0.5, output: 2.5 }
-const LARGE_PROMPT_TOKENS = 100_000
-const CACHE_READ_MULT = 0.1
-const CACHE_WRITE_MULT = 1.25
-
-export function claudeCostUsd(usage: LlmUsage): number {
-  const read = usage.cacheReadTokens ?? 0
-  const write = usage.cacheWriteTokens ?? 0
-  const rate = usage.inputTokens + read + write > LARGE_PROMPT_TOKENS ? HAIKU_LARGE : HAIKU_SMALL
-  return (
-    (usage.inputTokens * rate.input +
-      read * rate.input * CACHE_READ_MULT +
-      write * rate.input * CACHE_WRITE_MULT +
-      usage.outputTokens * rate.output) /
-    1_000_000
-  )
 }
 
 type ContentBlock = { type: string; text?: string }
@@ -117,19 +85,14 @@ export type ClaudeOptions = {
   fetch?: typeof fetch
 }
 
-/**
- * Plain JSON output plus the shared parse/repair/rejection loop. Structured outputs are not used:
- * the script schema is a deep union of visuals and screens with many length limits, which
- * JSON-schema grammars do not enforce, so the repair step is needed regardless.
- * No temperature, prefill or budget_tokens: all return 400 on Haiku 5.5.
- */
+// Plain JSON plus repair (grammars miss the length limits); no sampling/prefill/budget (400 on 5.5).
 export function createClaudeClient(
   apiKey: string,
   model: string,
   log: Logger,
   options: ClaudeOptions = {},
 ): LlmClient {
-  const effort = options.effort ?? DEFAULT_CLAUDE_EFFORT
+  const effort = options.effort ?? SETTINGS.scriptEffort.default
   const client = new Anthropic({
     apiKey,
     maxRetries: SDK_RETRIES,

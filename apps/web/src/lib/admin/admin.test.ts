@@ -130,9 +130,49 @@ describe('settings form', () => {
     })
   })
 
+  it('renders enum settings as selects with the options from the core schema', () => {
+    expect(field('scriptModel')).toMatchObject({
+      kind: 'enum',
+      options: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
+    })
+    expect(field('scriptEffort')).toMatchObject({
+      kind: 'enum',
+      options: ['low', 'medium', 'high'],
+    })
+    expect(field('ttsProvider')).toMatchObject({
+      kind: 'enum',
+      options: ['edge', 'aura2', 'kokoro'],
+    })
+    expect(field('imageVetModel').kind).toBe('enum')
+    expect(field('askModel').kind).toBe('enum')
+    expect(field('dailyReelCap').kind).toBe('number')
+  })
+
+  it('validates enum values against the schema', () => {
+    expect(parseSettingInput(field('scriptModel'), ' claude-opus-5-5 ')).toEqual({
+      ok: true,
+      value: 'claude-opus-5-5',
+    })
+    expect(parseSettingInput(field('askModel'), 'claude-sonnet-5-5')).toEqual({
+      ok: true,
+      value: 'claude-sonnet-5-5',
+    })
+    expect(parseSettingInput(field('scriptModel'), 'gpt-5').ok).toBe(false)
+    expect(parseSettingInput(field('scriptEffort'), 'max').ok).toBe(false)
+    expect(parseSettingInput(field('ttsProvider'), 'aura2')).toEqual({ ok: true, value: 'aura2' })
+    expect(parseSettingInput(field('ttsProvider'), '').ok).toBe(false)
+  })
+
+  it('hints model fields with prices from the core table', () => {
+    expect(field('scriptModel').hint).toContain('haiku $0.10/$0.50 (1x)')
+    expect(field('askModel').hint).toContain('sonnet $2/$10 (20x)')
+    expect(field('imageVetModel').hint).toContain('opus $4/$20 (40x)')
+  })
+
   it('formats values back into inputs', () => {
     expect(formatSettingInput('list', ['a', 'b'])).toBe('a\nb')
     expect(formatSettingInput('number', 200)).toBe('200')
+    expect(formatSettingInput('enum', 'claude-haiku-5-5')).toBe('claude-haiku-5-5')
   })
 })
 

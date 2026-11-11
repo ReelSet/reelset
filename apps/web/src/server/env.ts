@@ -1,7 +1,7 @@
+import type { ClaudeModel } from '@reelset/core'
 import type { AskModelConfig } from '@/lib/ask/claude'
 import type { GeminiEmbeddingConfig } from '@/lib/ask/gemini'
 
-const DEFAULT_ASK_MODEL = 'claude-haiku-5-5'
 const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001'
 
 export function requireEnv(name: string): string {
@@ -22,9 +22,7 @@ export function geminiEmbeddingConfig(): GeminiEmbeddingConfig {
   }
 }
 
-export function askModelConfig(): AskModelConfig {
-  return {
-    apiKey: requireEnv('CLAUDE_API_KEY'),
-    model: process.env.ASK_MODEL || DEFAULT_ASK_MODEL,
-  }
+// The model is an admin setting (app_setting ask_model); only the key comes from env.
+export function askModelConfig(model: ClaudeModel): AskModelConfig {
+  return { apiKey: requireEnv('CLAUDE_API_KEY'), model }
 }

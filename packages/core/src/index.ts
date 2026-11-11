@@ -65,9 +65,24 @@ export {
   type ItemImageKind,
 } from './domain/item-image'
 export {
+  CLAUDE_EFFORTS,
+  CLAUDE_MODELS,
+  CLAUDE_PRICING,
+  DEFAULT_CLAUDE_MODEL,
+  claudeCostUsd,
+  claudeEffortSchema,
+  claudeModelSchema,
+  claudeRateCard,
+  type ClaudeEffort,
+  type ClaudeModel,
+  type ClaudeRateCard,
+  type ClaudeTokenUsage,
+} from './domain/claude-model'
+export {
   SETTINGS,
   getSetting,
   parseSetting,
+  settingEnumOptions,
   setSetting,
   pipelinePauseSchema,
   type PipelinePause,

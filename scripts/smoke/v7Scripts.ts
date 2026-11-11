@@ -1,7 +1,7 @@
 import { createDb, createLogger } from '@reelset/core'
 import { sql } from 'kysely'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { createLlm } from '../../workers/ingest/src/pipeline/llm'
+import { createLlm, loadLlmModels } from '../../workers/ingest/src/pipeline/llm'
 import { parseModelOutput } from '../../workers/ingest/src/pipeline/output'
 import { SYSTEM_PROMPT, buildUserPrompt } from '../../workers/ingest/src/pipeline/prompt'
 import { selectPromptChunks } from '../../workers/ingest/src/pipeline/decide'
@@ -14,7 +14,11 @@ const out = process.argv[2]!
 mkdirSync(out, { recursive: true })
 const log = createLogger({ app: 'smoke', level: 'error' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 1 })
-const { client: llm } = createLlm(process.env, log)
+const models = await loadLlmModels(db, log)
+const { client: llm } = createLlm(
+  { apiKey: process.env.CLAUDE_API_KEY, model: models.scriptModel, effort: models.scriptEffort },
+  log,
+)
 const items = { github: '5d68d1b2', youtube: 'f74b5ddf', papers: 'ccd1893c' }
 try {
   for (const [name, prefix] of Object.entries(items)) {

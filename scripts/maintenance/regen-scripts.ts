@@ -1,7 +1,7 @@
 import { sql } from 'kysely'
-import { contentHash, createDb, createLogger, recordSpend } from '@reelset/core'
+import { claudeCostUsd, contentHash, createDb, createLogger, recordSpend } from '@reelset/core'
 import { parseModelOutput } from '../../workers/ingest/src/pipeline/output'
-import { LLM_PROVIDER, createLlm, llmCostFor } from '../../workers/ingest/src/pipeline/llm'
+import { LLM_PROVIDER, createLlm, loadLlmModels } from '../../workers/ingest/src/pipeline/llm'
 import { NARRATION_LIMITS } from '../../workers/ingest/src/pipeline/process'
 import { buildSourceBrief } from '../../workers/ingest/src/pipeline/brief'
 import { parseExtraTexts, parseFacts } from '../../workers/ingest/src/pipeline/decide'
@@ -18,7 +18,7 @@ import { narrationWordCount } from '../../workers/ingest/src/pipeline/shots'
 // Regenerates reel scripts (headline + shots) with the current PROMPT_VERSION for items in the feed.
 // Status is untouched, so the old reel stays live; the render cron re-renders on the new content hash.
 // Dry run unless --apply (still calls the LLM, writes nothing).
-// Model: Claude (CLAUDE_API_KEY, optional LLM_MODEL).
+// Model: Claude (CLAUDE_API_KEY), script_model and script_effort from app_setting.
 const arg = (name: string) => {
   const i = process.argv.indexOf(name)
   return i > 0 ? process.argv[i + 1] : undefined
@@ -31,7 +31,11 @@ const ATTEMPTS = 3
 
 const log = createLogger({ app: 'regen-scripts', level: 'warn' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 2 })
-const { client: llm, model } = createLlm(process.env, log)
+const models = await loadLlmModels(db, log)
+const { client: llm, model } = createLlm(
+  { apiKey: process.env.CLAUDE_API_KEY, model: models.scriptModel, effort: models.scriptEffort },
+  log,
+)
 const provider = LLM_PROVIDER
 
 type Row = {
@@ -121,7 +125,7 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
         {
           category: 'llm',
           units: res.usage.inputTokens + res.usage.outputTokens,
-          costUsd: llmCostFor(res.usage),
+          costUsd: claudeCostUsd(model, res.usage),
           meta: { model, provider, itemId: item.id, attempt, kind: 'regen-script' },
         },
         log,

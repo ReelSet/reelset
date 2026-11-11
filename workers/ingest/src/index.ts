@@ -5,8 +5,7 @@ import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { handleMessage } from './pipeline/consumer'
 import { createEmbedder } from './pipeline/gemini'
-import { DEFAULT_CLAUDE_MODEL } from './pipeline/claude'
-import { LLM_PROVIDER, createLlm } from './pipeline/llm'
+import { LLM_PROVIDER, createLlm, loadLlmModels } from './pipeline/llm'
 import { createClaudeVetter, createDbVetCache, downloadForVet } from './pipeline/image-vet'
 import type { ProcessDeps } from './pipeline/process'
 import { createTranscriptClient } from './pipeline/transcript'
@@ -112,9 +111,13 @@ export default {
       batch.retryAll()
       return
     }
-    const llm = createLlm(env, log)
-    log.info({ provider: LLM_PROVIDER, model: llm.model }, 'llm selected')
     await withDb(env, log, async (db) => {
+      const models = await loadLlmModels(db, log)
+      const llm = createLlm(
+        { apiKey: env.CLAUDE_API_KEY, model: models.scriptModel, effort: models.scriptEffort },
+        log,
+      )
+      log.info({ provider: LLM_PROVIDER, ...models }, 'llm models selected')
       const deps: ProcessDeps = {
         db,
         log,
@@ -135,7 +138,7 @@ export default {
         alertWebhookUrl: env.ALERT_WEBHOOK_URL,
         githubToken: env.GITHUB_TOKEN,
         vet: {
-          ask: createClaudeVetter(env.CLAUDE_API_KEY ?? '', DEFAULT_CLAUDE_MODEL, log),
+          ask: createClaudeVetter(env.CLAUDE_API_KEY ?? '', models.imageVetModel, log),
           download: downloadForVet,
           cache: createDbVetCache(db),
         },

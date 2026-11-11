@@ -119,10 +119,12 @@ export function createAskDeps(log: Logger): AskDeps {
         similarity: Number(row.similarity),
       }))
     },
-    generate: (question, chunks, onText) =>
-      generateAnswer(askModelConfig(), question, chunks, log, onText),
-    recordSpend: (category, units, costUsd) =>
-      recordSpend(db, askSpendInput(category, units, costUsd), log),
+    generate: async (question, chunks, onText) => {
+      const model = await getSetting(db, SETTINGS.askModel, log)
+      return generateAnswer(askModelConfig(model), question, chunks, log, onText)
+    },
+    recordSpend: (category, units, costUsd, model) =>
+      recordSpend(db, askSpendInput(category, units, costUsd, model), log),
     logQuery: async (entry) => {
       await db
         .insertInto('ask_query')

@@ -37,6 +37,7 @@ function makeDeps(overrides: Partial<AskDeps> = {}) {
     retrieve: vi.fn(async () => [evidence('a'), evidence('b')]),
     generate: vi.fn(async () => ({
       text: '',
+      model: 'claude-haiku-5-5' as const,
       inputTokens: 100,
       outputTokens: 20,
       parsed: { answer: 'Yes, mostly.', citations: ['a', 'ghost'] },
@@ -64,7 +65,12 @@ describe('runAsk', () => {
       expect.any(Number),
       expect.any(Number),
     )
-    expect(deps.recordSpend).toHaveBeenCalledWith('llm', 120, expect.any(Number))
+    expect(deps.recordSpend).toHaveBeenCalledWith(
+      'llm',
+      120,
+      expect.any(Number),
+      'claude-haiku-5-5',
+    )
     expect(logged).toHaveLength(1)
     expect(logged[0]).toMatchObject({ outcome: 'answered', inputTokens: 100, outputTokens: 20 })
   })
@@ -120,6 +126,7 @@ describe('runAsk', () => {
         onText('mostly.')
         return {
           text: '',
+          model: 'claude-haiku-5-5' as const,
           inputTokens: 1,
           outputTokens: 1,
           parsed: { answer: 'Yes, mostly.', citations: ['a'] },
@@ -151,6 +158,7 @@ describe('runAsk', () => {
     const { deps } = makeDeps({
       generate: vi.fn(async () => ({
         text: '',
+        model: 'claude-haiku-5-5' as const,
         inputTokens: 1,
         outputTokens: 1,
         parsed: { answer: 'Made up', citations: ['ghost'] },
@@ -161,7 +169,13 @@ describe('runAsk', () => {
 
   it('returns error when the model output is not valid JSON', async () => {
     const { deps, logged } = makeDeps({
-      generate: vi.fn(async () => ({ text: 'x', inputTokens: 1, outputTokens: 1, parsed: null })),
+      generate: vi.fn(async () => ({
+        text: 'x',
+        model: 'claude-haiku-5-5' as const,
+        inputTokens: 1,
+        outputTokens: 1,
+        parsed: null,
+      })),
     })
     expect((await runAsk(deps, input)).outcome).toBe('error')
     expect(logged[0]?.outcome).toBe('error')

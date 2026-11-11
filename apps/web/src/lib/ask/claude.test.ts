@@ -1,12 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createLogger } from '@reelset/core'
 import { describe, expect, it, vi } from 'vitest'
-import { ClaudeError, ClaudeRefusalError, generateAnswer, toClaudeError } from './claude'
+import {
+  ClaudeError,
+  ClaudeRefusalError,
+  generateAnswer,
+  toClaudeError,
+  type AskModelConfig,
+} from './claude'
 import type { EvidenceChunk } from './evidence'
 import { isProviderUnavailable } from './provider-error'
 
 const log = createLogger({ app: 'test', level: 'silent' })
-const config = { apiKey: 'sk-test', model: 'claude-haiku-5-5' }
+const config: AskModelConfig = { apiKey: 'sk-test', model: 'claude-haiku-5-5' }
 
 const chunk: EvidenceChunk = {
   id: 'c1',
@@ -97,7 +103,7 @@ describe('generateAnswer', () => {
     const deltas: string[] = []
     const out = await generateAnswer(config, 'q', [chunk], log, (t) => deltas.push(t), fetchImpl)
     expect(out.parsed).toEqual({ answer: 'Bun is faster.', citations: ['c1', 'ghost'] })
-    expect(out).toMatchObject({ inputTokens: 120, outputTokens: 42 })
+    expect(out).toMatchObject({ model: 'claude-haiku-5-5', inputTokens: 120, outputTokens: 42 })
     expect(deltas.join('')).toBe('Bun is faster.')
   })
 
