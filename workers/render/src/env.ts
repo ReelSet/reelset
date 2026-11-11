@@ -6,6 +6,9 @@ export type Env = {
   MEDIA: R2Bucket
   RENDER_BOX_URL: string
   RENDER_BOX_TOKEN?: string
+  NORTHFLANK_API_TOKEN?: string
+  NORTHFLANK_PROJECT_ID?: string
+  NORTHFLANK_SERVICE_ID?: string
   TTS_VOICE?: string
   AI?: Ai
   ALERT_WEBHOOK_URL?: string

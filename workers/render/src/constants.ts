@@ -17,6 +17,9 @@ export const RENDER_TIMEOUT_MS = 14 * 60_000
 export const TRANSCRIPT_TIMEOUT_MS = 45_000
 export const YOUTUBE_SEARCH_TIMEOUT_MS = 120_000
 export const PAPER_PARSE_TIMEOUT_MS = 110_000
+export const NORTHFLANK_API_URL = 'https://api.northflank.com/v1'
+export const BOX_IDLE_PAUSE_SECONDS = 600
+export const BOX_RESUME_COOLDOWN_MS = 60_000
 export const DEFAULT_MEDIA_BASE_URL = 'https://media.reelset.app'
 
 export const STUCK_RENDER_MINUTES = 30
@@ -31,8 +34,8 @@ export const FAILURE_RATE_WINDOW_MS = 60 * 60_000
 export const DEAD_LETTER_ALERT_MIN = 3
 export const DEAD_LETTER_WINDOW_MS = 60 * 60_000
 
-// Cloudflare Containers list pricing (standard-3), kept as the notional render cost although the box is a flat-rate VM.
-export const CONTAINER_USD_PER_SECOND = 2 * 0.00002 + 8 * 0.0000025 + 16 * 0.00000007
+// Northflank nf-compute-200 (2 vCPU, 4 GB): $0.01667/vCPU-h + $0.00833/GB-h, billed per second while the box runs.
+export const CONTAINER_USD_PER_SECOND = (2 * 0.01667 + 4 * 0.00833) / 3600
 export const EDGE_TTS_USD_PER_CHAR = 0
 
 export const UPGRADE_IN_FLIGHT_TARGET = 6

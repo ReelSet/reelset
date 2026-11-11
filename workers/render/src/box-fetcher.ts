@@ -1,8 +1,14 @@
 import { errorFields, type Logger } from '@reelset/core'
 import { CONTAINER_BASE_URL } from './constants'
+import { isBoxDownResponse, type BoxPower } from './box-power'
 import type { ContainerFetcher } from './container-client'
 
-export type BoxFetcherConfig = { baseUrl: string; token: string; log: Logger }
+export type BoxFetcherConfig = {
+  baseUrl: string
+  token: string
+  log: Logger
+  power?: Pick<BoxPower, 'resume'>
+}
 
 const AUTH_REJECTED_STATUSES = new Set([401, 403])
 
@@ -33,11 +39,27 @@ export function createBoxFetcher(config: BoxFetcherConfig): ContainerFetcher {
             'render box rejected token',
           )
         }
+        if (isBoxDownResponse(res)) {
+          config.log.warn({ path: source.pathname, status: res.status }, 'render box is down')
+          return config.power ? wakeBox(config.power) : res
+        }
         return res
       } catch (err) {
         config.log.warn({ path: source.pathname, ...errorFields(err) }, 'render box unreachable')
-        throw err
+        if (isTimeout(err)) throw err
+        if (!config.power) throw err
+        return wakeBox(config.power)
       }
     },
   }
+}
+
+function isTimeout(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+}
+
+/** A paused or booting box reads as busy: the caller retries later while the resume call brings it up. */
+async function wakeBox(power: Pick<BoxPower, 'resume'>): Promise<Response> {
+  await power.resume()
+  return Response.json({ error: 'busy', message: 'render box is starting' }, { status: 429 })
 }
