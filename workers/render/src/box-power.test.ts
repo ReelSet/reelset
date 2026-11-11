@@ -30,7 +30,8 @@ function fakeFetch(replies: Reply[]) {
   return { calls, impl: impl as unknown as typeof fetch }
 }
 
-const state = (servicePaused: boolean) => Response.json({ data: { servicePaused } })
+const state = (paused: boolean) =>
+  Response.json({ data: { deployment: { instances: paused ? 0 : 1 } } })
 const SERVICE = 'https://api.northflank.com/v1/projects/proj/services/svc'
 
 function power(replies: Reply[], now = () => 0) {
@@ -47,9 +48,9 @@ function power(replies: Reply[], now = () => 0) {
 }
 
 describe('parsePowerState', () => {
-  it('reads servicePaused', () => {
-    expect(parsePowerState({ data: { servicePaused: true } })).toBe('paused')
-    expect(parsePowerState({ data: { servicePaused: false } })).toBe('running')
+  it('reads deployment.instances (0 once paused)', () => {
+    expect(parsePowerState({ data: { deployment: { instances: 0 } } })).toBe('paused')
+    expect(parsePowerState({ data: { deployment: { instances: 1 } } })).toBe('running')
   })
 
   it('is unknown for anything else', () => {
