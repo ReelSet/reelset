@@ -29,6 +29,9 @@ CLIP_DELAY_RANGE = [1, 3]
 ERROR_MESSAGE_MAX = 200
 FIND_RECENT_MEDIA = 12
 FIND_CLOCK_SKEW_SECONDS = 120
+# Uploads take 30-60s and runs never overlap, so a reel published this soon after a lost upload
+# started is that upload even when Instagram dropped or changed its caption.
+FIND_WINDOW_SECONDS = 30 * 60
 
 _lock = threading.Lock()
 
@@ -339,6 +342,7 @@ def post_reel(
                 raise InstagramError(state, message, 401) from err
             log.error("clip_upload failed err=%s", type(err).__name__)
             raise InstagramError("upload_failed", short_message(err)) from err
+        ensure_caption(client, media, caption)
     permalink = f"https://www.instagram.com/p/{media.code}/"
     log.info("published media_pk=%s", media.pk)
     return {"mediaPk": str(media.pk), "code": str(media.code), "permalink": permalink, "session": _session_of(client)}
@@ -355,14 +359,53 @@ def _epoch(value) -> float | None:
         return None
 
 
-def find_reel(session: dict, caption: str, since: float, factory: Callable = new_client) -> dict:
-    """Looks for a reel this account published after `since` with exactly this caption.
+def ensure_caption(client, media, caption: str) -> bool:
+    """Instagram sometimes publishes a reel without the caption sent at configure (seen on a
+    caption with a long link). Puts it back once; never fails the post. True when it edited."""
+    if _caption_key(getattr(media, "caption_text", None)) == _caption_key(caption):
+        return False
+    try:
+        client.media_edit(str(media.pk), caption)
+    except Exception as err:
+        log.warning("caption missing after upload, restore failed media_pk=%s err=%s", media.pk, type(err).__name__)
+        return False
+    log.warning("caption missing after upload, restored media_pk=%s", media.pk)
+    return True
 
-    Used when the worker lost an upload's result: the reel may be live even though nothing was
-    recorded. Read-only; one private-API page of the account's own recent media."""
+
+def _match_lost_reel(medias: list, caption: str, since: float, exclude: set):
+    """Same caption after `since`; else the reel published closest after `since` within the window."""
+    wanted = _caption_key(caption)
+    fresh = []
+    for media in medias:
+        if str(getattr(media, "pk", "")) in exclude:
+            continue
+        taken = _epoch(getattr(media, "taken_at", None))
+        if taken is None or taken < since - FIND_CLOCK_SKEW_SECONDS:
+            continue
+        if _caption_key(getattr(media, "caption_text", None)) == wanted:
+            return media, "caption"
+        if taken <= since + FIND_WINDOW_SECONDS and getattr(media, "media_type", 2) == 2:
+            fresh.append((taken, media))
+    if fresh:
+        return min(fresh, key=lambda t: t[0])[1], "time"
+    return None, None
+
+
+def find_reel(
+    session: dict,
+    caption: str,
+    since: float,
+    exclude_pks: list | None = None,
+    factory: Callable = new_client,
+) -> dict:
+    """Looks for the reel of an upload whose result was lost, published after `since`.
+
+    Matches the caption first, then (Instagram may have dropped the caption) the one video
+    published soonest after `since`, skipping media already recorded for other posts. A reel found
+    without its caption gets it back. One private-API page of the account's own recent media."""
     client = factory()
     client.set_settings(session)
-    wanted = _caption_key(caption)
     try:
         medias = client.user_medias_v1(client.user_id, FIND_RECENT_MEDIA)
     except Exception as err:
@@ -370,23 +413,21 @@ def find_reel(session: dict, caption: str, since: float, factory: Callable = new
         if state in ("needs_login", "challenge", "needs_code"):
             raise InstagramError(state, message, 401) from err
         raise InstagramError("lookup_failed", short_message(err)) from err
-    for media in medias:
-        taken = _epoch(getattr(media, "taken_at", None))
-        if taken is not None and taken < since - FIND_CLOCK_SKEW_SECONDS:
-            continue
-        if _caption_key(getattr(media, "caption_text", None)) != wanted:
-            continue
-        permalink = f"https://www.instagram.com/p/{media.code}/"
-        log.info("lost reel found media_pk=%s", media.pk)
-        return {
-            "found": True,
-            "mediaPk": str(media.pk),
-            "code": str(media.code),
-            "permalink": permalink,
-            "session": _session_of(client),
-        }
-    log.info("lost reel not found among recent=%d", len(medias))
-    return {"found": False, "session": _session_of(client)}
+    media, how = _match_lost_reel(medias, caption, since, {str(pk) for pk in exclude_pks or []})
+    if media is None:
+        log.info("lost reel not found among recent=%d", len(medias))
+        return {"found": False, "session": _session_of(client)}
+    restored = ensure_caption(client, media, caption)
+    log.info("lost reel found media_pk=%s match=%s caption_restored=%s", media.pk, how, restored)
+    return {
+        "found": True,
+        "mediaPk": str(media.pk),
+        "code": str(media.code),
+        "permalink": f"https://www.instagram.com/p/{media.code}/",
+        "match": how,
+        "captionRestored": restored,
+        "session": _session_of(client),
+    }
 
 
 def delete_media(session: dict, media_pk: str, factory: Callable = new_client) -> dict:

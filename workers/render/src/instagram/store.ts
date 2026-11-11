@@ -5,6 +5,7 @@ import {
   getEncryptedSession,
   getIgAccount,
   listLostPosts,
+  listRecentMediaPks,
   markDeleted,
   markLostFound,
   markLostNotFound,
@@ -37,6 +38,7 @@ export type IgStore = {
   restoreAfterDeleteFailure(id: string, error: string): Promise<boolean>
   failStuck(): Promise<number>
   nextLost(): Promise<LostPost | null>
+  recentMediaPks(): Promise<string[]>
   markLostFound(id: string, result: { mediaPk: string; permalink: string }): Promise<boolean>
   markLostNotFound(id: string): Promise<boolean>
 }
@@ -56,6 +58,7 @@ export function createIgStore(db: Database, log: Logger): IgStore {
     restoreAfterDeleteFailure: (id, error) => restoreAfterDeleteFailure(db, id, error),
     failStuck: () => failStuckPosts(db, log),
     nextLost: async () => (await listLostPosts(db, 1))[0] ?? null,
+    recentMediaPks: () => listRecentMediaPks(db),
     markLostFound: (id, result) => markLostFound(db, id, result),
     markLostNotFound: (id) => markLostNotFound(db, id),
   }

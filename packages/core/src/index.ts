@@ -124,6 +124,7 @@ export {
   getIgAccount,
   getIgCheckError,
   listLostPosts,
+  listRecentMediaPks,
   markDeleted,
   markLostFound,
   markLostNotFound,

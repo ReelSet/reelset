@@ -32,6 +32,8 @@ const findResultSchema = z.object({
   found: z.boolean(),
   mediaPk: z.string().optional(),
   permalink: z.string().url().optional(),
+  match: z.enum(['caption', 'time']).optional(),
+  captionRestored: z.boolean().optional(),
   session: z.record(z.string(), z.unknown()),
   proxy: igProxySchema,
 })
@@ -66,8 +68,16 @@ export type IgContainerClient = {
   login(state: IgState, creds: IgCredentials, code?: string): Promise<IgAccountResult>
   post(state: IgState, upload: IgReelUpload): Promise<IgPostResult>
   remove(state: IgState, mediaPk: string): Promise<z.infer<typeof deleteResultSchema>>
-  /** Looks for a reel with this caption published after `since` (lost upload result). */
-  find(state: IgState, caption: string, since: Date): Promise<IgFindResult>
+  /**
+   * Looks for the reel of a lost upload published after `since`: same caption, else the video
+   * published soonest after it that is not in `excludeMediaPks` (Instagram can drop captions).
+   */
+  find(
+    state: IgState,
+    caption: string,
+    since: Date,
+    excludeMediaPks: readonly string[],
+  ): Promise<IgFindResult>
 }
 
 export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger): IgContainerClient {
@@ -118,10 +128,15 @@ export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger):
       call('post', { ...state, ...upload }, postResultSchema, IG_TIMEOUT_MS.post),
     remove: (state, mediaPk) =>
       call('delete', { ...state, mediaPk }, deleteResultSchema, IG_TIMEOUT_MS.delete),
-    find: (state, caption, since) =>
+    find: (state, caption, since, excludeMediaPks) =>
       call(
         'find',
-        { ...state, caption, since: Math.floor(since.getTime() / 1000) },
+        {
+          ...state,
+          caption,
+          since: Math.floor(since.getTime() / 1000),
+          excludeMediaPks,
+        },
         findResultSchema,
         IG_TIMEOUT_MS.find,
       ),
