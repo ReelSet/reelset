@@ -4,9 +4,12 @@ import { input } from '@/components/admin/ui'
 const MAX_LIST_ROWS = 8
 const MIN_LIST_ROWS = 2
 
-/** The `value` form control for one setting: select for enums, textarea for lists, else a number. */
+const BOOLEAN_OPTIONS = ['true', 'false'] as const
+
+/** The `value` form control for one setting: select for enums and booleans, textarea for lists, else a number. */
 export function SettingValueInput({ field, text }: { field: SettingField; text: string }) {
-  if (field.kind === 'enum') {
+  if (field.kind === 'enum' || field.kind === 'boolean') {
+    const options = field.kind === 'enum' ? field.options : BOOLEAN_OPTIONS
     return (
       <select
         name="value"
@@ -14,7 +17,7 @@ export function SettingValueInput({ field, text }: { field: SettingField; text: 
         defaultValue={text}
         className={`${input} w-48 font-mono text-xs`}
       >
-        {field.options.map((option) => (
+        {options.map((option) => (
           <option key={option} value={option}>
             {option}
           </option>

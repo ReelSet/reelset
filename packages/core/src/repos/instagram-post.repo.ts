@@ -227,3 +227,83 @@ export async function getIgCheckError(db: Database): Promise<IgCheckError | null
 
 export const setIgCheckError = (db: Database, error: IgCheckError | null) =>
   putSetting(db, IG_CHECK_ERROR_KEY, error)
+
+// The render the feed serves (apps/web lib/ranking/sql.ts); `r` is the render alias.
+export const SERVED_RENDER_ORDER_SQL =
+  'coalesce(r.template_version, 0) desc, r.finished_at desc nulls last, r.created_at desc, r.id desc'
+
+export const INSTAGRAM_AUTO_REQUESTER = 'auto'
+// Only reels first finished this recently are auto-posted, so turning it on never posts the archive.
+export const INSTAGRAM_AUTO_LOOKBACK_HOURS = 24
+
+const UNIQUE_VIOLATION = '23505'
+
+type AutoCandidate = {
+  id: string
+  title: string
+  tldr: string | null
+  topics: string[]
+  canonical_url: string
+  hook: string | null
+  video_key: string
+  credits: unknown
+}
+
+export async function autoPostsQueuedToday(db: Database): Promise<number> {
+  const { rows } = await sql<{ n: string }>`
+    select count(*) as n from instagram_post
+    where requested_by = ${INSTAGRAM_AUTO_REQUESTER} and created_at >= date_trunc('day', now(), 'UTC')
+  `.execute(db)
+  return Number(rows[0]?.n ?? 0)
+}
+
+/** Newly rendered reels that have never had an Instagram post, newest first, with their served render. */
+export async function listAutoPostCandidates(
+  db: Database,
+  limit: number,
+  lookbackHours = INSTAGRAM_AUTO_LOOKBACK_HOURS,
+): Promise<AutoCandidate[]> {
+  if (limit <= 0) return []
+  const { rows } = await sql<AutoCandidate>`
+    select i.id, i.title, i.tldr, i.topics, i.canonical_url, i.script ->> 'hook' as hook,
+      served.video_key, served.credits
+    from item i
+    join lateral (
+      select r.video_key, r.credits from render r
+      where r.item_id = i.id and r.status = 'done' and r.video_key is not null
+      order by ${sql.raw(SERVED_RENDER_ORDER_SQL)} limit 1
+    ) served on true
+    join lateral (
+      select min(r.finished_at) as at from render r where r.item_id = i.id and r.status = 'done'
+    ) first_done on true
+    where i.status = 'rendered'
+      and first_done.at > now() - make_interval(hours => ${lookbackHours})
+      and not exists (select 1 from instagram_post p where p.item_id = i.id)
+    order by first_done.at desc
+    limit ${limit}
+  `.execute(db)
+  return rows
+}
+
+/** Queues one auto post; false when the item already has a live post (unique index). */
+export async function insertAutoPost(
+  db: Database,
+  post: { itemId: string; videoKey: string; caption: string },
+): Promise<boolean> {
+  try {
+    await db
+      .insertInto('instagram_post')
+      .values({
+        item_id: post.itemId,
+        video_key: post.videoKey,
+        caption: post.caption,
+        status: InstagramPostStatus.queued,
+        requested_by: INSTAGRAM_AUTO_REQUESTER,
+      })
+      .execute()
+    return true
+  } catch (err) {
+    if ((err as { code?: string }).code === UNIQUE_VIOLATION) return false
+    throw err
+  }
+}

@@ -20,6 +20,7 @@ import { handleParsePaper } from './paper-route'
 import { IG_RUN_QUEUE, handleIgRoute, matchIgRoute, type IgRunMessage } from './instagram/routes'
 import { IG_CONTAINER_SLOT, igConfigured, withIgDeps } from './instagram/wire'
 import { runInstagramQueue } from './instagram/service'
+import { createAutoPostDeps, queueAutoInstagramPosts } from './instagram/auto'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import { createMaintenanceStore, createRenderStore, type ItemForRender } from './store'
 import { loadTtsConfig } from './tts-config'
@@ -153,9 +154,21 @@ export default {
     })
     if (igConfigured(env)) {
       ctx.waitUntil(
-        env.IG_RUN.send({ reason: 'cron' }).catch((err) =>
-          log.error(errorFields(err), 'instagram queue run enqueue failed'),
-        ),
+        (async () => {
+          const { db: igDb, close: closeIg } = createDb({
+            connectionString: env.HYPERDRIVE.connectionString,
+            log,
+            max: 1,
+          })
+          try {
+            await queueAutoInstagramPosts(createAutoPostDeps(igDb, log), log)
+          } catch (err) {
+            log.error(errorFields(err), 'instagram auto post failed')
+          } finally {
+            await closeIg()
+          }
+          await env.IG_RUN.send({ reason: 'cron' })
+        })().catch((err) => log.error(errorFields(err), 'instagram queue run enqueue failed')),
       )
     }
     ctx.waitUntil(

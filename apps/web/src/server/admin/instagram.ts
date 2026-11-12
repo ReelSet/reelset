@@ -2,18 +2,17 @@ import {
   InstagramPostStatus,
   RenderStatus,
   Source,
+  SERVED_RENDER_ORDER_SQL,
   assertPostTransition,
+  buildCaption,
   getIgAccount,
   getIgCheckError,
+  parseCaptionCredits,
   type Database,
   type Logger,
 } from '@reelset/core'
 import { sql } from 'kysely'
-import {
-  buildCaption,
-  credits as creditsParser,
-  validateQueueRequest,
-} from '@/lib/instagram/caption'
+import { validateQueueRequest } from '@/lib/instagram/caption'
 import type { CommandResult } from '@/server/admin/commands'
 
 export const REELS_PAGE_SIZE = 24
@@ -46,9 +45,7 @@ export async function livePostPermalink(db: Database, itemId: string): Promise<s
 }
 
 // Same render the feed serves (lib/ranking/sql.ts), so preview, post and app all show one reel.
-const SERVED_RENDER_ORDER = sql.raw(
-  'coalesce(r.template_version, 0) desc, r.finished_at desc nulls last, r.created_at desc, r.id desc',
-)
+const SERVED_RENDER_ORDER = sql.raw(SERVED_RENDER_ORDER_SQL)
 
 const latestDone = (column: string) =>
   sql`(select r.${sql.raw(column)} from render r where r.item_id = item.id
@@ -117,7 +114,7 @@ export async function composerReel(db: Database, itemId: string) {
     tldr: row.tldr,
     canonicalUrl: row.canonical_url,
     topics: row.topics,
-    credits: creditsParser.parse(row.credits),
+    credits: parseCaptionCredits(row.credits),
   })
   return { ...row, video_key: row.video_key, draftCaption: draft }
 }
