@@ -1,6 +1,7 @@
 import { elapsedMs, errorFields, type Database, type Logger } from '@reelset/core'
 import type { CreditsDto } from '@/lib/api-types'
 import { toCreditsDto } from '@/lib/credits'
+import { scriptParts } from '@/lib/seo/script'
 import { clampLimit, decodeCursor, encodeCursor } from './cursor'
 import { rankCandidates } from './scoring'
 import {
@@ -15,6 +16,7 @@ export type RankedItem = {
   id: string
   title: string
   tldr: string | null
+  transcript: string | null
   topics: string[]
   kind: string
   canonicalUrl: string
@@ -46,6 +48,7 @@ export function toRankedItem(row: FeedRow): RankedItem | null {
     id: row.id,
     title: row.title,
     tldr: row.tldr,
+    transcript: scriptParts(row.script).transcript,
     topics: row.topics,
     kind: row.kind,
     canonicalUrl: row.canonical_url,

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { BookmarkIcon, HeartIcon } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { PosterReel } from '@/server/profile'
+import { reelPath } from '@/lib/reel-url'
 
 type Tab = 'liked' | 'saved'
 
@@ -72,7 +73,7 @@ export function ProfileLibrary({ liked, saved }: { liked: PosterReel[]; saved: P
               style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
             >
               <a
-                href={`/?reel=${r.id}`}
+                href={reelPath(r)}
                 className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-surface transition active:scale-[0.97]"
               >
                 {r.posterUrl && (

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
+import { reelPath } from '@/lib/reel-url'
+import { metaTitle } from '@/lib/seo/site'
 import { ReelCard, type ReelControls } from './ReelCard'
 import { ChevronIcon, HomeIcon, SearchIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -38,11 +40,21 @@ function writeStorage(storage: Storage | undefined, key: string, value: string |
   }
 }
 
-export function FeedClient() {
-  const [items, setItems] = useState<FeedItemDto[]>([])
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [phase, setPhase] = useState<Phase>('loading')
-  const [viewer, setViewer] = useState({ authenticated: false, needsTopics: false })
+type FeedClientProps = {
+  /** Server-rendered first page; without it the feed loads from /api/feed on mount. */
+  initial?: FeedResponse
+  /** Details panel for the reel a /r/ page opened, shown beside it on wide screens. */
+  about?: React.ReactNode
+  aboutItemId?: string
+}
+
+export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}) {
+  const [items, setItems] = useState<FeedItemDto[]>(initial?.items ?? [])
+  const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null)
+  const [phase, setPhase] = useState<Phase>(initial ? 'ready' : 'loading')
+  const [viewer, setViewer] = useState(
+    initial?.viewer ?? { authenticated: false, needsTopics: false },
+  )
   const [active, setActive] = useState(0)
   const [soundOn, setSoundOn] = useState(false)
   const [sourcesFor, setSourcesFor] = useState<FeedItemDto | null>(null)
@@ -131,24 +143,9 @@ export function FeedClient() {
     [patchItem, toast],
   )
 
-  const loadInitial = useCallback(async () => {
-    setPhase('loading')
-    const focusId = new URLSearchParams(window.location.search).get('reel')
-    try {
-      const [feedRes, focusRes] = await Promise.all([
-        fetch('/api/feed'),
-        focusId ? fetch(`/api/feed?item=${encodeURIComponent(focusId)}`) : Promise.resolve(null),
-      ])
-      if (!feedRes.ok) throw new Error(String(feedRes.status))
-      const feed = (await feedRes.json()) as FeedResponse
-      let list = feed.items
-      if (focusRes?.ok) {
-        const { item } = (await focusRes.json()) as { item: FeedItemDto }
-        list = [item, ...list.filter((it) => it.id !== item.id)]
-      }
-      if (focusId) window.history.replaceState(null, '', '/')
-
-      setItems(list)
+  const applyFeed = useCallback(
+    (feed: FeedResponse) => {
+      setItems(feed.items)
       setCursor(feed.nextCursor)
       setViewer(feed.viewer)
       setPickerOpen(
@@ -160,17 +157,32 @@ export function FeedClient() {
       const pending = readStorage(sessionStorage, PENDING_LIKE_KEY)
       if (pending && feed.viewer.authenticated) {
         writeStorage(sessionStorage, PENDING_LIKE_KEY, null)
-        const target = list.find((it) => it.id === pending)
+        const target = feed.items.find((it) => it.id === pending)
         if (target && !target.liked) void sendLike(target, true)
       }
+    },
+    [sendLike],
+  )
+
+  const loadInitial = useCallback(async () => {
+    setPhase('loading')
+    try {
+      const res = await fetch('/api/feed')
+      if (!res.ok) throw new Error(String(res.status))
+      applyFeed((await res.json()) as FeedResponse)
     } catch {
       setPhase('error')
     }
-  }, [sendLike])
+  }, [applyFeed])
 
+  const initialRef = useRef(initial)
+  const mounted = useRef(false)
   useEffect(() => {
-    void loadInitial()
-  }, [loadInitial])
+    if (mounted.current) return
+    mounted.current = true
+    if (initialRef.current) applyFeed(initialRef.current)
+    else void loadInitial()
+  }, [applyFeed, loadInitial])
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore.current) return
@@ -204,6 +216,20 @@ export function FeedClient() {
     startedFor.current = current.id
     track({ name: 'reel_start', itemId: current.id })
   }, [active, items])
+
+  // Like Instagram: the address bar names the reel on screen. replaceState keeps Back meaning
+  // "leave the feed"; the home page keeps `/` until the viewer first moves.
+  const urlSynced = useRef(false)
+  useEffect(() => {
+    const current = items[active]
+    if (phase !== 'ready' || !current) return
+    const first = !urlSynced.current
+    urlSynced.current = true
+    if (first && window.location.pathname === '/') return
+    const path = reelPath(current)
+    if (window.location.pathname !== path) window.history.replaceState(null, '', path)
+    document.title = `${metaTitle(current.title)} | Reelset`
+  }, [active, items, phase])
 
   const goTo = useCallback((index: number) => {
     const target = scrollerRef.current?.children[index]
@@ -327,6 +353,15 @@ export function FeedClient() {
       </div>
 
       <aside className="hidden flex-col items-start justify-end gap-6 py-10 lg:flex">
+        {about && (
+          <div
+            className={`no-scrollbar max-h-[calc(100dvh-20rem)] w-80 overflow-y-auto ${
+              items[active]?.id === aboutItemId ? '' : 'hidden'
+            }`}
+          >
+            {about}
+          </div>
+        )}
         {canNavigate && (
           <div className="flex flex-col gap-2">
             <NavButton

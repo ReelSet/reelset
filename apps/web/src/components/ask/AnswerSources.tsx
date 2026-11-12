@@ -1,5 +1,6 @@
 import type { CitationDto, RelatedReelDto } from '@/lib/api-types'
 import { ArrowUpRightIcon } from '@/components/ui/icons'
+import { reelPath } from '@/lib/reel-url'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 
 function host(url: string): string {
@@ -24,7 +25,10 @@ export function RelatedReels({ reels }: { reels: RelatedReelDto[] }) {
             className="animate-fade-up w-[92px] shrink-0 snap-start"
             style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
           >
-            <a href={`/?reel=${r.itemId}`} className="group block active:scale-[0.97]">
+            <a
+              href={reelPath({ id: r.itemId, title: r.title })}
+              className="group block active:scale-[0.97]"
+            >
               <span className="relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-surface transition group-hover:border-line-strong">
                 {r.posterUrl && (
                   // eslint-disable-next-line @next/next/no-img-element

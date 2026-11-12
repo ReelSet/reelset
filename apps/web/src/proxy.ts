@@ -11,6 +11,7 @@ import {
 } from '@/lib/auth/cookie-options'
 import { RETURN_PATH_HEADER } from '@/lib/auth/return-url'
 import { routeForHost } from '@/lib/host-routing'
+import { legacyReelRedirect } from '@/lib/reel-url'
 import { SESSION_COOKIE, parseSessionId, sessionCookieOptions } from '@/lib/session'
 
 const ADMIN_HOST = process.env.ADMIN_HOST ?? 'admin.reelset.app'
@@ -29,6 +30,19 @@ export async function proxy(request: NextRequest) {
     const target = request.nextUrl.clone()
     target.pathname = route.pathname
     return NextResponse.redirect(target)
+  }
+
+  if (route.kind === 'next') {
+    const legacy = legacyReelRedirect(
+      request.nextUrl.pathname,
+      request.nextUrl.searchParams.get('reel'),
+    )
+    if (legacy) {
+      const target = request.nextUrl.clone()
+      target.pathname = legacy
+      target.search = ''
+      return NextResponse.redirect(target, 308)
+    }
   }
 
   request.headers.set(RETURN_PATH_HEADER, request.nextUrl.pathname + request.nextUrl.search)

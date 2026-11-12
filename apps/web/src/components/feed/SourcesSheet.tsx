@@ -86,6 +86,16 @@ export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
             </a>
           </li>
         </ul>
+        {item.transcript && (
+          <details className="group mt-5 border-t border-line pt-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-muted transition hover:text-fg">
+              Transcript
+              <span className="text-xs text-faint group-open:hidden">Show</span>
+              <span className="hidden text-xs text-faint group-open:inline">Hide</span>
+            </summary>
+            <p className="mt-2 text-sm leading-relaxed text-muted">{item.transcript}</p>
+          </details>
+        )}
         {item.credits && <MediaCredits credits={item.credits} />}
       </div>
     </div>

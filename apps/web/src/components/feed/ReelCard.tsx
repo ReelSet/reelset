@@ -15,6 +15,7 @@ import {
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
+import { reelPath } from '@/lib/reel-url'
 
 export type ReelControls = { toggle: () => void }
 
@@ -228,7 +229,7 @@ export function ReelCard(props: Props) {
   }
 
   async function share() {
-    const url = `${window.location.origin}/?reel=${item.id}`
+    const url = `${window.location.origin}${reelPath(item)}`
     try {
       if (navigator.share) {
         await navigator.share({ title: item.title, url })
