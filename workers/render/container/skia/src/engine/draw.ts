@@ -107,38 +107,87 @@ export function fit(
   return s
 }
 
-/** Greedy word wrap. A word longer than the line is broken by characters. */
-export function wrap(str: string, font: FontName, size: number, maxW: number, ls = 0): string[] {
+export type WrapBreak = 'none' | 'hyphen' | 'chars'
+
+/** Splits a too-long word after its hyphens ("E-borrowing" -> "E-", "borrowing"). */
+function hyphenPieces(word: string): string[] {
+  return word.match(/[^-]+-*|-+/g) ?? [word]
+}
+
+function charPieces(word: string, font: FontName, size: number, maxW: number, ls: number) {
+  const out: string[] = []
+  let chunk = ''
+  for (const ch of word) {
+    if (chunk && measure(chunk + ch, font, size, ls) > maxW) {
+      out.push(chunk)
+      chunk = ''
+    }
+    chunk += ch
+  }
+  if (chunk) out.push(chunk)
+  return out
+}
+
+/** Pieces a word that does not fit one line may be cut into, per the allowed break level. */
+function pieces(
+  word: string,
+  font: FontName,
+  size: number,
+  maxW: number,
+  ls: number,
+  brk: WrapBreak,
+) {
+  if (brk === 'none') return [word]
+  const hy = hyphenPieces(word)
+  if (brk === 'hyphen') return hy.length > 1 ? hy : [word]
+  return hy.flatMap((p) =>
+    measure(p, font, size, ls) <= maxW ? [p] : charPieces(p, font, size, maxW, ls),
+  )
+}
+
+/**
+ * Greedy word wrap. A word wider than the line stays whole (`none`), or is cut after its hyphens
+ * (`hyphen`), or as a last resort by characters (`chars`, the default).
+ */
+export function wrap(
+  str: string,
+  font: FontName,
+  size: number,
+  maxW: number,
+  ls = 0,
+  brk: WrapBreak = 'chars',
+): string[] {
   const out: string[] = []
   let line = ''
+  const flush = () => {
+    if (line) out.push(line)
+    line = ''
+  }
   for (const word of str.split(/\s+/).filter(Boolean)) {
     const next = line ? `${line} ${word}` : word
     if (measure(next, font, size, ls) <= maxW) {
       line = next
       continue
     }
-    if (line) out.push(line)
+    flush()
     if (measure(word, font, size, ls) <= maxW) {
       line = word
       continue
     }
-    let chunk = ''
-    for (const ch of word) {
-      if (measure(chunk + ch, font, size, ls) > maxW && chunk) {
-        out.push(chunk)
-        chunk = ''
-      }
-      chunk += ch
+    for (const piece of pieces(word, font, size, maxW, ls, brk)) {
+      const joined = line + piece
+      if (line && measure(joined, font, size, ls) > maxW) flush()
+      line += piece
     }
-    line = chunk
   }
-  if (line) out.push(line)
+  flush()
   return out
 }
 
 /**
- * Largest size whose wrapped text fits `maxW` x `maxH` in at most `maxLines` lines.
- * Returns the size and the lines; at `min` the lines may still overflow and are clipped by the caller.
+ * Largest size whose wrapped text fits `maxW` x `maxH` in at most `maxLines` lines. Shrinks the
+ * size before it breaks a word: first with whole words only, then cutting at hyphens, and only at
+ * `min` by characters. At `min` the lines may still overflow and are clipped by the caller.
  */
 export function fitBlock(
   str: string,
@@ -147,16 +196,18 @@ export function fitBlock(
   maxH: number,
   { max = 120, min = 28, lh = 1.05, ls = 0, maxLines = 4 } = {},
 ): { size: number; lines: string[] } {
-  for (let s = max; s >= min; s -= 2) {
-    const lines = wrap(str, font, s, maxW, ls)
-    if (
-      lines.length <= maxLines &&
-      lines.length * s * lh <= maxH &&
-      lines.every((l) => measure(l, font, s, ls) <= maxW)
-    )
-      return { size: s, lines }
+  for (const brk of ['none', 'hyphen'] as const) {
+    for (let s = max; s >= min; s -= 2) {
+      const lines = wrap(str, font, s, maxW, ls, brk)
+      if (
+        lines.length <= maxLines &&
+        lines.length * s * lh <= maxH &&
+        lines.every((l) => measure(l, font, s, ls) <= maxW)
+      )
+        return { size: s, lines }
+    }
   }
-  const lines = wrap(str, font, min, maxW, ls)
+  const lines = wrap(str, font, min, maxW, ls, 'chars')
   return { size: min, lines: lines.slice(0, maxLines) }
 }
 
