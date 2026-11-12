@@ -95,11 +95,12 @@ const ACRONYMS: Record<string, string> = {
 export function topicLabel(raw: string): string {
   return raw
     .trim()
-    .split(/\s+/)
-    .map(
-      (w) =>
-        ACRONYMS[w.toLowerCase()] ??
-        (w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w),
+    .split(/(\s+|-)/)
+    .map((w) =>
+      /^(\s+|-)$/.test(w)
+        ? w.replace(/\s+/, ' ')
+        : (ACRONYMS[w.toLowerCase()] ??
+          (w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w)),
     )
-    .join(' ')
+    .join('')
 }
