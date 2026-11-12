@@ -1,9 +1,13 @@
 import { z } from 'zod'
 import {
   StaleTransitionError,
+  claudeCostUsd,
+  claudeModelSchema,
   errorFields,
   reelScriptSchema,
   renderKey as computeRenderKey,
+  type DirectorMeta,
+  type DirectorPayload,
   type ItemStatus,
   type Logger,
   type ReelScript,
@@ -74,6 +78,8 @@ export type ConsumerDeps = {
   aura?: { ai: AiLike; speaker: string }
   /** Stock clips for the reel; optional, failures never fail a render. */
   broll?: (script: ReelScript, item: ItemForRender) => Promise<BrollPick[]>
+  /** Director config for the box, or null when switched off; a failure renders without it. */
+  director?: () => Promise<DirectorPayload | null>
   log: Logger
   now?: () => number
 }
@@ -182,6 +188,7 @@ async function runJob(
   const metadata = await renderAndUpload(deps, item, renderScript, key, narration, rlog)
   logNarrationProvider(deps, metadata, narration, rlog)
   await recordSpend(deps, metadata, key, narration, rlog)
+  await recordDirectorSpend(deps, metadata.director, key, rlog)
   await finishItem(
     deps,
     item.id,
@@ -273,6 +280,7 @@ async function renderAndUpload(
 ): Promise<RenderMetadata> {
   const jobId = containerJobId(key)
   const broll = await fetchBroll(deps, item, script, log)
+  const director = await loadDirector(deps, log)
   const client = createContainerClient(deps.box, log)
   const metadata = await client.render({
     jobId,
@@ -292,6 +300,7 @@ async function renderAndUpload(
     facts: item.facts,
     broll: broll.length > 0 ? broll : undefined,
     demo: item.demo,
+    director: director ?? undefined,
   })
   try {
     if (metadata.bytes > MAX_VIDEO_BYTES) throw new RenderJobError('too_large', 'video over 25 MB')
@@ -328,10 +337,36 @@ async function renderAndUpload(
       renderMs: metadata.renderMs,
       credits: metadata.credits,
       box: metadata.box,
+      director: metadata.director,
     })
     return metadata
   } finally {
     await client.remove(jobId)
+  }
+}
+
+async function loadDirector(deps: ConsumerDeps, log: Logger): Promise<DirectorPayload | null> {
+  if (!deps.director) return null
+  try {
+    const director = await deps.director()
+    log.info(
+      director
+        ? {
+            model: director.model,
+            effort: director.effort,
+            review: director.review,
+            skills: director.skills.length,
+            hasExample: director.example !== null,
+          }
+        : {},
+      director
+        ? 'director enabled for render'
+        : 'director disabled, box uses its built-in renderer',
+    )
+    return director
+  } catch (err) {
+    log.warn(errorFields(err), 'director config not loaded, rendering without it')
+    return null
   }
 }
 
@@ -390,6 +425,47 @@ async function recordSpend(
     })
   } catch (err) {
     log.warn(errorFields(err), 'spend not recorded (non-fatal)')
+  }
+}
+
+async function recordDirectorSpend(
+  deps: ConsumerDeps,
+  director: DirectorMeta | undefined,
+  key: string,
+  log: Logger,
+): Promise<void> {
+  if (!director) return
+  const usage = {
+    inputTokens: director.inputTokens,
+    outputTokens: director.outputTokens,
+    cacheReadTokens: director.cacheReadTokens,
+    cacheWriteTokens: director.cacheWriteTokens,
+  }
+  const units = Object.values(usage).reduce((sum, n) => sum + n, 0)
+  log.info(
+    {
+      used: director.used,
+      fallbackReason: director.fallbackReason,
+      scenes: director.scenes,
+      ...usage,
+    },
+    'director result',
+  )
+  if (units === 0) return
+  const model = claudeModelSchema.safeParse(director.model)
+  if (!model.success) {
+    log.warn({ model: director.model }, 'director spend not recorded: unknown model')
+    return
+  }
+  try {
+    await deps.spend({
+      category: 'llm',
+      units: usage.inputTokens + usage.outputTokens,
+      costUsd: claudeCostUsd(model.data, usage),
+      meta: { model: model.data, provider: 'anthropic', stage: 'director', renderKey: key },
+    })
+  } catch (err) {
+    log.warn(errorFields(err), 'director spend not recorded (non-fatal)')
   }
 }
 

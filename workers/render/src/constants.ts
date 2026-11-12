@@ -1,4 +1,4 @@
-export const TEMPLATE_VERSION = '8'
+export const TEMPLATE_VERSION = '9'
 export const DEFAULT_VOICE = 'en-US-AriaNeural'
 
 export const MAX_RETRIES = 3

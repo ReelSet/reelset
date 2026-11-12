@@ -57,6 +57,16 @@ export type BoxSample = {
   mem_used_mb: number | null
   swap_used_mb: number | null
 }
+export type DirectorSkill = {
+  id: Generated<string>
+  name: string
+  kind: Generated<string>
+  content: string
+  enabled: Generated<boolean>
+  sort: Generated<number>
+  created_at: Generated<Timestamp>
+  updated_at: Generated<Timestamp>
+}
 export type Event = {
   id: Generated<string>
   profile_id: string | null
@@ -197,6 +207,7 @@ export type Render = {
   template_version: number | null
   credits: unknown | null
   box: string | null
+  director: unknown | null
   created_at: Generated<Timestamp>
   started_at: Timestamp | null
   finished_at: Timestamp | null
@@ -229,6 +240,7 @@ export type DB = {
   app_setting: AppSetting
   ask_query: AskQuery
   box_sample: BoxSample
+  director_skill: DirectorSkill
   event: Event
   evidence_chunk: EvidenceChunk
   ingest_run: IngestRun

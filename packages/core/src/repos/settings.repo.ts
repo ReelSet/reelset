@@ -7,6 +7,18 @@ import {
   claudeModelSchema,
   type ClaudeEffort,
 } from '../domain/claude-model'
+import {
+  DIRECTOR_DEFAULT_RULES,
+  DIRECTOR_DEFAULT_REVIEW,
+  DIRECTOR_MAX_MAX_TOKENS,
+  DIRECTOR_MIN_MAX_TOKENS,
+  DIRECTOR_REVIEW_MAX_CHARS,
+  DIRECTOR_REVIEW_MIN_CHARS,
+  DIRECTOR_RULES_MAX_CHARS,
+  DIRECTOR_RULES_MIN_CHARS,
+  directorEffortSchema,
+  type DirectorEffort,
+} from '../domain/director'
 import type { Logger } from '../lib/logger'
 
 export type SettingDef<T> = { key: string; schema: z.ZodType<T>; default: T }
@@ -88,6 +100,25 @@ export const SETTINGS = {
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
   renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
   instagramAutoPost: def('instagram_auto_post', z.boolean(), true),
+  directorEnabled: def('director_enabled', z.boolean(), true),
+  directorModel: def('director_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
+  directorEffort: def('director_effort', directorEffortSchema, 'medium' as DirectorEffort),
+  directorReview: def('director_review', z.boolean(), true),
+  directorMaxTokens: def(
+    'director_max_tokens',
+    z.number().int().min(DIRECTOR_MIN_MAX_TOKENS).max(DIRECTOR_MAX_MAX_TOKENS),
+    DIRECTOR_MAX_MAX_TOKENS,
+  ),
+  directorRules: def(
+    'director_rules',
+    z.string().min(DIRECTOR_RULES_MIN_CHARS).max(DIRECTOR_RULES_MAX_CHARS),
+    DIRECTOR_DEFAULT_RULES,
+  ),
+  directorReviewPrompt: def(
+    'director_review_prompt',
+    z.string().min(DIRECTOR_REVIEW_MIN_CHARS).max(DIRECTOR_REVIEW_MAX_CHARS),
+    DIRECTOR_DEFAULT_REVIEW,
+  ),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 

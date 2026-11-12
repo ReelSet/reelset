@@ -61,8 +61,13 @@ function settingField(name: keyof typeof SETTINGS): SettingField {
   return { ...base, kind: Array.isArray(def.default) ? 'list' : 'number' }
 }
 
+const DIRECTOR_KEY_PREFIX = 'director_'
+
+// Director settings have their own page (long text, skills); the generic form cannot edit strings.
 export function settingFields(): SettingField[] {
-  return (Object.keys(SETTINGS) as (keyof typeof SETTINGS)[]).map(settingField)
+  return (Object.keys(SETTINGS) as (keyof typeof SETTINGS)[])
+    .filter((name) => !SETTINGS[name].key.startsWith(DIRECTOR_KEY_PREFIX))
+    .map(settingField)
 }
 
 export function formatSettingInput(kind: SettingKind, value: unknown): string {

@@ -12,6 +12,7 @@ import {
   suggestRetryStage,
   withFlash,
 } from './retry'
+import { directorSettingFields } from './director'
 import { formatSettingInput, parseSettingInput, settingFields } from './settings-form'
 import { capUsage, lastDays, pivotSpend, splitSpend } from './spend'
 
@@ -86,12 +87,8 @@ describe('settings form', () => {
     return found
   }
 
-  it('covers every SETTINGS entry', () => {
-    expect(
-      settingFields()
-        .map((f) => f.def.key)
-        .sort(),
-    ).toEqual(
+  it('covers every SETTINGS entry between this page and the director page', () => {
+    expect([...settingFields(), ...directorSettingFields()].map((f) => f.def.key).sort()).toEqual(
       Object.values(SETTINGS)
         .map((s) => s.key)
         .sort(),

@@ -3,6 +3,7 @@ import {
   createLogger,
   errorFields,
   getSetting,
+  loadDirectorConfig,
   recordSpend,
   SETTINGS,
   sendAlert,
@@ -140,6 +141,7 @@ export default {
         transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
         ...tts,
+        director: () => loadDirectorConfig(db, log),
         broll: env.PEXELS_API_KEY
           ? (script: ReelScript, item: ItemForRender) =>
               pickBroll(
