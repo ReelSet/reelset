@@ -44,7 +44,7 @@ async function runInstagramBatch(
     batch.ackAll()
     return
   }
-  const container = boxFor(env, log)
+  const container = boxFor(env, log, 'helper')
   try {
     const outcome = await withIgDeps(env, container, log, runInstagramQueue)
     log.info({ reasons, outcome }, 'instagram queue run done')
@@ -61,11 +61,16 @@ function powerFor(env: Env, log: Logger): BoxPower | undefined {
   return createBoxPower({ apiToken, projectId, serviceId, log })
 }
 
-function boxFor(env: Env, log: Logger) {
+/** Renders go to the render box; light calls (transcripts, search, papers, Instagram) to the helper box. Each falls back to the other. */
+function boxFor(env: Env, log: Logger, role: 'render' | 'helper') {
+  const helperUrl = env.HELPER_BOX_URL || env.RENDER_BOX_URL
+  const [baseUrl, fallbackUrl] =
+    role === 'render' ? [env.RENDER_BOX_URL, helperUrl] : [helperUrl, env.RENDER_BOX_URL]
   return createBoxFetcher({
-    baseUrl: env.RENDER_BOX_URL,
+    baseUrl,
+    fallbackUrl: fallbackUrl === baseUrl ? undefined : fallbackUrl,
     token: env.RENDER_BOX_TOKEN ?? '',
-    log,
+    log: log.child({ boxRole: role }),
     power: powerFor(env, log),
   })
 }
@@ -94,7 +99,7 @@ export default {
     const igRoute = matchIgRoute(request.method, url.pathname)
     if (igRoute !== 'not_found') {
       const log = makeLogger(env).child({ route: `ig/${igRoute}` })
-      const container = boxFor(env, log)
+      const container = boxFor(env, log, 'helper')
       return handleIgRoute(igRoute, request, {
         token: env.IG_ADMIN_TOKEN,
         withDeps: (fn) => withIgDeps(env, container, log, fn),
@@ -109,7 +114,7 @@ export default {
       return new Response('not found', { status: 404 })
     }
     const log = makeLogger(env).child({ route })
-    const container = boxFor(env, log)
+    const container = boxFor(env, log, 'helper')
     if (route === 'parse_paper') {
       return handleParsePaper(request, {
         media: env.MEDIA,
@@ -138,7 +143,7 @@ export default {
       const tts = await loadTtsConfig(db, env, log)
       const deps = {
         store: createRenderStore(db, log),
-        box: boxFor(env, log),
+        box: boxFor(env, log, 'render'),
         media: env.MEDIA,
         transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),

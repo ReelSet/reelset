@@ -5,6 +5,8 @@ import type { ContainerFetcher } from './container-client'
 
 export type BoxFetcherConfig = {
   baseUrl: string
+  /** Second box that takes the request when the first is unreachable or down (never on timeout). */
+  fallbackUrl?: string
   token: string
   log: Logger
   power?: Pick<BoxPower, 'resume'>
@@ -14,7 +16,9 @@ const AUTH_REJECTED_STATUSES = new Set([401, 403])
 
 /** Sends `http://container/<path>` requests to the render box with the bearer token, keeping method, body, headers and signal. */
 export function createBoxFetcher(config: BoxFetcherConfig): ContainerFetcher {
-  const base = new URL(config.baseUrl)
+  const bases = [config.baseUrl, config.fallbackUrl]
+    .filter((u): u is string => !!u)
+    .map((u) => new URL(u))
   const internalOrigin = new URL(CONTAINER_BASE_URL).origin
   return {
     async fetch(request) {
@@ -22,34 +26,36 @@ export function createBoxFetcher(config: BoxFetcherConfig): ContainerFetcher {
       if (source.origin !== internalOrigin) {
         throw new Error(`box fetcher only serves ${internalOrigin}, got ${source.origin}`)
       }
-      const target = new URL(`${source.pathname}${source.search}`, base)
       const headers = new Headers(request.headers)
       headers.set('authorization', `Bearer ${config.token}`)
       const body = request.body === null ? undefined : await request.arrayBuffer()
-      try {
-        const res = await fetch(target, {
-          method: request.method,
-          headers,
-          body,
-          signal: request.signal,
-        })
-        if (AUTH_REJECTED_STATUSES.has(res.status)) {
-          config.log.error(
-            { path: source.pathname, status: res.status },
-            'render box rejected token',
-          )
+      let lastDown: Response | null = null
+      let lastError: unknown = null
+      for (const [index, base] of bases.entries()) {
+        const target = new URL(`${source.pathname}${source.search}`, base)
+        const log = config.log.child({ path: source.pathname, box: base.host, attempt: index })
+        try {
+          const res = await fetch(target, {
+            method: request.method,
+            headers,
+            body,
+            signal: request.signal,
+          })
+          if (AUTH_REJECTED_STATUSES.has(res.status)) {
+            log.error({ status: res.status }, 'render box rejected token')
+          }
+          if (!isBoxDownResponse(res)) return res
+          log.warn({ status: res.status }, 'render box is down')
+          lastDown = res
+        } catch (err) {
+          log.warn(errorFields(err), 'render box unreachable')
+          if (isTimeout(err)) throw err
+          lastError = err
         }
-        if (isBoxDownResponse(res)) {
-          config.log.warn({ path: source.pathname, status: res.status }, 'render box is down')
-          return config.power ? wakeBox(config.power) : res
-        }
-        return res
-      } catch (err) {
-        config.log.warn({ path: source.pathname, ...errorFields(err) }, 'render box unreachable')
-        if (isTimeout(err)) throw err
-        if (!config.power) throw err
-        return wakeBox(config.power)
       }
+      if (config.power) return wakeBox(config.power)
+      if (lastDown) return lastDown
+      throw lastError
     },
   }
 }

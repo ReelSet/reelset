@@ -5,6 +5,7 @@ export type Env = {
   HYPERDRIVE: Hyperdrive
   MEDIA: R2Bucket
   RENDER_BOX_URL: string
+  HELPER_BOX_URL?: string
   RENDER_BOX_TOKEN?: string
   NORTHFLANK_API_TOKEN?: string
   NORTHFLANK_PROJECT_ID?: string

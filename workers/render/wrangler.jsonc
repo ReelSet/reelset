@@ -38,8 +38,9 @@
     ],
   },
   "triggers": { "crons": ["*/5 * * * *"] },
-  "vars": { "TTS_VOICE": "en-US-AriaNeural", "RENDER_BOX_URL": "https://http--render-box--hzk6tj2zhcgd.code.run",
-    "NORTHFLANK_PROJECT_ID": "default",
-    "NORTHFLANK_SERVICE_ID": "render-box",
+  "vars": {
+    "TTS_VOICE": "en-US-AriaNeural",
+    "RENDER_BOX_URL": "https://box1.reelset.app",
+    "HELPER_BOX_URL": "https://box2.reelset.app",
   },
 }
