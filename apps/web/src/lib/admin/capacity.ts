@@ -69,11 +69,14 @@ export function daySecondsElapsed(day: string, now: Date): number {
 export function runInterval(run: RenderRun): [number, number] | null {
   if (!run.finishedAt) return null
   const end = run.finishedAt.getTime()
-  const start = run.startedAt
-    ? run.startedAt.getTime()
-    : run.renderMs !== null
+  // started_at is reset on every 45 s re-check of a long box render, so the box's own
+  // measured render time is the reliable span; started_at is only a fallback.
+  const start =
+    run.renderMs !== null && run.renderMs > 0
       ? end - run.renderMs
-      : null
+      : run.startedAt
+        ? run.startedAt.getTime()
+        : null
   if (start === null || end <= start) return null
   return [start, end]
 }
