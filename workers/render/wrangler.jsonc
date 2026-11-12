@@ -40,7 +40,6 @@
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "TTS_VOICE": "en-US-AriaNeural",
-    "RENDER_BOX_URL": "https://box1.reelset.app",
-    "HELPER_BOX_URL": "https://box2.reelset.app",
+    "BOX_URLS": "https://box1.reelset.app,https://box2.reelset.app",
   },
 }

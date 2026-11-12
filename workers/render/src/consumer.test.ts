@@ -281,11 +281,32 @@ describe('processRenderJob', () => {
 
   it.each([
     ['409 with a busy body', 409, { error: 'busy' }],
+    ['409 in_progress (same job already rendering)', 409, { error: 'in_progress' }],
     ['429 without a body', 429, null],
     ['a Cloudflare 524 origin timeout', 524, null],
   ])('treats %s as busy', async (_name, status, renderBody) => {
     const { deps } = setup({ container: new FakeContainer({ renderStatus: status, renderBody }) })
     expect(await processRenderJob(deps, body, 1)).toMatchObject({ action: 'defer' })
+  })
+
+  it('records the box that rendered the reel', async () => {
+    const container = new FakeContainer({
+      renderBody: {
+        jobId: 'x',
+        bytes: 1000,
+        posterBytes: 50,
+        durationMs: 30_000,
+        ttsDurationMs: 1,
+        ttsChars: 1,
+        renderMs: 1,
+        box: 'oracle-2',
+        templateVersion: TEMPLATE_VERSION,
+      },
+    })
+    const { deps, store } = setup({ container })
+    await processRenderJob(deps, body, 1)
+    const row = [...store.renders.values()][0] as { done?: { box?: string } }
+    expect(row.done?.box).toBe('oracle-2')
   })
 
   it('counts consecutive deferrals carried on the message', async () => {

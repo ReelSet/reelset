@@ -25,14 +25,14 @@ class JobStore:
         return os.path.join(self.root, job_id)
 
     def begin(self, job_id: str) -> tuple:
-        """Returns ('new', dir) or ('done', metadata). Raises busy when a render is running."""
+        """Returns ('new', dir) or ('done', metadata). Raises in_progress when this job is already running, busy when another one holds the slot."""
         with self._lock:
             self._reap_locked()
             job = self._jobs.get(job_id)
             if job and job["state"] == "done":
                 return "done", job["meta"]
             if job and job["state"] == "running":
-                raise RenderError("busy", "this job is already rendering")
+                raise RenderError("in_progress", "this job is already rendering")
             running = sum(1 for j in self._jobs.values() if j["state"] == "running")
             if running >= self.max_running:
                 raise RenderError("busy", "render capacity is full")
@@ -41,6 +41,13 @@ class JobStore:
             os.makedirs(directory)
             self._jobs[job_id] = {"state": "running", "meta": None, "at": time.monotonic()}
             return "new", directory
+
+    def state(self, job_id: str) -> str:
+        """'running', 'done' or 'absent' for one job."""
+        with self._lock:
+            self._reap_locked()
+            job = self._jobs.get(job_id)
+            return job["state"] if job else "absent"
 
     def running(self) -> int:
         with self._lock:

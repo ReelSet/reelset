@@ -44,6 +44,19 @@ export type AskQuery = {
   deleted_at: Timestamp | null
   created_at: Generated<Timestamp>
 }
+export type BoxSample = {
+  id: Generated<string>
+  box: string
+  at: Generated<Timestamp>
+  ok: boolean
+  running: Generated<number>
+  inflight: Generated<number>
+  idle_seconds: number | null
+  cpu_pct: number | null
+  load1: number | null
+  mem_used_mb: number | null
+  swap_used_mb: number | null
+}
 export type Event = {
   id: Generated<string>
   profile_id: string | null
@@ -183,6 +196,7 @@ export type Render = {
   error: string | null
   template_version: number | null
   credits: unknown | null
+  box: string | null
   created_at: Generated<Timestamp>
   started_at: Timestamp | null
   finished_at: Timestamp | null
@@ -214,6 +228,7 @@ export type SpendLedger = {
 export type DB = {
   app_setting: AppSetting
   ask_query: AskQuery
+  box_sample: BoxSample
   event: Event
   evidence_chunk: EvidenceChunk
   ingest_run: IngestRun

@@ -4,6 +4,7 @@ export const RENDER_ERROR_CODES = [
   'invalid_input',
   'too_large',
   'busy',
+  'in_progress',
   'container_unreachable',
   'bad_container_response',
   'upload_failed',
@@ -21,6 +22,11 @@ const PERMANENT: ReadonlySet<RenderErrorCode> = new Set([
 export const RETRYABLE_FAILURE_CODES: RenderErrorCode[] = RENDER_ERROR_CODES.filter(
   (code) => !PERMANENT.has(code) && code !== 'stale_container_template',
 )
+
+/** The box has no free slot, or is already rendering this very job: wait and re-check, never a failure. */
+export function isBusyCode(code: RenderErrorCode | null): boolean {
+  return code === 'busy' || code === 'in_progress'
+}
 
 export function isRetryable(code: RenderErrorCode): boolean {
   return !PERMANENT.has(code)

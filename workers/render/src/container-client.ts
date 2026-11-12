@@ -8,7 +8,7 @@ import {
   RENDER_TIMEOUT_MS,
   TEMPLATE_VERSION,
 } from './constants'
-import { RenderJobError, parseErrorCode } from './errors'
+import { RenderJobError, isBusyCode, parseErrorCode } from './errors'
 import type { ItemFacts } from './facts'
 import type { BrollPick } from './pexels'
 import type { ItemDemo } from './demo'
@@ -41,6 +41,7 @@ const metadataSchema = z.object({
   ttsDurationMs: z.number().int().nonnegative(),
   ttsChars: z.number().int().nonnegative(),
   ttsProvider: z.string().optional(),
+  box: z.string().optional(),
   renderMs: z.number().int().nonnegative(),
   cover: z.boolean().default(false),
   templateVersion: z.string().optional(),
@@ -98,9 +99,9 @@ async function failureFrom(res: Response, what: string): Promise<RenderJobError>
   const body: unknown = await res.json().catch(() => null)
   const code =
     typeof body === 'object' && body !== null && 'error' in body ? parseErrorCode(body.error) : null
-  const busy = code === 'busy' || (code === null && BUSY_STATUSES.has(res.status))
+  const busy = isBusyCode(code) || (code === null && BUSY_STATUSES.has(res.status))
   return new RenderJobError(
-    busy ? 'busy' : (code ?? 'container_unreachable'),
+    busy ? (code === 'in_progress' ? 'in_progress' : 'busy') : (code ?? 'container_unreachable'),
     `${what} returned ${res.status}`,
   )
 }

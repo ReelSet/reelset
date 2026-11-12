@@ -107,7 +107,7 @@ Papers are parsed in the render container (Python: BeautifulSoup+lxml, PyMuPDF, 
 
 ### Render engine (the box)
 
-The render worker calls it over HTTPS at `RENDER_BOX_URL` with `Authorization: Bearer RENDER_BOX_TOKEN` (`GET /health` open); same paths and bodies as the former Cloudflare Container. One render at a time (`MAX_RENDERS`, default 1): a second `POST /render` gets 429 (409 tolerated) `{"error":"busy"}`, which the worker retries later without counting it as a failure.
+The render worker calls the boxes in `BOX_URLS` over HTTPS with `Authorization: Bearer RENDER_BOX_TOKEN` (`GET /health` open); same paths and bodies as the former Cloudflare Container. One render at a time (`MAX_RENDERS`, default 1): a second job gets 429 `{"error":"busy"}` and a repeat of the running job gets 409 `{"error":"in_progress"}`; the worker retries both later without counting a failure. `GET /render/<jobId>` returns `{"state": "running"|"done"|"absent"}`.
 
 Python server (`/health`, `/transcript`, `/youtube/search`, `/render`) orchestrates; frames come from a Remotion 4.0.540 composition (`workers/render/container/remotion`, React 19) that is bundled at image build time and rendered with `@remotion/renderer` by `remotion/render.mjs`. FFmpeg only remuxes (`+faststart`) and cuts the poster.
 
@@ -185,5 +185,5 @@ An item appears only if `item.status = 'rendered'` AND it has a `render` with `s
 ## Env vars
 
 - ingest: `HYPERDRIVE` (binding), `FIRECRAWL_API_KEY` (secret, optional), `CLAUDE_API_KEY` (secret; models come from app_setting), `GEMINI_API_KEY` (embeddings), `GEMINI_EMBEDDING_MODEL`, `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`, bindings `INGEST_ITEMS`, `RENDER_JOBS`, `RENDER` (service).
-- render: `HYPERDRIVE`, `MEDIA` (R2), `RENDER_BOX_URL` (var, `https://box.reelset.app`), `RENDER_BOX_TOKEN` (secret, bearer for the box), `RENDER_JOBS` (producer for template upgrades), `TTS_VOICE` (default `en-US-AriaNeural`), `ALERT_WEBHOOK_URL`.
+- render: `HYPERDRIVE`, `MEDIA` (R2), `BOX_URLS` (var, `https://box1.reelset.app,https://box2.reelset.app`), `RENDER_BOX_TOKEN` (secret, bearer for the box), `RENDER_JOBS` (producer for template upgrades), `TTS_VOICE` (default `en-US-AriaNeural`), `ALERT_WEBHOOK_URL`.
 - web: `DATABASE_URL` (Supabase pooler, transaction mode), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `MEDIA_PUBLIC_BASE_URL`, `GEMINI_API_KEY` and `GEMINI_EMBEDDING_MODEL` (Ask embeddings only), `CLAUDE_API_KEY` (Ask answers; the model is app_setting `ask_model`), `ALERT_WEBHOOK_URL`, `ADMIN_EMAILS` (comma-separated, case-insensitive; matching verified users are promoted to admin, never demoted), `ADMIN_HOST`.

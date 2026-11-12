@@ -18,9 +18,8 @@ export const RENDER_TIMEOUT_MS = 14 * 60_000
 export const TRANSCRIPT_TIMEOUT_MS = 45_000
 export const YOUTUBE_SEARCH_TIMEOUT_MS = 120_000
 export const PAPER_PARSE_TIMEOUT_MS = 110_000
-export const NORTHFLANK_API_URL = 'https://api.northflank.com/v1'
-export const BOX_IDLE_PAUSE_SECONDS = 600
-export const BOX_RESUME_COOLDOWN_MS = 60_000
+export const BOX_HEALTH_TIMEOUT_MS = 8_000
+export const BOX_SAMPLE_RETENTION_DAYS = 30
 export const DEFAULT_MEDIA_BASE_URL = 'https://media.reelset.app'
 
 export const STUCK_RENDER_MINUTES = 30

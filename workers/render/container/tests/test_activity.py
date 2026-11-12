@@ -69,7 +69,12 @@ class HealthEndpointTests(unittest.TestCase):
     def test_health_reports_idle_and_is_not_counted_as_activity(self):
         self.clock.now += 700
         body = json.load(self.get("/health"))
-        self.assertEqual(body, {"ok": True, "running": 0, "inflight": 0, "idleSeconds": 700})
+        self.assertEqual(
+            {k: body[k] for k in ("ok", "running", "inflight", "idleSeconds")},
+            {"ok": True, "running": 0, "inflight": 0, "idleSeconds": 700},
+        )
+        for key in ("box", "cpuPct", "load1", "memUsedMb", "swapUsedMb"):
+            self.assertIn(key, body)
         self.assertEqual(json.load(self.get("/health"))["idleSeconds"], 700)
 
     def test_finished_request_resets_idle(self):

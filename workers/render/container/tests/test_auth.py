@@ -58,12 +58,22 @@ class RunningCountTests(unittest.TestCase):
 
 
 class RepeatedJobTests(unittest.TestCase):
-    def test_repeat_of_running_job_is_busy_even_with_spare_capacity(self):
+    def test_repeat_of_running_job_is_in_progress_even_with_spare_capacity(self):
         with tempfile.TemporaryDirectory() as root:
             jobs = JobStore(root, max_running=2)
             jobs.begin("job-aaaaaa")
             with self.assertRaises(RenderError) as ctx:
                 jobs.begin("job-aaaaaa")
+            self.assertEqual(ctx.exception.code, "in_progress")
+            self.assertEqual(ctx.exception.status, 409)
+
+    def test_different_job_while_full_stays_busy(self):
+        with tempfile.TemporaryDirectory() as root:
+            jobs = JobStore(root)
+            jobs.begin("job-aaaaaa")
+            with self.assertRaises(RenderError) as ctx:
+                jobs.begin("job-bbbbbb")
+            self.assertEqual(ctx.exception.code, "busy")
             self.assertEqual(ctx.exception.status, 429)
 
     def test_repeat_after_finish_returns_cached_result(self):
@@ -72,3 +82,17 @@ class RepeatedJobTests(unittest.TestCase):
             jobs.begin("job-aaaaaa")
             jobs.finish("job-aaaaaa", {"ok": 1})
             self.assertEqual(jobs.begin("job-aaaaaa"), ("done", {"ok": 1}))
+
+
+class JobStateTests(unittest.TestCase):
+    def test_state_tracks_absent_running_done_and_failed(self):
+        with tempfile.TemporaryDirectory() as root:
+            jobs = JobStore(root)
+            self.assertEqual(jobs.state("job-aaaaaa"), "absent")
+            jobs.begin("job-aaaaaa")
+            self.assertEqual(jobs.state("job-aaaaaa"), "running")
+            jobs.finish("job-aaaaaa", {})
+            self.assertEqual(jobs.state("job-aaaaaa"), "done")
+            jobs.begin("job-bbbbbb")
+            jobs.fail("job-bbbbbb")
+            self.assertEqual(jobs.state("job-bbbbbb"), "absent")
