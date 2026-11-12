@@ -77,6 +77,7 @@ describe('site helpers', () => {
     expect(topicLabel('claude code')).toBe('Claude Code')
     expect(topicLabel('macos')).toBe('macOS')
     expect(topicLabel('WebGPU')).toBe('WebGPU')
+    expect(topicLabel('ai-video  tools')).toBe('AI-Video Tools')
   })
 
   it('builds absolute URLs on the production host', () => {

@@ -39,6 +39,7 @@ export type ReelSummary = {
   videoUrl: string | null
   posterUrl: string | null
   durationMs: number | null
+  source?: string | null
 }
 
 export type TopicCount = { slug: string; label: string; count: number }

@@ -40,6 +40,7 @@ type ReelRow = {
 
 type SummaryRow = Omit<ReelRow, 'kind' | 'canonical_url' | 'rendered_at' | 'script'> & {
   updated_at: Date
+  source?: string | null
 }
 
 function iso(value: Date | string | null): string | null {
@@ -145,26 +146,59 @@ function toSummary(row: SummaryRow, mediaBase: string): ReelSummary {
     videoUrl: mediaUrl(mediaBase, row.video_key),
     posterUrl: mediaUrl(mediaBase, row.poster_key),
     durationMs: row.video_duration_ms,
+    source: row.source ?? null,
   }
 }
 
 /** Rendered reels, newest first; `labels` narrows to items tagged with any of those topics. */
+// Highest-scored mention names the reel's source on cards.
+const leadSource = sql`(select m.source::text from mention m where m.item_id = i.id
+  order by m.score desc nulls last limit 1) as source`
+
+function sourceClause(source: string | null | undefined) {
+  return source
+    ? sql`and exists (select 1 from mention m where m.item_id = i.id and m.source::text = ${source})`
+    : sql``
+}
+
 export async function listReelSummaries(
   db: Database,
   mediaBase: string,
-  opts: { limit: number; labels?: string[] },
+  opts: { limit: number; labels?: string[]; source?: string | null },
 ): Promise<ReelSummary[]> {
   const topicFilter = opts.labels ? sql`and i.topics && ${opts.labels}::text[]` : sql``
   const { rows } = await sql<SummaryRow>`
-    select i.id, i.title, i.tldr, i.topics, i.published_at,
+    select i.id, i.title, i.tldr, i.topics, i.published_at, ${leadSource},
       coalesce(i.rendered_at, i.published_at) as updated_at,
       served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
-    where i.status = ${ItemStatus.rendered}::item_status ${topicFilter}
+    where i.status = ${ItemStatus.rendered}::item_status ${topicFilter} ${sourceClause(opts.source)}
     order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
     limit ${opts.limit}
   `.execute(db)
   return rows.map((r) => toSummary(r, mediaBase))
+}
+
+export async function countRenderedReels(db: Database): Promise<number> {
+  const { rows } = await sql<{ count: number }>`
+    select count(*)::int as count from item i where i.status = ${ItemStatus.rendered}::item_status
+  `.execute(db)
+  return rows[0]?.count ?? 0
+}
+
+/** Rendered reels per source (a reel counts once per source it was found on). */
+export async function listSourceCounts(
+  db: Database,
+  labels?: string[],
+): Promise<{ source: string; count: number }[]> {
+  const topicFilter = labels ? sql`and i.topics && ${labels}::text[]` : sql``
+  const { rows } = await sql<{ source: string; count: number }>`
+    select m.source::text as source, count(distinct i.id)::int as count
+    from item i join mention m on m.item_id = i.id
+    where i.status = ${ItemStatus.rendered}::item_status ${topicFilter}
+    group by m.source
+  `.execute(db)
+  return rows
 }
 
 /** Recent reels with transcript and source, for /llms-full.txt. */
@@ -186,11 +220,14 @@ export async function listReelTranscripts(db: Database, mediaBase: string, limit
 }
 
 /** Raw topic labels of rendered reels with their reel counts. */
-export async function listTopicLabels(db: Database): Promise<{ label: string; count: number }[]> {
+export async function listTopicLabels(
+  db: Database,
+  source?: string | null,
+): Promise<{ label: string; count: number }[]> {
   const { rows } = await sql<{ label: string; count: number }>`
     select t as label, count(*)::int as count
     from item i, unnest(i.topics) t
-    where i.status = ${ItemStatus.rendered}::item_status
+    where i.status = ${ItemStatus.rendered}::item_status ${sourceClause(source)}
     group by t
   `.execute(db)
   return rows
