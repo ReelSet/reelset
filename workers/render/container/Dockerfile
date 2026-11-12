@@ -10,16 +10,27 @@ ADD --chmod=0644 --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0c
 
 FROM kokoro-model-${TARGETARCH} AS kokoro-model
 
+FROM node:22-bookworm-slim AS skia-deps
+WORKDIR /build
+COPY skia/package.json skia/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+FROM node:22-bookworm-slim AS skia-build
+WORKDIR /build
+COPY skia/package.json skia/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY skia/tsconfig.json skia/build.mjs ./
+COPY skia/src ./src
+RUN node build.mjs
+
 FROM node:22-bookworm-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 DEBIAN_FRONTEND=noninteractive
 
-# fonts-noto-cjk (OFL) backs Chinese/Japanese/Korean text; only Regular and Bold are kept so the image grows by about 40 MB. python: tts (edge-tts, kokoro), transcripts, youtube search, orchestration. ffmpeg: remux + poster. ghostscript: EPS paper figures. The rest: chrome-headless-shell.
+# fonts-noto-cjk (OFL) backs Chinese/Japanese/Korean text; only Regular and Bold are kept so the image grows by about 40 MB. python: tts (edge-tts, kokoro), transcripts, youtube search, orchestration. ffmpeg: remux + poster. ghostscript: EPS paper figures. The Skia renderer draws in-process (no browser) and falls back to the Noto CJK and DejaVu faces for text.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3 python3-venv ffmpeg ghostscript fonts-dejavu-core fonts-noto-cjk fontconfig ca-certificates \
-        libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 libxrandr2 libxkbcommon-dev \
-        libxfixes3 libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2 \
     && find /usr/share/fonts/opentype/noto -type f ! -name 'NotoSansCJK-Regular.ttc' ! -name 'NotoSansCJK-Bold.ttc' -delete \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -f
@@ -34,11 +45,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=kokoro-model / /opt/kokoro/
 ENV KOKORO_MODEL_DIR=/opt/kokoro
 
-COPY remotion/package.json remotion/package-lock.json ./remotion/
-RUN cd remotion && npm ci --no-audit --no-fund
-
-COPY remotion ./remotion
-RUN cd remotion && node bundle.mjs && chown -R reel:reel /app/remotion/build /app/remotion/node_modules/.remotion
+COPY --from=skia-deps /build/node_modules /app/skia/node_modules
+COPY --from=skia-build /build/dist /app/skia/dist
+COPY skia/package.json /app/skia/package.json
+COPY skia/assets /app/skia/assets
+ENV SKIA_DIR=/app/skia
 
 COPY app.py .
 COPY reel ./reel

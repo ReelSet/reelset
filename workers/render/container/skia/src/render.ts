@@ -9,7 +9,7 @@ import { shotAt, type Reel, type Shot } from './plan'
 import { SCREENS, fallback } from './screens'
 import type { DrawArgs, Media, Screen } from './screens/types'
 
-/** Job asset paths are written for the Remotion bundle ('job/x.jpg'); on disk they sit in assets/. */
+/** Props write asset paths as 'job/x.jpg'; on disk they sit in the job's assets/ folder. */
 export const assetPath = (src: string) => src.replace(/^job\//, '')
 
 type ShotState = {

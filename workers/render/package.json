@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run && npm run test --prefix container/remotion",
-    "typecheck": "tsc --noEmit && npm run typecheck --prefix container/remotion",
+    "test": "vitest run && npm run test --prefix container/skia",
+    "typecheck": "tsc --noEmit && npm run typecheck --prefix container/skia",
     "dev": "wrangler dev",
     "test:py": "cd container && .venv/bin/python -m unittest discover -s tests -t .",
-    "bundle:reel": "npm run bundle --prefix container/remotion"
+    "build:reel": "npm run build --prefix container/skia"
   },
   "dependencies": {
     "@reelset/core": "*",

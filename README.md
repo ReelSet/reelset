@@ -40,7 +40,7 @@ turned into a TLDR and a reel script before rendering.
 | -------------------------------------- | ------------------------------------------------------------------- |
 | `apps/web`                             | Next.js app (reader + admin), deployed on Vercel                    |
 | `workers/ingest`                       | Cloudflare Worker that discovers and ingests projects               |
-| `workers/render`                       | Cloudflare Worker + container that renders reels (Remotion, Python) |
+| `workers/render`                       | Cloudflare Worker + container that renders reels (Skia renderer, Python) |
 | `packages/core`                        | Shared database schema, migrations and types                        |
 | `scripts/smoke`, `scripts/maintenance` | Smoke tests and maintenance scripts                                 |
 | `supabase`                             | Supabase config and auth email templates                            |

@@ -9,7 +9,7 @@
     "noEmit": true,
     "types": ["node"],
     "baseUrl": ".",
-    "paths": { "@plan/*": ["../remotion/src/*"] }
+    "paths": { "@plan/*": ["src/planner/*"] }
   },
   "include": ["src", "tools/*.ts"]
 }

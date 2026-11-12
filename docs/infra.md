@@ -48,7 +48,7 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 Rendering and Instagram posting run on an Oracle Always Free Ampere A1 VM (arm64, 2 OCPU / 12 GB, Ubuntu 24.04) instead of Cloudflare Containers. The image comes from `workers/render/container`, built by `.github/workflows/render-image.yml` on the native arm runner and pushed to `ghcr.io/reelset/reelset-render` (`latest` + commit sha).
 
 - Path: render Worker -> `https://box.reelset.app` (Cloudflare Tunnel, outbound only, no inbound ports) -> `render:8080`, with `Authorization: Bearer <BOX_TOKEN>`. `GET /health` is the only unauthenticated route.
-- Box env (`/etc/reelset/box.env`): `BOX_TOKEN`, `PROXY_URLS`, `TUNNEL_TOKEN`, `MAX_RENDERS` (default 1), `REEL_CONCURRENCY` (Remotion tabs, default 2).
+- Box env (`/etc/reelset/box.env`): `BOX_TOKEN`, `PROXY_URLS`, `TUNNEL_TOKEN`, `MAX_RENDERS` (default 1), `RENDER_TIMEOUT_SECONDS` (default 7200), `CLAUDE_API_KEY` (render director; without it every render uses the generic Skia renderer and reports `fallbackReason: no_api_key`).
 - Concurrency: `MAX_RENDERS` renders at once; extra `POST /render` get `409 {"error":"busy"}` and the Worker retries. Instagram ops are serialized the same way.
 - Setup, update timer and verification steps: `scripts/box/README.md`.
 
@@ -82,12 +82,12 @@ Embeddings keep using `GEMINI_API_KEY`, so they need Gemini credits regardless. 
 ## Template upgrade sweep and ingest gating
 
 - The render cron's template-upgrade sweep (re-renders already rendered items on the newest template) is off unless `app_setting` `render_upgrade_enabled` is `true` (`scripts/maintenance/set-setting.ts renderUpgradeEnabled true`). New items always render on the current template through the queue. `feed_min_template` stays 6 until the old reels are deliberately retired.
-- Template 8 renders take 7-12 minutes on a 2 vCPU machine (Pexels b-roll vetting plus Remotion), so the first queue attempt can time out; the retry returns the box's cached result.
+- Template 8 renders take 7-12 minutes on a 2 vCPU machine (Pexels b-roll vetting plus the Skia render), so the first queue attempt can time out; the retry returns the box's cached result.
 - The ingest pipeline pause probe is a Gemini embedding call. While Gemini prepay credits are depleted (HTTP 402) the pause is renewed every probe and no new items are scripted. Top up Gemini credits to resume ingest.
 
 ## Render container fonts and image
 
-- The image installs `fonts-noto-cjk` (SIL OFL) and deletes every weight except `NotoSansCJK-Regular.ttc` and `NotoSansCJK-Bold.ttc` in the same layer (about 40 MB); Remotion's font stacks (`theme.ts` `FONT`, `MONO`) fall back to it after Geist.
+- The image installs `fonts-noto-cjk` (SIL OFL) and deletes every weight except `NotoSansCJK-Regular.ttc` and `NotoSansCJK-Bold.ttc` in the same layer (about 40 MB); the Skia font stacks (`skia/src/engine/draw.ts` `F`, `skia/src/director/kit.ts` `FAMS`) fall back to it, then to DejaVu, after the bundled Geist. `@napi-rs/canvas` picks the system faces up from `/usr/share/fonts`.
 
 ## Render worker behavior worth knowing
 
@@ -116,8 +116,19 @@ Admin (`/admin/instagram`) queues rows in `instagram_post`; the render worker po
 ## Oracle render boxes (two Always Free Micros)
 
 - Two Oracle Cloud Always Free `VM.Standard.E2.1.Micro` VMs in Hyderabad (1/8 OCPU baseline with bursts, 1 GB RAM + 8 GB swap + zswap, Ubuntu 24.04, slimmed: unused daemons masked, Oracle agent with only the Monitoring plugin). `box1.reelset.app` and `box2.reelset.app` reach them through Cloudflare Tunnels (`/etc/cloudflared/config.yml`, no open ports).
-- Each runs the render container as a rootful Podman quadlet `/etc/containers/systemd/reel.container` (`ghcr.io/reelset/reelset-render:latest`, `127.0.0.1:8080`, `AutoUpdate=registry` via `podman-auto-update.timer`). Env in `/etc/reelset/box.env`: `BOX_TOKEN`, `PROXY_URLS`, `MAX_RENDERS=1`, `REMOTION_TIMEOUT_SECONDS=7200`, `BOX_NAME`, `REEL_CONCURRENCY=1`.
+- Each runs the render container as a rootful Podman quadlet `/etc/containers/systemd/reel.container` (`ghcr.io/reelset/reelset-render:latest`, `127.0.0.1:8080`, `AutoUpdate=registry` via `podman-auto-update.timer`). Env in `/etc/reelset/box.env`: `BOX_TOKEN`, `PROXY_URLS`, `MAX_RENDERS=1`, `RENDER_TIMEOUT_SECONDS=7200`, `BOX_NAME`, `CLAUDE_API_KEY` (add it to `/etc/reelset/box.env` and restart the unit to enable the render director).
 - Routing (`src/box-fetcher.ts`, `BOX_URLS` var): a render first asks every box `GET /render/<jobId>` (`running`/`done`/`absent`) and goes to the box that already holds the job; otherwise boxes are tried in job-id hash order, moving on when a box is down or busy with another job (429), stopping on `in_progress` (409, the job runs there) or 524 (the render started there). Asset fetches and deletes follow the same order and move on at 404. Transcripts, YouTube search, papers and Instagram try the last box first.
-- A render takes about 60-90 min on a Micro (measured 78 min with Remotion at 30 fps, concurrency 2); the consumer re-checks every 45 s for up to `BUSY_MAX_DEFERRALS` (about 4 h).
+- A render takes about 60-90 min on a Micro (measured 78 min with the former Remotion renderer; the browser-free Skia renderer should be faster, re-measure after rollout); the consumer re-checks every 45 s for up to `BUSY_MAX_DEFERRALS` (about 4 h).
 - Health: `GET /health` (open) returns `{ok, box, running, inflight, idleSeconds, cpuPct, load1, memUsedMb, swapUsedMb}`; the `*/5` cron stores one `box_sample` row per box (pruned after 30 days). `/admin/capacity` shows renders per day, capacity, utilization, render times and box CPU.
 - Idle reclaim: Oracle reclaims Always Free VMs whose 7-day P95 CPU is under 20%. `oci-keepalive.timer` (every 10 min) burns CPU for 150 s at `SCHED_IDLE` priority when the box has had no requests for 9 min and no render is running; renders always win the CPU.
+
+## Skia renderer and render director (box)
+
+- No browser runs on the boxes. `workers/render/container/skia` draws every frame with Skia (`@napi-rs/canvas`) at 1080x1920, 24 fps and pipes raw frames to ffmpeg (H.264 + the narration). The image is multi-stage: a `node:22-bookworm-slim` stage builds `skia/dist` (esbuild: `render.mjs` orchestrator, `draw.mjs` drawing child), a second stage installs production `node_modules`, and the final image adds Python, Kokoro, ffmpeg, ghostscript and the fonts. `SKIA_DIR=/app/skia`.
+- Python (`reel/video.py` `run_skia`) runs `node $SKIA_DIR/dist/render.mjs <jobDir>` with the box environment; `RENDER_TIMEOUT_SECONDS` (legacy `REMOTION_TIMEOUT_SECONDS`) bounds it, default 7200 s.
+- Without a `director` block in the request, `render.mjs` just runs `draw.mjs <jobDir>`: the planner (`skia/src/planner`) places generic screens (`skia/src/screens`). That is also the fallback.
+- With a `director` block and a key (`CLAUDE_API_KEY`, or `ANTHROPIC_API_KEY`) the orchestrator calls Claude (`@anthropic-ai/sdk`, streamed, system block cached) with the configured rules, the fixed kit API doc, the icon names, the example scenes and the skills; the user turn is the reel DATA. The reply's longest complete ```js block is the scene script. With `review: true` it renders a contact sheet (JPEG, two frames per scene, 270x480 tiles, under 5 MB), sends it back with the review prompt plus any load or per-scene runtime errors, and takes the corrected script when it loads (else the first). Then it renders the final video.
+- Isolation: model-written code never runs in the process that holds the API key and `BOX_TOKEN`/Instagram credentials. The orchestrator spawns `draw.mjs` with a scrubbed environment (only `PATH`, `HOME=/tmp`, `TMPDIR`, `LANG`, `SKIA_ASSETS`, `X264_PRESET`); the child evaluates the script with `node:vm` in a fresh context holding only the kit names and `DATA` (`codeGeneration: { strings: false, wasm: false }`, 10 s load timeout, the script wrapped in a block so it may shadow kit names). `vm` is not a hard security boundary (kit objects expose host constructors); the scrubbed environment is what protects the secrets, and the drawing child has no network credentials to steal.
+- Failure handling: a scene that throws while drawing falls back to the generic screen for that scene (counted in `sceneErrors`). The orchestrator kills the child when it prints nothing for 120 s (the child prints a `tick` per frame). A script that does not load, a crash, a stall, a refusal, a reply with no code block or an API error ends in the generic renderer with `fallbackReason` one of `no_api_key | api_error | load_error | crash | timeout`.
+- Result: `<job>/director-result.json` (`{ used, model, scenes, sceneErrors, fallbackReason, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, ms }`) is copied into the render metadata as `director` whenever a director block was sent. No prompt text or key is ever logged.
+- Debug: `node dist/draw.mjs <jobDir> --sheet --out dir` (contact sheet), `--stills t1,t2`, `--show Name`, `--scenes script.js` to draw a saved model script, `--selftest` (renders a 2 s fixture with no network; run in CI and after the image build).

@@ -2,7 +2,7 @@
 
 # Render box (Oracle Always Free)
 
-One Ampere A1 VM runs the render container (Remotion, ffmpeg, TTS, instagrapi) and a Cloudflare Tunnel. The render Worker calls `https://box.reelset.app/<path>` with `Authorization: Bearer <BOX_TOKEN>`. No inbound ports are opened: the tunnel is outbound only.
+One Ampere A1 VM runs the render container (Skia renderer, ffmpeg, TTS, instagrapi) and a Cloudflare Tunnel. The render Worker calls `https://box.reelset.app/<path>` with `Authorization: Bearer <BOX_TOKEN>`. No inbound ports are opened: the tunnel is outbound only.
 
 ```
 render Worker -> https://box.reelset.app -> Cloudflare -> cloudflared (container) -> http://render:8080 (container)
