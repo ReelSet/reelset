@@ -5,6 +5,8 @@ import { PEXELS_HOME_URL, type CreditsDto, type FeedItemDto } from '@/lib/api-ty
 import { track } from '@/lib/client/track'
 import { ArrowUpRightIcon, CloseIcon } from '@/components/ui/icons'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
+import { topicPath, topicSlug } from '@/lib/reel-url'
+import { topicLabel } from '@/lib/seo/site'
 
 function host(url: string): string {
   try {
@@ -95,6 +97,24 @@ export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
             </summary>
             <p className="mt-2 text-sm leading-relaxed text-muted">{item.transcript}</p>
           </details>
+        )}
+        {item.topics.some((t) => topicSlug(t)) && (
+          <nav
+            aria-label="Topics"
+            className="mt-5 flex flex-wrap gap-1.5 border-t border-line pt-4"
+          >
+            {item.topics
+              .filter((t) => topicSlug(t))
+              .map((t) => (
+                <a
+                  key={t}
+                  href={topicPath(t)}
+                  className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition hover:border-line-strong hover:text-fg"
+                >
+                  {topicLabel(t)}
+                </a>
+              ))}
+          </nav>
         )}
         {item.credits && <MediaCredits credits={item.credits} />}
       </div>
