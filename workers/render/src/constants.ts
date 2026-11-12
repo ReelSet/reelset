@@ -35,8 +35,9 @@ export const FAILURE_RATE_WINDOW_MS = 60 * 60_000
 export const DEAD_LETTER_ALERT_MIN = 3
 export const DEAD_LETTER_WINDOW_MS = 60 * 60_000
 
-// Northflank nf-compute-200 (2 vCPU, 4 GB): $0.01667/vCPU-h + $0.00833/GB-h, billed per second while the box runs.
-export const CONTAINER_USD_PER_SECOND = (2 * 0.01667 + 4 * 0.00833) / 3600
+// The render boxes are Oracle Always Free VMs: render seconds are still recorded, but cost nothing and
+// must not count toward the pipeline spend cap.
+export const CONTAINER_USD_PER_SECOND = 0
 export const EDGE_TTS_USD_PER_CHAR = 0
 
 export const UPGRADE_IN_FLIGHT_TARGET = 6

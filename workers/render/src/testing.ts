@@ -56,8 +56,10 @@ export class FakeStore implements RenderStore {
     this.renders.set(key, row)
     return row
   }
-  async markRendering(key: string) {
+  attemptsCounted = 0
+  async markRendering(key: string, countAttempt = true) {
     this.calls.push('rendering')
+    if (countAttempt) this.attemptsCounted++
     const row = this.renders.get(key)
     if (row) row.status = 'rendering'
   }

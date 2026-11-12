@@ -60,7 +60,8 @@ export type RenderDone = {
 export interface RenderStore {
   loadItem(itemId: string): Promise<ItemForRender | null>
   ensureRender(itemId: string, renderKey: string, templateVersion?: number): Promise<RenderRow>
-  markRendering(renderKey: string): Promise<void>
+  /** `countAttempt` false for a redelivery that only checks on a render the box is still doing. */
+  markRendering(renderKey: string, countAttempt?: boolean): Promise<void>
   markDone(renderKey: string, done: RenderDone): Promise<void>
   markFailed(renderKey: string, error: string): Promise<void>
   markRetryPending(renderKey: string): Promise<void>
@@ -174,7 +175,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
       return { id: row.id, status: row.status, videoKey: row.video_key, posterKey: row.poster_key }
     },
 
-    async markRendering(renderKey) {
+    async markRendering(renderKey, countAttempt = true) {
       await db
         .updateTable('render')
         .set({
@@ -182,7 +183,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           started_at: sql`now()`,
           finished_at: null,
           error: null,
-          attempts: sql`attempts + 1`,
+          attempts: countAttempt ? sql`attempts + 1` : sql`attempts`,
         })
         .where('render_key', '=', renderKey)
         .where('status', '!=', 'done')

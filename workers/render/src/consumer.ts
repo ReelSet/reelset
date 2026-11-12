@@ -109,7 +109,8 @@ export async function processRenderJob(
       return { action: 'ack' }
     }
     progress.status = item.status
-    return await runJob(deps, item, progress, deliveryAttempts, log)
+    const checkIn = (parsed.data.deferrals ?? 0) > 0
+    return await runJob(deps, item, progress, deliveryAttempts, log, checkIn)
   } catch (err) {
     if (err instanceof StaleTransitionError) {
       log.warn('stale transition, another delivery advanced the item; acking')
@@ -117,7 +118,9 @@ export async function processRenderJob(
     }
     const deferral = busyDeferral(err, parsed.data)
     if (deferral) {
-      await releaseRenderForRetry(deps, progress.renderKey, log)
+      // The box is still rendering this very job: it stays 'rendering', not back in the queue.
+      const stillOurs = err instanceof RenderJobError && err.code === 'in_progress'
+      if (!stillOurs) await releaseRenderForRetry(deps, progress.renderKey, log)
       log.info({ deferrals: deferral.message.deferrals }, 'render box busy, deferring job')
       return deferral
     }
@@ -151,6 +154,7 @@ async function runJob(
   progress: Progress,
   deliveryAttempts: number,
   log: Logger,
+  checkIn = false,
 ): Promise<JobResult> {
   const early = decideRenderAction(item.status, null)
   if (early.kind === 'skip') {
@@ -183,7 +187,7 @@ async function runJob(
     return { action: 'ack' }
   }
 
-  await deps.store.markRendering(key)
+  await deps.store.markRendering(key, !checkIn)
   const { narration, script: renderScript } = await prepareNarration(deps, script.data, rlog)
   const metadata = await renderAndUpload(deps, item, renderScript, key, narration, rlog)
   logNarrationProvider(deps, metadata, narration, rlog)

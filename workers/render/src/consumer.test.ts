@@ -87,7 +87,8 @@ describe('processRenderJob', () => {
     expect(rec.transitions[0]?.meta).toEqual({ ttsChars: 400, ttsDurationMs: 29_000 })
     expect(rec.spends.map((s) => s.category)).toEqual(['tts', 'render'])
     expect(rec.spends[0]).toMatchObject({ units: 400, costUsd: 0 })
-    expect(rec.spends[1]?.costUsd).toBeGreaterThan(0)
+    expect(rec.spends[1]).toMatchObject({ costUsd: 0 })
+    expect(rec.spends[1]?.units).toBeGreaterThan(0)
   })
 
   it('forwards facts, headline and shots to the container', async () => {
@@ -277,6 +278,23 @@ describe('processRenderJob', () => {
     expect(path(busy)).toEqual(['POST /render'])
     expect(store.calls).toEqual(['rendering', 'retry_pending'])
     expect([...store.renders.values()].map((r) => r.status)).toEqual(['queued'])
+  })
+
+  it('keeps a render the box is still doing as rendering, not queued', async () => {
+    const box = new FakeContainer({ renderStatus: 409, renderBody: { error: 'in_progress' } })
+    const { deps, store } = setup({ container: box })
+    expect(await processRenderJob(deps, body, 1)).toMatchObject({ action: 'defer' })
+    expect(store.calls).toEqual(['rendering'])
+    expect([...store.renders.values()].map((r) => r.status)).toEqual(['rendering'])
+  })
+
+  it('does not count a deferred check-in as a new render attempt', async () => {
+    const box = new FakeContainer({ renderStatus: 409, renderBody: { error: 'in_progress' } })
+    const { deps, store } = setup({ container: box })
+    await processRenderJob(deps, { ...body, deferrals: 3 }, 1)
+    expect(store.attemptsCounted).toBe(0)
+    await processRenderJob(deps, body, 1)
+    expect(store.attemptsCounted).toBe(1)
   })
 
   it.each([
