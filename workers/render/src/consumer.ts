@@ -303,7 +303,7 @@ async function renderAndUpload(
     director: director ?? undefined,
   })
   try {
-    if (metadata.bytes > MAX_VIDEO_BYTES) throw new RenderJobError('too_large', 'video over 25 MB')
+    if (metadata.bytes > MAX_VIDEO_BYTES) throw new RenderJobError('too_large', 'video over 40 MB')
 
     const video = await client.download(jobId, 'video')
     const poster = await client.download(jobId, 'poster')

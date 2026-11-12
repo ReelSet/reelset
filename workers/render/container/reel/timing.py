@@ -1,13 +1,13 @@
 import math
 from dataclasses import dataclass
 
-MAX_VIDEO_SECONDS = 60.0
+MAX_VIDEO_SECONDS = 100.0
 TAIL_SECONDS = 0.5
 CHARS_PER_SECOND = 14.5
 MAX_RATE_PERCENT = 50
 MAX_REFIT_RATE_PERCENT = 80
 REFIT_HEADROOM_SECONDS = 1.0
-TARGET_NARRATION_SECONDS = 55.0
+TARGET_NARRATION_SECONDS = 95.0
 MIN_SPAN_SECONDS = 0.3
 
 
@@ -19,7 +19,7 @@ class Word:
 
 
 def choose_rate(char_count: int) -> str:
-    """edge-tts rate string that keeps estimated narration inside the 60 s cap."""
+    """edge-tts rate string that keeps estimated narration inside the video cap."""
     estimated = char_count / CHARS_PER_SECOND
     if estimated <= TARGET_NARRATION_SECONDS:
         return "+0%"

@@ -125,13 +125,13 @@ class TimingTests(unittest.TestCase):
 
     def test_choose_rate(self):
         self.assertEqual(timing.choose_rate(400), "+0%")
-        self.assertEqual(timing.choose_rate(1000), "+26%")
+        self.assertEqual(timing.choose_rate(1650), "+20%")
         self.assertEqual(timing.choose_rate(5000), "+50%")
 
     def test_refit_rate_brings_measured_audio_under_cap(self):
-        self.assertEqual(timing.refit_rate("+0%", 66.0), "+13%")
-        self.assertEqual(timing.refit_rate("+10%", 66.0), "+25%")
-        self.assertIsNone(timing.refit_rate("+0%", 120.0))
+        self.assertEqual(timing.refit_rate("+0%", 110.0), "+12%")
+        self.assertEqual(timing.refit_rate("+10%", 110.0), "+23%")
+        self.assertIsNone(timing.refit_rate("+0%", 200.0))
 
 
 class ImageAllowlistTests(unittest.TestCase):

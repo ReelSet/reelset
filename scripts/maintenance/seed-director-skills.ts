@@ -1,59 +1,40 @@
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join, relative } from 'node:path'
+import { readFileSync, existsSync } from 'node:fs'
 import {
   DIRECTOR_SKILLS_MAX_CHARS,
   approxTokens,
   createDb,
   createLogger,
+  listSkills,
+  setSkillEnabled,
   upsertSkill,
   type SkillInput,
 } from '@reelset/core'
 
 // Usage: npx tsx scripts/maintenance/seed-director-skills.ts [--dry-run]
-// Upserts (by name) the director skills from ~/.agents/skills plus the example scene script.
+// Upserts (by name) the reel-craft skill and the example scene script, and switches off the four
+// large source skills it was distilled from (kept in the table so admin can switch them back on).
 const dryRun = process.argv.includes('--dry-run')
-const SKILL_FOLDERS = [
+const ASSETS = new URL('../../workers/render/container/skia/assets/director/', import.meta.url)
+  .pathname
+const SKILL_NAME = 'reel-craft'
+const EXAMPLE_NAME = 'motion-v2-example'
+const RETIRED_SKILLS = [
   'motion-design',
   'design-motion-principles',
   'motion-doctrine',
   'cut-the-curve',
 ]
-const SKILLS_ROOT = join(homedir(), '.agents', 'skills')
-const EXAMPLE_NAME = 'motion-v2-example'
-const EXAMPLE_PATHS = [
-  new URL('../../workers/render/container/skia/assets/director/example-scenes.js', import.meta.url)
-    .pathname,
-  '/private/tmp/claude-501/-Users-mehul-Desktop-code-my-projects-reelset/81e34b65-0dd1-4b66-b3e7-7fc29b6574c5/scratchpad/variants/motion-v2/scenes.mjs',
+
+function fromAsset(name: string, kind: SkillInput['kind'], file: string): SkillInput {
+  const path = ASSETS + file
+  if (!existsSync(path)) throw new Error(`director asset missing: ${path}`)
+  return { name, kind, content: readFileSync(path, 'utf8') }
+}
+
+const entries = [
+  fromAsset(SKILL_NAME, 'skill', 'reel-craft.md'),
+  fromAsset(EXAMPLE_NAME, 'example', 'example-scenes.js'),
 ]
-
-function markdownFiles(dir: string): string[] {
-  return readdirSync(dir)
-    .sort()
-    .flatMap((name) => {
-      const path = join(dir, name)
-      if (statSync(path).isDirectory()) return markdownFiles(path)
-      return name.toLowerCase().endsWith('.md') ? [path] : []
-    })
-}
-
-function skillFromFolder(name: string): SkillInput {
-  const dir = join(SKILLS_ROOT, name)
-  if (!existsSync(dir)) throw new Error(`skill folder missing: ${dir}`)
-  const files = markdownFiles(dir).sort((a, b) => relative(dir, a).localeCompare(relative(dir, b)))
-  const content = files
-    .map((file) => `<file path="${relative(dir, file)}">\n${readFileSync(file, 'utf8')}\n</file>`)
-    .join('\n')
-  return { name, kind: 'skill', content }
-}
-
-function exampleEntry(): SkillInput {
-  const path = EXAMPLE_PATHS.find((p) => existsSync(p))
-  if (!path) throw new Error(`example scenes not found in: ${EXAMPLE_PATHS.join(', ')}`)
-  return { name: EXAMPLE_NAME, kind: 'example', content: readFileSync(path, 'utf8') }
-}
-
-const entries = [...SKILL_FOLDERS.map(skillFromFolder), exampleEntry()]
 const skillChars = entries
   .filter((e) => e.kind === 'skill')
   .reduce((n, e) => n + e.content.length, 0)
@@ -77,6 +58,11 @@ if (dryRun) {
   try {
     for (const entry of entries) await upsertSkill(db, entry, log)
     console.log(`upserted ${entries.length} entries`)
+    for (const row of await listSkills(db)) {
+      if (!RETIRED_SKILLS.includes(row.name) || !row.enabled) continue
+      await setSkillEnabled(db, row.id, false, log)
+      console.log(`switched off ${row.name}`)
+    }
   } finally {
     await close()
   }
