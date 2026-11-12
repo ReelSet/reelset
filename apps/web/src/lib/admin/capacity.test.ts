@@ -10,6 +10,7 @@ import {
   hourRange,
   onlineFraction,
   p95,
+  runInterval,
   percentile,
   utilization,
   type RenderRun,
@@ -54,6 +55,18 @@ describe('busySecondsByBoxDay', () => {
     const busy = busySecondsByBoxDay([r], ['2026-03-01', '2026-03-02'])
     expect(busy.get('box1')?.get('2026-03-01')).toBe(3600)
     expect(busy.get('box1')?.get('2026-03-02')).toBe(3600)
+  })
+
+  it('prefers the box-measured render time over a started_at reset by a re-check', () => {
+    const r = run({
+      startedAt: d('2026-03-02T00:59:00Z'),
+      finishedAt: d('2026-03-02T01:00:00Z'),
+      renderMs: 70 * 60_000,
+    })
+    expect(runInterval(r)).toEqual([
+      d('2026-03-01T23:50:00Z').getTime(),
+      d('2026-03-02T01:00:00Z').getTime(),
+    ])
   })
   it('falls back to render_ms and counts failed, ignoring running and box-less', () => {
     const rs = [
