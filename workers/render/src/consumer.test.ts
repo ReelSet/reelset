@@ -721,3 +721,100 @@ describe('aura-2 narration', () => {
     })
   })
 })
+
+describe('director', () => {
+  const config = {
+    model: 'claude-haiku-5-5' as const,
+    effort: 'medium' as const,
+    maxTokens: 128_000,
+    review: true,
+    rules: 'rules',
+    reviewPrompt: 'review',
+    skills: [{ name: 'motion', content: 'ease out' }],
+    example: 'export default []',
+  }
+  const report = {
+    used: true,
+    model: 'claude-haiku-5-5',
+    scenes: 6,
+    sceneErrors: 1,
+    fallbackReason: null,
+    inputTokens: 120_000,
+    outputTokens: 10_000,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    ms: 40_000,
+  }
+  const withReport = (director: unknown) =>
+    new FakeContainer({
+      renderBody: {
+        jobId: 'x',
+        bytes: 1000,
+        posterBytes: 50,
+        durationMs: 30_000,
+        ttsDurationMs: 29_000,
+        ttsChars: 400,
+        renderMs: 20_000,
+        cover: true,
+        templateVersion: TEMPLATE_VERSION,
+        director,
+      },
+    })
+
+  it('sends the director config in the render request', async () => {
+    const { deps, container } = setup()
+    deps.director = async () => config
+    await processRenderJob(deps, body, 1)
+    expect((container.requests[0]!.body as Record<string, unknown>).director).toEqual(config)
+  })
+
+  it('omits director when disabled, not wired, or failing to load', async () => {
+    const disabled = setup()
+    disabled.deps.director = async () => null
+    const unwired = setup()
+    const broken = setup()
+    broken.deps.director = async () => {
+      throw new Error('db down')
+    }
+    for (const s of [disabled, unwired, broken]) {
+      expect(await processRenderJob(s.deps, body, 1)).toEqual({ action: 'ack' })
+      expect(s.container.requests[0]!.body).not.toHaveProperty('director')
+    }
+  })
+
+  it('stores what the box reports and records its cost at the long-prompt rate', async () => {
+    const store = new FakeStore()
+    const { deps, rec } = setup({ store, container: withReport(report) })
+    deps.director = async () => config
+    await processRenderJob(deps, body, 1)
+    expect(store.renders.get(await keyFor())?.done?.director).toEqual(report)
+    const spend = rec.spends.find((s) => s.category === 'llm')
+    expect(spend).toMatchObject({ units: 130_000, meta: { stage: 'director' } })
+    expect(spend?.costUsd).toBeCloseTo(120_000 * 0.5e-6 + 10_000 * 2.5e-6, 6)
+  })
+
+  it('records no spend when the box used no tokens', async () => {
+    const store = new FakeStore()
+    const empty = {
+      ...report,
+      used: false,
+      fallbackReason: 'no_api_key',
+      inputTokens: 0,
+      outputTokens: 0,
+    }
+    const { deps, rec } = setup({ store, container: withReport(empty) })
+    await processRenderJob(deps, body, 1)
+    expect(store.renders.get(await keyFor())?.done?.director).toMatchObject({
+      used: false,
+      fallbackReason: 'no_api_key',
+    })
+    expect(rec.spends.map((s) => s.category)).toEqual(['tts', 'render'])
+  })
+
+  it('never fails a render over a malformed director report', async () => {
+    const store = new FakeStore()
+    const { deps } = setup({ store, container: withReport('garbage') })
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    expect(store.renders.get(await keyFor())?.done?.director).toBeUndefined()
+  })
+})

@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { ItemImage, Logger, Source } from '@reelset/core'
-import { errorFields } from '@reelset/core'
+import type { DirectorPayload, ItemImage, Logger, Source } from '@reelset/core'
+import { directorMetaSchema, errorFields } from '@reelset/core'
 import {
   BOX_BUSY_STATUS,
   CLOUDFLARE_ORIGIN_TIMEOUT_STATUS,
@@ -29,6 +29,7 @@ export type RenderInput = {
   facts?: ItemFacts
   broll?: BrollPick[]
   demo?: ItemDemo
+  director?: DirectorPayload
   ttsEngine?: 'kokoro' | 'edge'
   narration?: { audioBase64: string; words: { text: string; start: number; end: number }[] }
 }
@@ -45,6 +46,7 @@ const metadataSchema = z.object({
   renderMs: z.number().int().nonnegative(),
   cover: z.boolean().default(false),
   templateVersion: z.string().optional(),
+  director: directorMetaSchema.optional().catch(undefined),
   credits: z
     .array(
       z.object({

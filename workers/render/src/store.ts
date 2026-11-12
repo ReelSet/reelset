@@ -3,6 +3,7 @@ import {
   SETTINGS,
   getSetting,
   parseItemImages,
+  type DirectorMeta,
   type Database,
   type ItemImage,
   type ItemStatus,
@@ -53,6 +54,7 @@ export type RenderDone = {
   renderMs: number
   credits?: unknown[]
   box?: string
+  director?: DirectorMeta
 }
 
 export interface RenderStore {
@@ -199,6 +201,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           render_ms: done.renderMs,
           credits: done.credits?.length ? JSON.stringify(done.credits) : null,
           box: done.box ?? null,
+          director: done.director ? JSON.stringify(done.director) : null,
           error: null,
           finished_at: sql`now()`,
         })

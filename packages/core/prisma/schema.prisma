@@ -302,6 +302,7 @@ model Render {
   templateVersion Int?         @map("template_version")
   credits         Json?
   box             String?      @db.VarChar(64)
+  director        Json?
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   startedAt       DateTime?    @map("started_at") @db.Timestamptz(6)
   finishedAt      DateTime?    @map("finished_at") @db.Timestamptz(6)
@@ -489,4 +490,18 @@ model BoxSample {
   @@index([box, at(sort: Desc)], map: "box_sample_box_at_idx")
   @@index([at], map: "box_sample_at_idx")
   @@map("box_sample")
+}
+
+model DirectorSkill {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique(map: "director_skill_name_key") @db.VarChar(80)
+  kind      String   @default("skill")
+  content   String
+  enabled   Boolean  @default(true)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([enabled, sort, name], map: "director_skill_enabled_sort_idx")
+  @@map("director_skill")
 }
