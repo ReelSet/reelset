@@ -91,6 +91,63 @@ describe('createBoxFetcher', () => {
   })
 })
 
+describe('fallback box', () => {
+  const pair = () =>
+    createBoxFetcher({
+      baseUrl: 'https://box1.example.test',
+      fallbackUrl: 'https://box2.example.test',
+      token: 'secret-token',
+      log: silentLog,
+    })
+
+  it('stays on the first box when it answers, even with an error', async () => {
+    const calls = stubFetch(() => Response.json({ error: 'busy' }, { status: 429 }))
+    const res = await pair().fetch(new Request('http://container/render', { method: 'POST' }))
+    expect(res.status).toBe(429)
+    expect(calls.map((c) => c.url)).toEqual(['https://box1.example.test/render'])
+  })
+
+  it.each([502, 530])('moves to the second box when the first is down (%i)', async (status) => {
+    const responses = [new Response('down', { status }), new Response('ok')]
+    const calls = stubFetch(() => responses.shift()!)
+    const res = await pair().fetch(
+      new Request('http://container/transcript', { method: 'POST', body: '{"videoId":"x"}' }),
+    )
+    expect(res.status).toBe(200)
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://box1.example.test/transcript',
+      'https://box2.example.test/transcript',
+    ])
+    expect(new TextDecoder().decode(calls[1]!.init.body as ArrayBuffer)).toBe('{"videoId":"x"}')
+    expect(calls[1]!.init.headers.get('authorization')).toBe('Bearer secret-token')
+  })
+
+  it('moves to the second box when the first is unreachable', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('connection refused'))
+      .mockResolvedValueOnce(new Response('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await pair().fetch(new Request('http://container/health'))
+    expect(res.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('never re-sends a timed out request, which may still be rendering', async () => {
+    const timeout = new DOMException('timed out', 'TimeoutError')
+    const fetchMock = vi.fn().mockRejectedValue(timeout)
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(pair().fetch(new Request('http://container/render'))).rejects.toBe(timeout)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns the last down response when both boxes are down', async () => {
+    stubFetch(() => new Response('down', { status: 530 }))
+    const res = await pair().fetch(new Request('http://container/health'))
+    expect(res.status).toBe(530)
+  })
+})
+
 describe('box busy responses through the container client', () => {
   const input = {
     jobId: 'j',

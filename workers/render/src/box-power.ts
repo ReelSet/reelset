@@ -103,7 +103,8 @@ export function parsePowerState(body: unknown): BoxPowerState {
 
 /** A paused service answers 503 with an empty body (checked live), so a non-JSON 502/503/504 means the box is down. */
 export function isBoxDownResponse(res: Response): boolean {
-  const down = res.status === 502 || res.status === 503 || res.status === 504
+  // 530 is what Cloudflare serves when a tunnel's connector is offline.
+  const down = [502, 503, 504, 530].includes(res.status)
   return down && !(res.headers.get('content-type') ?? '').includes('application/json')
 }
 

@@ -12,7 +12,8 @@ export const CONTAINER_BASE_URL = 'http://container'
 export const BOX_BUSY_STATUS = 429
 export const CLOUDFLARE_ORIGIN_TIMEOUT_STATUS = 524
 export const BUSY_RETRY_DELAY_SECONDS = 45
-export const BUSY_MAX_DEFERRALS = 160
+// A free 1/8-OCPU box can take an hour or more per reel; keep re-checking for about 4 hours.
+export const BUSY_MAX_DEFERRALS = 320
 export const RENDER_TIMEOUT_MS = 14 * 60_000
 export const TRANSCRIPT_TIMEOUT_MS = 45_000
 export const YOUTUBE_SEARCH_TIMEOUT_MS = 120_000
