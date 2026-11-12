@@ -157,7 +157,11 @@ function brollMoment(a: DrawArgs): void {
   const w = measure(dom, 'monoB', 30) + 70
   c.save()
   c.globalAlpha = p
-  card(c, z.x, z.y + 10, w, 60, { r: 30, fill: 'rgba(11,11,14,0.72)', stroke: 'rgba(246,244,238,0.14)' })
+  card(c, z.x, z.y + 10, w, 60, {
+    r: 30,
+    fill: 'rgba(11,11,14,0.72)',
+    stroke: 'rgba(246,244,238,0.14)',
+  })
   c.beginPath()
   c.arc(z.x + 30, z.y + 40, 7, 0, Math.PI * 2)
   c.fillStyle = COL.lime
