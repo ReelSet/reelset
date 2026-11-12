@@ -148,6 +148,18 @@ describe('settings form', () => {
     expect(field('dailyReelCap').kind).toBe('number')
   })
 
+  it('renders boolean settings as true/false and parses only those words', () => {
+    expect(field('instagramAutoPost').kind).toBe('boolean')
+    expect(field('renderUpgradeEnabled').kind).toBe('boolean')
+    expect(parseSettingInput(field('instagramAutoPost'), ' false ')).toEqual({
+      ok: true,
+      value: false,
+    })
+    expect(parseSettingInput(field('instagramAutoPost'), 'true')).toEqual({ ok: true, value: true })
+    expect(parseSettingInput(field('instagramAutoPost'), 'yes').ok).toBe(false)
+    expect(formatSettingInput('boolean', true)).toBe('true')
+  })
+
   it('validates enum values against the schema', () => {
     expect(parseSettingInput(field('scriptModel'), ' claude-opus-5-5 ')).toEqual({
       ok: true,

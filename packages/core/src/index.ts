@@ -130,7 +130,21 @@ export {
   type IgAccountState,
 } from './domain/instagram-post'
 export {
+  BRAND_HASHTAGS,
+  buildCaption,
+  parseCaptionCredits,
+  topicHashtags,
+  type CaptionCredit,
+  type CaptionInput,
+} from './domain/instagram-caption'
+export {
   IG_ACCOUNT_KEY,
+  INSTAGRAM_AUTO_LOOKBACK_HOURS,
+  INSTAGRAM_AUTO_REQUESTER,
+  SERVED_RENDER_ORDER_SQL,
+  autoPostsQueuedToday,
+  insertAutoPost,
+  listAutoPostCandidates,
   type ClaimedPost,
   claimNextDelete,
   claimNextPost,

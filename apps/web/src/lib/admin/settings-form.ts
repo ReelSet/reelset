@@ -8,12 +8,12 @@ import {
   type SettingDef,
 } from '@reelset/core'
 
-export type SettingKind = 'number' | 'list' | 'enum'
+export type SettingKind = 'number' | 'list' | 'enum' | 'boolean'
 
 type SettingFieldBase = { name: keyof typeof SETTINGS; def: SettingDef<unknown>; hint: string }
 
 export type SettingField = SettingFieldBase &
-  ({ kind: 'number' | 'list' } | { kind: 'enum'; options: readonly string[] })
+  ({ kind: 'number' | 'list' | 'boolean' } | { kind: 'enum'; options: readonly string[] })
 
 function formatUsd(perMTok: number): string {
   return perMTok < 1 ? `$${perMTok.toFixed(2)}` : `$${perMTok}`
@@ -30,7 +30,8 @@ function modelPriceLabel(model: ClaudeModel): string {
 const MODEL_PRICES = `per MTok in/out: ${CLAUDE_MODELS.map(modelPriceLabel).join(', ')}`
 
 const HINTS: Record<string, string> = {
-  daily_reel_cap: 'Max items admitted to the pipeline per UTC day',
+  daily_reel_cap:
+    'Reels made per UTC day (max items admitted to the pipeline); also caps Instagram auto posts',
   min_item_score: 'Admission threshold, 0 to 1',
   reel_retention_days: 'Days a reel stays in R2 after publishing',
   pipeline_daily_spend_cap_usd: 'Ingest and render spend cap per UTC day, USD',
@@ -46,6 +47,9 @@ const HINTS: Record<string, string> = {
   script_effort: 'Script thinking depth; medium keeps narration on length, high costs more output',
   image_vet_model: `Vets up to 6 images per item; ${MODEL_PRICES}`,
   ask_model: `Answers Ask questions from the next request; ${MODEL_PRICES}`,
+  render_upgrade_enabled: 'Re-render older reels when a newer template ships',
+  instagram_auto_post:
+    'Queue every new reel for Instagram (up to daily_reel_cap per day); false = post by hand only',
 }
 
 function settingField(name: keyof typeof SETTINGS): SettingField {
@@ -53,6 +57,7 @@ function settingField(name: keyof typeof SETTINGS): SettingField {
   const base = { name, def, hint: HINTS[def.key] ?? '' }
   const options = settingEnumOptions(def)
   if (options) return { ...base, kind: 'enum', options }
+  if (typeof def.default === 'boolean') return { ...base, kind: 'boolean' }
   return { ...base, kind: Array.isArray(def.default) ? 'list' : 'number' }
 }
 
@@ -69,6 +74,10 @@ export type ParsedSetting = { ok: true; value: unknown } | { ok: false; error: s
 
 function candidateValue(kind: SettingKind, key: string, raw: string): unknown {
   if (kind === 'enum') return raw.trim()
+  if (kind === 'boolean') {
+    const text = raw.trim()
+    return text === 'true' ? true : text === 'false' ? false : text
+  }
   if (kind === 'list') {
     const separator = key === 'youtube_search_queries' ? /\n/ : /[\n,]/
     return raw

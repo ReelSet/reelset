@@ -7,8 +7,8 @@ const log = pino({ level: 'silent' })
 
 describe('parseSetting', () => {
   it('falls back to the default when the row is missing', () => {
-    expect(parseSetting(SETTINGS.dailyReelCap, undefined, log)).toBe(200)
-    expect(parseSetting(SETTINGS.dailyReelCap, null, log)).toBe(200)
+    expect(parseSetting(SETTINGS.dailyReelCap, undefined, log)).toBe(2)
+    expect(parseSetting(SETTINGS.dailyReelCap, null, log)).toBe(2)
   })
 
   it('uses a valid stored value', () => {
@@ -17,7 +17,7 @@ describe('parseSetting', () => {
   })
 
   it('falls back to the default when the stored value is invalid, so a bad admin edit cannot break ingest', () => {
-    expect(parseSetting(SETTINGS.dailyReelCap, -5, log)).toBe(200)
+    expect(parseSetting(SETTINGS.dailyReelCap, -5, log)).toBe(2)
     expect(parseSetting(SETTINGS.minItemScore, 3, log)).toBe(0.35)
     expect(parseSetting(SETTINGS.newsFeeds, ['not a url'], log)).toEqual(SETTINGS.newsFeeds.default)
   })

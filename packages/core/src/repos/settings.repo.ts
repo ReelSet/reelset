@@ -23,7 +23,7 @@ export const pipelinePauseSchema = z.object({
 export type PipelinePause = z.infer<typeof pipelinePauseSchema>
 
 export const SETTINGS = {
-  dailyReelCap: def('daily_reel_cap', z.number().int().positive(), 200),
+  dailyReelCap: def('daily_reel_cap', z.number().int().positive(), 2),
   minItemScore: def('min_item_score', z.number().min(0).max(1), 0.35),
   feedMinTemplate: def('feed_min_template', z.number().int().min(0), 0),
   reelRetentionDays: def('reel_retention_days', z.number().int().positive(), 30),
@@ -87,6 +87,7 @@ export const SETTINGS = {
   askModel: def('ask_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
   renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
+  instagramAutoPost: def('instagram_auto_post', z.boolean(), true),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 
