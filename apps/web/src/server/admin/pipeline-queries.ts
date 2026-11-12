@@ -71,6 +71,10 @@ export async function healthSnapshot(db: Database, log: Logger) {
       .selectFrom('render')
       .select(['status', (eb) => eb.fn.countAll<string>().as('n')])
       .where('status', 'in', [RenderStatus.queued, RenderStatus.rendering])
+      // Leftover rows of items that already finished or failed are not work in flight.
+      .where(
+        sql<boolean>`exists (select 1 from item i where i.id = render.item_id and i.status = 'embedded')`,
+      )
       .groupBy('status')
       .execute(),
     db
