@@ -106,6 +106,11 @@ export const SparkleIcon = ({ className }: P) => (
     <path d="M12 3.5c.6 4.5 2 5.9 6.5 6.5-4.5.6-5.9 2-6.5 6.5-.6-4.5-2-5.9-6.5-6.5C10 9.4 11.4 8 12 3.5zM18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" />
   </Svg>
 )
+export const HashIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M9.5 4 8 20M16 4l-1.5 16M4.5 9h15M4 15h15" />
+  </Svg>
+)
 export const HomeIcon = ({ className }: P) => (
   <Svg className={className}>
     <rect x="6" y="3" width="12" height="18" rx="3" />

@@ -6,7 +6,14 @@ import { track } from '@/lib/client/track'
 import { reelPath } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
 import { ReelCard, type ReelControls } from './ReelCard'
-import { ChevronIcon, HomeIcon, SearchIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
+import {
+  ChevronIcon,
+  HashIcon,
+  HomeIcon,
+  SearchIcon,
+  SparkleIcon,
+  UserIcon,
+} from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LogoMark, Wordmark } from '@/components/ui/Logo'
@@ -299,6 +306,9 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
             <SideLink href="/" active icon={<HomeIcon className="h-[18px] w-[18px]" />}>
               Feed
             </SideLink>
+            <SideLink href="/t" icon={<HashIcon className="h-[18px] w-[18px]" />}>
+              Topics
+            </SideLink>
             <SideLink href="/ask" icon={<SparkleIcon className="h-[18px] w-[18px]" />}>
               Ask
             </SideLink>
@@ -325,6 +335,13 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-4 pb-6 pt-safe lg:hidden">
           <Wordmark className="text-[15px] text-white" />
           <div className="pointer-events-auto flex items-center gap-2">
+            <a
+              href="/t"
+              aria-label="Topics"
+              className="glass grid h-9 w-9 place-items-center rounded-full transition active:scale-90"
+            >
+              <HashIcon className="h-[18px] w-[18px]" />
+            </a>
             <a
               href="/ask"
               aria-label="Ask"
@@ -474,12 +491,20 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
             <LogoMark className="mx-auto h-10 w-10" />
             <p className="mt-4 text-lg font-semibold tracking-tight">You are all caught up</p>
             <p className="mt-1 text-sm text-muted">Fresh reels land every hour.</p>
-            <a
-              href="/ask"
-              className="mt-5 inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
-            >
-              Ask the feed
-            </a>
+            <div className="mt-5 flex justify-center gap-2">
+              <a
+                href="/t"
+                className="inline-flex rounded-full border border-line px-5 py-2.5 text-sm font-medium text-fg transition active:scale-95"
+              >
+                Browse topics
+              </a>
+              <a
+                href="/ask"
+                className="inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
+              >
+                Ask the feed
+              </a>
+            </div>
           </div>
         </section>
       )}
