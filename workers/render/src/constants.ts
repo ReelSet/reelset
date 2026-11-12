@@ -18,7 +18,8 @@ export const RENDER_TIMEOUT_MS = 14 * 60_000
 export const TRANSCRIPT_TIMEOUT_MS = 45_000
 export const YOUTUBE_SEARCH_TIMEOUT_MS = 120_000
 export const PAPER_PARSE_TIMEOUT_MS = 110_000
-export const BOX_HEALTH_TIMEOUT_MS = 8_000
+// A Micro under render load answers /health in 2-3 s locally and slower through the tunnel.
+export const BOX_HEALTH_TIMEOUT_MS = 20_000
 export const BOX_SAMPLE_RETENTION_DAYS = 30
 export const DEFAULT_MEDIA_BASE_URL = 'https://media.reelset.app'
 
