@@ -1,7 +1,7 @@
 class RenderError(Exception):
     """Carries one of the stable error codes the worker maps to retry decisions."""
 
-    CODES = ("tts_unavailable", "ffmpeg_failed", "invalid_input", "too_large", "busy")
+    CODES = ("tts_unavailable", "ffmpeg_failed", "invalid_input", "too_large", "busy", "in_progress")
 
     def __init__(self, code: str, message: str):
         if code not in self.CODES:
@@ -16,6 +16,7 @@ class RenderError(Exception):
         "tts_unavailable": 502,
         "ffmpeg_failed": 500,
         "busy": 429,
+        "in_progress": 409,
     }
 
     @property

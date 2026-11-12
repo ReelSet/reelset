@@ -6,7 +6,7 @@ import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from reel import instagram, pipeline, transcript, validation, youtube_search
+from reel import hoststats, instagram, pipeline, transcript, validation, youtube_search
 from reel.activity import Activity
 from reel.errors import RenderError
 from reel.jobs import JobStore
@@ -39,6 +39,8 @@ def is_authorized(token: str, path: str, header: str | None) -> bool:
 
 
 activity = Activity()
+BOX_NAME = hoststats.box_name()
+cpu_sampler = hoststats.CpuSampler()
 jobs = JobStore(max_running=max_renders_from_env(os.environ.get("MAX_RENDERS")))
 
 
@@ -95,8 +97,19 @@ class Handler(BaseHTTPRequestHandler):
             inflight, idle = activity.snapshot()
             return self._json(
                 200,
-                {"ok": True, "running": jobs.running(), "inflight": inflight, "idleSeconds": idle},
+                {
+                    "ok": True,
+                    "box": BOX_NAME,
+                    "running": jobs.running(),
+                    "inflight": inflight,
+                    "idleSeconds": idle,
+                    **hoststats.snapshot(cpu_sampler),
+                },
             )
+        job = JOB_RE.match(self.path)
+        if job:
+            # Status probes are not work: they must not reset the idle clock the reclaim guard reads.
+            return self._json(200, {"state": jobs.state(job.group(1))})
         self._track()
         match = ASSET_RE.match(self.path)
         if not match:
@@ -231,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
             log.info("job=%s already rendered, returning cached metadata", req.job_id)
             return self._json(200, payload)
         try:
-            meta = pipeline.run_render(req, payload)
+            meta = {**pipeline.run_render(req, payload), "box": BOX_NAME}
         except BaseException:
             jobs.fail(req.job_id)
             raise
@@ -240,5 +253,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    log.info("listening on %d", PORT)
+    log.info("listening on %d as box %s", PORT, BOX_NAME)
+    cpu_sampler.start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

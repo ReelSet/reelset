@@ -43,6 +43,10 @@ function setup(overrides: Partial<MaintenanceStore> = {}, listPage?: unknown) {
     getUpgradeSent: async () => [],
     setUpgradeSent: async () => {},
     getOrphanCursor: async () => 'c0',
+    pruneBoxSamples: async (before) => {
+      track('prune_samples', before)
+      return 3
+    },
     setOrphanCursor: async (c) => {
       track('cursor', c)
     },
@@ -152,6 +156,15 @@ describe('maintenance', () => {
     })
     await runMaintenance(deps)
     expect(alerts.map((a) => a.key)).toContain('render_failure_rate_high')
+  })
+})
+
+describe('box sample pruning', () => {
+  it('prunes samples older than 30 days during maintenance', async () => {
+    const { deps, calls } = setup()
+    deps.now = () => now
+    await runMaintenance(deps)
+    expect(calls.prune_samples).toEqual([new Date(now.getTime() - 30 * 24 * 60 * 60_000)])
   })
 })
 

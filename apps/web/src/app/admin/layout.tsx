@@ -15,6 +15,7 @@ const LINKS = [
   { href: '/admin/items', label: 'Items' },
   { href: '/admin/ingest', label: 'Ingest runs' },
   { href: '/admin/renders', label: 'Renders' },
+  { href: '/admin/capacity', label: 'Capacity' },
   { href: '/admin/health', label: 'Source health' },
   { href: '/admin/spend', label: 'Spend' },
   { href: '/admin/ask', label: 'Ask log' },

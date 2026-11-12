@@ -21,7 +21,7 @@ import {
   MAX_VIDEO_BYTES,
   TEMPLATE_VERSION,
 } from './constants'
-import { RenderJobError } from './errors'
+import { RenderJobError, isBusyCode } from './errors'
 import {
   MAX_NARRATION_SECONDS,
   MAX_SHORTEN_ATTEMPTS,
@@ -129,7 +129,7 @@ function busyDeferral(
   err: unknown,
   message: JobMessage,
 ): Extract<JobResult, { action: 'defer' }> | null {
-  if (!(err instanceof RenderJobError) || err.code !== 'busy') return null
+  if (!(err instanceof RenderJobError) || !isBusyCode(err.code)) return null
   const deferrals = (message.deferrals ?? 0) + 1
   if (deferrals > BUSY_MAX_DEFERRALS) return null
   return {
@@ -327,6 +327,7 @@ async function renderAndUpload(
       videoDurationMs: metadata.durationMs,
       renderMs: metadata.renderMs,
       credits: metadata.credits,
+      box: metadata.box,
     })
     return metadata
   } finally {

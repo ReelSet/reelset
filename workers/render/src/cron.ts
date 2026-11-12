@@ -8,6 +8,7 @@ import {
   type Logger,
 } from '@reelset/core'
 import {
+  BOX_SAMPLE_RETENTION_DAYS,
   DEAD_LETTER_WINDOW_MS,
   FAILURE_RATE_WINDOW_MS,
   ORPHAN_SCAN_PAGE_SIZE,
@@ -56,6 +57,7 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<void> {
   await step('stuck', log, () => failStuck(deps, now, log))
   await step('orphans', log, () => cleanOrphans(deps, now, log))
   await step('retention', log, () => applyRetention(deps, now, log))
+  await step('box_samples', log, () => pruneBoxSamples(deps, now, log))
   await step('upgrade', log, () => upgradeTemplates(deps, log, now))
   await step('alerts', log, () => checkAlerts(deps, now, log))
   log.info('maintenance finished')
@@ -100,6 +102,17 @@ export async function applyRetention(
     'retention applied',
   )
   return expired.length
+}
+
+export async function pruneBoxSamples(
+  deps: MaintenanceDeps,
+  now: Date,
+  log: Logger,
+): Promise<number> {
+  const before = new Date(now.getTime() - BOX_SAMPLE_RETENTION_DAYS * 24 * 60 * 60_000)
+  const deleted = await deps.store.pruneBoxSamples(before)
+  if (deleted > 0) log.info({ deleted }, 'pruned old box samples')
+  return deleted
 }
 
 export async function checkAlerts(deps: MaintenanceDeps, now: Date, log: Logger): Promise<void> {

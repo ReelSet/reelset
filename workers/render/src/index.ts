@@ -11,8 +11,8 @@ import {
   type ReelScript,
 } from '@reelset/core'
 import { loadRetentionDays, runMaintenance } from './cron'
-import { createBoxFetcher } from './box-fetcher'
-import { createBoxPower, pauseIdleBox, type BoxPower } from './box-power'
+import { createBoxFetcher, parseBoxUrls } from './box-fetcher'
+import { sampleBoxes } from './box-health'
 import { DEFAULT_MEDIA_BASE_URL } from './constants'
 import { processRenderJob, type JobResult } from './consumer'
 import { pickBroll } from './pexels'
@@ -23,7 +23,12 @@ import { igConfigured, withIgDeps } from './instagram/wire'
 import { runInstagramQueue } from './instagram/service'
 import { createAutoPostDeps, queueAutoInstagramPosts } from './instagram/auto'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
-import { createMaintenanceStore, createRenderStore, type ItemForRender } from './store'
+import {
+  createBoxSampleStore,
+  createMaintenanceStore,
+  createRenderStore,
+  type ItemForRender,
+} from './store'
 import { loadTtsConfig } from './tts-config'
 
 const INTERNAL_HOST = 'render.internal'
@@ -44,7 +49,7 @@ async function runInstagramBatch(
     batch.ackAll()
     return
   }
-  const container = boxFor(env, log, 'helper')
+  const container = boxFor(env, log)
   try {
     const outcome = await withIgDeps(env, container, log, runInstagramQueue)
     log.info({ reasons, outcome }, 'instagram queue run done')
@@ -54,24 +59,11 @@ async function runInstagramBatch(
   batch.ackAll()
 }
 
-function powerFor(env: Env, log: Logger): BoxPower | undefined {
-  const { NORTHFLANK_API_TOKEN: apiToken, NORTHFLANK_PROJECT_ID: projectId } = env
-  const serviceId = env.NORTHFLANK_SERVICE_ID
-  if (!apiToken || !projectId || !serviceId) return undefined
-  return createBoxPower({ apiToken, projectId, serviceId, log })
-}
-
-/** Renders go to the render box; light calls (transcripts, search, papers, Instagram) to the helper box. Each falls back to the other. */
-function boxFor(env: Env, log: Logger, role: 'render' | 'helper') {
-  const helperUrl = env.HELPER_BOX_URL || env.RENDER_BOX_URL
-  const [baseUrl, fallbackUrl] =
-    role === 'render' ? [env.RENDER_BOX_URL, helperUrl] : [helperUrl, env.RENDER_BOX_URL]
+function boxFor(env: Env, log: Logger) {
   return createBoxFetcher({
-    baseUrl,
-    fallbackUrl: fallbackUrl === baseUrl ? undefined : fallbackUrl,
+    baseUrls: parseBoxUrls(env.BOX_URLS),
     token: env.RENDER_BOX_TOKEN ?? '',
-    log: log.child({ boxRole: role }),
-    power: powerFor(env, log),
+    log,
   })
 }
 
@@ -99,7 +91,7 @@ export default {
     const igRoute = matchIgRoute(request.method, url.pathname)
     if (igRoute !== 'not_found') {
       const log = makeLogger(env).child({ route: `ig/${igRoute}` })
-      const container = boxFor(env, log, 'helper')
+      const container = boxFor(env, log)
       return handleIgRoute(igRoute, request, {
         token: env.IG_ADMIN_TOKEN,
         withDeps: (fn) => withIgDeps(env, container, log, fn),
@@ -114,7 +106,7 @@ export default {
       return new Response('not found', { status: 404 })
     }
     const log = makeLogger(env).child({ route })
-    const container = boxFor(env, log, 'helper')
+    const container = boxFor(env, log)
     if (route === 'parse_paper') {
       return handleParsePaper(request, {
         media: env.MEDIA,
@@ -143,7 +135,7 @@ export default {
       const tts = await loadTtsConfig(db, env, log)
       const deps = {
         store: createRenderStore(db, log),
-        box: boxFor(env, log, 'render'),
+        box: boxFor(env, log),
         media: env.MEDIA,
         transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
@@ -200,14 +192,24 @@ export default {
         })().catch((err) => log.error(errorFields(err), 'instagram queue run enqueue failed')),
       )
     }
-    const power = powerFor(env, log)
-    if (power) {
-      ctx.waitUntil(
-        pauseIdleBox({ boxUrl: env.RENDER_BOX_URL, power, log }).catch((err) =>
-          log.error(errorFields(err), 'render box idle check failed'),
-        ),
-      )
-    }
+    ctx.waitUntil(
+      (async () => {
+        const { db: sampleDb, close: closeSample } = createDb({
+          connectionString: env.HYPERDRIVE.connectionString,
+          log,
+          max: 1,
+        })
+        try {
+          await sampleBoxes({
+            urls: parseBoxUrls(env.BOX_URLS),
+            store: createBoxSampleStore(sampleDb),
+            log,
+          })
+        } finally {
+          await closeSample()
+        }
+      })().catch((err) => log.error(errorFields(err), 'box health sampling failed')),
+    )
     ctx.waitUntil(
       (async () => {
         const upgradeEnabled = await getSetting(db, SETTINGS.renderUpgradeEnabled, log)

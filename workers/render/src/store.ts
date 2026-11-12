@@ -20,6 +20,7 @@ import { RETRYABLE_FAILURE_CODES } from './errors'
 import { buildFacts, type ItemFacts } from './facts'
 import { parseDemo, type ItemDemo } from './demo'
 import { primarySource, sourceLabel } from './plan'
+import type { BoxSampleStore } from './box-health'
 
 export type ItemForRender = {
   id: string
@@ -51,6 +52,7 @@ export type RenderDone = {
   videoDurationMs: number
   renderMs: number
   credits?: unknown[]
+  box?: string
 }
 
 export interface RenderStore {
@@ -91,6 +93,7 @@ export interface MaintenanceStore {
   setUpgradeSent(sent: UpgradeSent[]): Promise<void>
   getOrphanCursor(): Promise<string | null>
   setOrphanCursor(cursor: string | null): Promise<void>
+  pruneBoxSamples(before: Date): Promise<number>
 }
 
 export function createRenderStore(db: Database, log: Logger): RenderStore {
@@ -195,6 +198,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           video_duration_ms: done.videoDurationMs,
           render_ms: done.renderMs,
           credits: done.credits?.length ? JSON.stringify(done.credits) : null,
+          box: done.box ?? null,
           error: null,
           finished_at: sql`now()`,
         })
@@ -437,6 +441,19 @@ export function createMaintenanceStore(db: Database, log: Logger): MaintenanceSt
         .values({ key: ORPHAN_CURSOR_SETTING_KEY, value })
         .onConflict((oc) => oc.column('key').doUpdateSet({ value, updated_at: sql`now()` }))
         .execute()
+    },
+
+    async pruneBoxSamples(before) {
+      const res = await db.deleteFrom('box_sample').where('at', '<', before).executeTakeFirst()
+      return Number(res.numDeletedRows)
+    },
+  }
+}
+
+export function createBoxSampleStore(db: Database): BoxSampleStore {
+  return {
+    async insertBoxSample(row) {
+      await db.insertInto('box_sample').values(row).execute()
     },
   }
 }
