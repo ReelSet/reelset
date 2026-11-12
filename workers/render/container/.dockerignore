@@ -3,7 +3,8 @@ __pycache__
 tests
 *.pyc
 tools
-remotion/node_modules
-remotion/build
-remotion/.still-bundle
-remotion/src/**/*.test.ts
+skia/node_modules
+skia/dist
+skia/out
+skia/src/**/*.test.ts
+skia/test

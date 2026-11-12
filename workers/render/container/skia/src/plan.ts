@@ -27,7 +27,7 @@ import { HEADLINE_PAD, PLAN_FPS } from './engine/kit'
 
 export type { ReelProps, ScreenName, Word, ReelImage, BrollClip, ReelDemo, ItemFacts, Source }
 
-/** What every screen may know about the item (same fields as the Remotion ReelCtx). */
+/** What every screen may know about the item. */
 export type ReelCtx = {
   title: string
   source: Source

@@ -1,4 +1,4 @@
-"""Render a v6 sample through the production pipeline (real images, Remotion, ffmpeg) with silent
+"""Render a v6 sample through the production pipeline (real images, Skia renderer, ffmpeg) with silent
 stand-in narration. Usage: renderV6.py <payload.json> <out_dir>"""
 import json, os, subprocess, sys
 

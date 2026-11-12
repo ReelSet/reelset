@@ -1,4 +1,4 @@
-// Mirror of workers/render/container/remotion/src/lib/labels.ts (everything from `const NUM`; a test
+// Mirror of workers/render/container/skia/src/planner/lib/labels.ts (everything from `const NUM`; a test
 // keeps the two identical): a big number's label is what the sentence says that number is, and a
 // label is never reused for another number.
 import { findQuantities, numberLabel, withMeasure } from './text-rules'

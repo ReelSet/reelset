@@ -14,7 +14,7 @@ SOURCES = ("hn", "github", "news", "reddit", "youtube", "papers")
 MAX_IMAGE_URLS = 10
 MAX_SOURCE_IMAGES = 8
 IMAGE_KINDS = ("og", "thumbnail", "figure", "screenshot", "avatar")
-# Keep in sync with remotion/src/lib/types.ts (SCREEN_NAMES, SFX_NAMES).
+# Keep in sync with skia/src/planner/lib/types.ts (SCREEN_NAMES, SFX_NAMES).
 SCREEN_NAMES = (
     "RepoPage", "Terminal", "CodeBlock", "StatSlam", "BarRace", "HNThread", "RedditPost",
     "YouTubePlayer", "PaperPage", "FigureZoom", "TableScreen", "EquationScreen", "ArticleHeadline", "ImageFull", "KeyPoint",
@@ -73,6 +73,7 @@ class RenderRequest:
     broll: list = field(default_factory=list)
     demo: dict | None = None
     claims: list = field(default_factory=list)
+    director: dict | None = None
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -310,7 +311,83 @@ def validate_render_request(payload) -> RenderRequest:
         broll=_validate_broll(payload.get("broll")),
         demo=_validate_demo(payload.get("demo")),
         claims=_validate_claims(script.get("claims")),
+        director=_validate_director(payload.get("director")),
     )
+
+
+DIRECTOR_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+DIRECTOR_MODEL_RE = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
+DIRECTOR_MIN_TOKENS = 1024
+DIRECTOR_MAX_TOKENS = 128000
+DIRECTOR_MAX_RULES_CHARS = 20000
+DIRECTOR_MAX_REVIEW_PROMPT_CHARS = 6000
+DIRECTOR_MAX_SKILLS = 24
+DIRECTOR_MAX_SKILL_NAME_CHARS = 100
+DIRECTOR_MAX_SKILLS_CHARS = 600000
+DIRECTOR_MAX_EXAMPLE_CHARS = 200000
+
+
+def _director_str(raw: dict, key: str, max_len: int) -> str:
+    value = raw.get(key)
+    if not isinstance(value, str) or len(value) > max_len:
+        _bad(f"director.{key} must be a string of at most {max_len} characters")
+    return value
+
+
+def _validate_director_skills(raw) -> list:
+    if not isinstance(raw, list) or len(raw) > DIRECTOR_MAX_SKILLS:
+        _bad(f"director.skills must be a list of at most {DIRECTOR_MAX_SKILLS}")
+    skills = []
+    total = 0
+    for item in raw:
+        if not isinstance(item, dict):
+            _bad("director.skills entries must be objects")
+        name = item.get("name")
+        content = item.get("content")
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= DIRECTOR_MAX_SKILL_NAME_CHARS:
+            _bad("director.skills[].name must be a short non-empty string")
+        if not isinstance(content, str):
+            _bad("director.skills[].content must be a string")
+        total += len(content)
+        skills.append({"name": name.strip(), "content": content})
+    if total > DIRECTOR_MAX_SKILLS_CHARS:
+        _bad(f"director.skills exceed {DIRECTOR_MAX_SKILLS_CHARS} characters in total")
+    return skills
+
+
+def _validate_director(raw) -> dict | None:
+    """Optional model-director config: the box lets the model write the reel's scenes. Absent means the generic renderer."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        _bad("director must be an object")
+    model = raw.get("model")
+    if not isinstance(model, str) or not DIRECTOR_MODEL_RE.match(model):
+        _bad("director.model is invalid")
+    if raw.get("effort") not in DIRECTOR_EFFORTS:
+        _bad("director.effort is not supported")
+    max_tokens = raw.get("maxTokens")
+    if (
+        isinstance(max_tokens, bool)
+        or not isinstance(max_tokens, int)
+        or not DIRECTOR_MIN_TOKENS <= max_tokens <= DIRECTOR_MAX_TOKENS
+    ):
+        _bad(f"director.maxTokens must be an integer from {DIRECTOR_MIN_TOKENS} to {DIRECTOR_MAX_TOKENS}")
+    if not isinstance(raw.get("review"), bool):
+        _bad("director.review must be a boolean")
+    example = raw.get("example")
+    if example is not None:
+        example = _director_str(raw, "example", DIRECTOR_MAX_EXAMPLE_CHARS)
+    return {
+        "model": model,
+        "effort": raw["effort"],
+        "maxTokens": max_tokens,
+        "review": raw["review"],
+        "rules": _director_str(raw, "rules", DIRECTOR_MAX_RULES_CHARS),
+        "reviewPrompt": _director_str(raw, "reviewPrompt", DIRECTOR_MAX_REVIEW_PROMPT_CHARS),
+        "skills": _validate_director_skills(raw.get("skills")),
+        "example": example or None,
+    }
 
 
 MAX_CLAIMS = 12

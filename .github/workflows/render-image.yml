@@ -50,6 +50,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
       - name: Kokoro smoke test (native ${{ matrix.arch }})
         run: docker run --rm --platform linux/${{ matrix.arch }} ${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }} python -m reel.kokoro_smoke
+      - name: Skia renderer self test (native ${{ matrix.arch }})
+        run: docker run --rm --platform linux/${{ matrix.arch }} ${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }} node /app/skia/dist/draw.mjs --selftest
       - name: Push arch image
         run: docker push ${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }}
 

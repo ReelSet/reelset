@@ -167,9 +167,9 @@ describe('prompt', () => {
     expect(SYSTEM_PROMPT).toContain('at most 3 significant digits')
   })
 
-  it('matches the renderer enum lists in remotion types', () => {
+  it('matches the renderer enum lists in the planner types', () => {
     const types = readFileSync(
-      new URL('../../render/container/remotion/src/lib/types.ts', import.meta.url),
+      new URL('../../render/container/skia/src/planner/lib/types.ts', import.meta.url),
       'utf8',
     )
     const grab = (name: string) =>

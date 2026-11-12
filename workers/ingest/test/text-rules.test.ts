@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { completeCodeLines, displayValue, repairShots } from '../src/pipeline/shots'
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8')
-const RENDER = '../../render/container/remotion/src/lib/'
+const RENDER = '../../render/container/skia/src/planner/lib/'
 
 describe('shared text rules', () => {
   it('ingest text-rules.ts is a verbatim copy of the renderer file', () => {

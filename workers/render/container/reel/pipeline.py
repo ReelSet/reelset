@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
-from . import images, media, mix, narrator, props, source_images, sources, timing, video, words as words_lib
+from . import director, images, media, mix, narrator, props, source_images, sources, timing, video, words as words_lib
 from .cues import resolve_shots
 from .errors import RenderError
 from .validation import RenderRequest
@@ -104,7 +104,7 @@ def run_render(
     downloader: Downloader = images.download_image,
     public_downloader: Downloader = images.download_public_image,
     page_fetcher: Callable = images.fetch_page,
-    render: Callable = video.run_remotion,
+    render: Callable = video.run_skia,
     fetch_broll: Callable = media.collect_broll,
     fetch_demo: Callable = media.collect_demo,
 ) -> dict:
@@ -182,6 +182,8 @@ def run_render(
         "%s assets cover=%s images=%d", log_ctx, bool(assets.get("cover")), len(assets.get("images", []))
     )
 
+    if req.director:
+        director.write_config(job_dir, req.director)
     render(job_dir)
     raw_path = os.path.join(job_dir, "raw.mp4")
     out_path = os.path.join(job_dir, "video.mp4")
@@ -218,6 +220,8 @@ def run_render(
         "mix": mixed,
         "credits": credits,
     }
+    if req.director:
+        meta["director"] = director.read_result(job_dir, req.director)
     log.info("%s render ok %s", log_ctx, meta)
     return meta
 

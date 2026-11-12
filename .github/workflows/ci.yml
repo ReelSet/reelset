@@ -19,8 +19,10 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            workers/render/container/remotion/package-lock.json
+            workers/render/container/skia/package-lock.json
       - run: npm ci
-      - run: npm ci --prefix workers/render/container/remotion
+      - run: npm ci --prefix workers/render/container/skia
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build --prefix workers/render/container/skia
+      - run: npm run selftest --prefix workers/render/container/skia

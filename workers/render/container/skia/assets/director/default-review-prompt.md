@@ -1,0 +1,2 @@
+These are frames rendered from your script (two per scene: early and late; the header, captions and grain are the engine's).
+Review them like a senior motion designer: text overflow or overlap, things off-frame or under the captions/phone UI, empty or dull frames, unreadable contrast, missing source image, generic look, anything that does not explain its beat. Then return the COMPLETE corrected script in one ```js block.

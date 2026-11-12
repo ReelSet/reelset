@@ -2,18 +2,19 @@
   "name": "reelset-skia",
   "private": true,
   "type": "module",
-  "description": "Browser-free reel renderer: Skia (@napi-rs/canvas) frames piped into ffmpeg.",
+  "description": "Browser-free reel renderer: Skia (@napi-rs/canvas) frames piped into ffmpeg, optionally scripted by a model.",
   "scripts": {
     "build": "node build.mjs",
     "icons": "node tools/buildicons.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "selftest": "node dist/draw.mjs --selftest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.7.0",
     "@napi-rs/canvas": "1.1.1"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^1.7.0",
     "@types/node": "^22.20.5",
     "esbuild": "0.25.12",
     "lucide-static": "^0.468.0",

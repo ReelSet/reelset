@@ -22,7 +22,7 @@ def make_silence(path: str, seconds: float) -> None:
 
 
 def fake_render(seconds: float):
-    """Stands in for the Remotion step: writes <job>/raw.mp4 from the props' audio, like the real one."""
+    """Stands in for the Skia render step: writes <job>/raw.mp4 from the props' audio, like the real one."""
 
     def render(job_dir: str) -> None:
         assert os.path.exists(os.path.join(job_dir, "props.json"))
@@ -180,15 +180,11 @@ class FfmpegHelpersTests(unittest.TestCase):
                 video.run_ffmpeg(["ffmpeg", "-i", "missing.mp4", "out.mp4"], d)
         self.assertEqual(ctx.exception.code, "ffmpeg_failed")
 
-    def test_remotion_failure_maps_to_error_code(self):
+    def test_skia_failure_maps_to_error_code(self):
         with tempfile.TemporaryDirectory() as d:
-            original = video.REMOTION_SCRIPT
-            video.REMOTION_SCRIPT = os.path.join(d, "missing.mjs")
-            try:
+            with unittest.mock.patch.dict(os.environ, {"SKIA_DIR": os.path.join(d, "missing")}):
                 with self.assertRaises(RenderError) as ctx:
-                    video.run_remotion(d)
-            finally:
-                video.REMOTION_SCRIPT = original
+                    video.run_skia(d)
         self.assertEqual(ctx.exception.code, "ffmpeg_failed")
 
 

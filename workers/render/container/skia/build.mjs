@@ -8,11 +8,17 @@ const common = {
   platform: 'node',
   format: 'esm',
   target: 'node22',
-  external: ['@napi-rs/canvas'],
-  alias: { '@plan': path.join(here, '../remotion/src') },
-  banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
+  external: ['@napi-rs/canvas', '@anthropic-ai/sdk'],
+  alias: { '@plan': path.join(here, 'src/planner') },
+  banner: {
+    js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);",
+  },
   logLevel: 'warning',
 }
-await build({ ...common, entryPoints: [path.join(here, 'src/main.ts')], outfile: path.join(here, 'dist/render.mjs') })
-if (process.argv.includes('--haiku'))
-  await build({ ...common, entryPoints: [path.join(here, 'src/haiku/run.ts')], outfile: path.join(here, 'dist/haiku.mjs'), external: ['@napi-rs/canvas', '@anthropic-ai/sdk'] })
+const entries = { 'render.mjs': 'src/director/orchestrator.ts', 'draw.mjs': 'src/draw.ts' }
+for (const [out, entry] of Object.entries(entries))
+  await build({
+    ...common,
+    entryPoints: [path.join(here, entry)],
+    outfile: path.join(here, 'dist', out),
+  })
