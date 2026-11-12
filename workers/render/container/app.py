@@ -6,7 +6,7 @@ import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from reel import hoststats, instagram, pipeline, transcript, validation, youtube_search
+from reel import hoststats, instagram, kokoro_tts, pipeline, transcript, validation, youtube_search
 from reel.activity import Activity
 from reel.errors import RenderError
 from reel.jobs import JobStore
@@ -255,4 +255,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     log.info("listening on %d as box %s", PORT, BOX_NAME)
     cpu_sampler.start()
+    kokoro_tts.preload_in_background()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

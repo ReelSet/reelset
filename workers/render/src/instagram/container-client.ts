@@ -80,6 +80,10 @@ export type IgContainerClient = {
   ): Promise<IgFindResult>
 }
 
+// Cloudflare answers these itself (the tunnel or a 100 s origin timeout) while the box may still be
+// uploading, so the outcome is unknown rather than a failure the box reported.
+const GATEWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
+
 export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger): IgContainerClient {
   async function call<T>(
     action: string,
@@ -103,6 +107,10 @@ export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger):
     }
     log.info({ action, status: res.status }, 'instagram container call')
     const payload: unknown = await res.json().catch(() => null)
+    const hasError = typeof payload === 'object' && payload !== null && 'error' in payload
+    if (!res.ok && !hasError && GATEWAY_STATUSES.has(res.status)) {
+      throw new IgCallError('gateway', `poster gateway returned ${res.status}`, false)
+    }
     if (!res.ok) {
       const code =
         typeof payload === 'object' && payload !== null && 'error' in payload

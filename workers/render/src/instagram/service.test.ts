@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { IgAccount } from '@reelset/core'
+import { INSTAGRAM_LOST_ERROR, type IgAccount } from '@reelset/core'
 import { posterKeyFor, videoKeyFor } from '../keys'
 import { silentLog } from '../testing'
 import { IgCallError, type IgContainerClient } from './container-client'
@@ -155,11 +155,27 @@ describe('runInstagramQueue', () => {
     const t = await setup()
     vi.mocked(t.client.post).mockRejectedValueOnce(new IgCallError('unreachable', 'x', false))
     await runInstagramQueue(t.deps)
-    expect(t.store.markFailed).toHaveBeenCalledWith(
-      'p1',
-      expect.stringContaining('outcome unknown'),
-    )
+    expect(t.store.markFailed).toHaveBeenCalledWith('p1', INSTAGRAM_LOST_ERROR)
     expect(t.store.release).not.toHaveBeenCalled()
+  })
+
+  it('hands a gateway timeout to the lost-post lookup instead of failing it', async () => {
+    const t = await setup()
+    vi.mocked(t.client.post).mockRejectedValueOnce(
+      new IgCallError('gateway', 'poster gateway returned 524', false),
+    )
+    await runInstagramQueue(t.deps)
+    expect(t.store.markFailed).toHaveBeenCalledWith('p1', INSTAGRAM_LOST_ERROR)
+  })
+
+  it('puts the post back in the queue when another instagram operation is running', async () => {
+    const t = await setup()
+    vi.mocked(t.client.post).mockRejectedValueOnce(
+      new IgCallError('busy', 'another Instagram operation is running', true),
+    )
+    await runInstagramQueue(t.deps)
+    expect(t.store.release).toHaveBeenCalledWith('p1', 'another Instagram operation is running')
+    expect(t.store.markFailed).not.toHaveBeenCalled()
   })
 
   it('records the container message for a known upload failure', async () => {

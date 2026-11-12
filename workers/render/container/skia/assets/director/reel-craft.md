@@ -307,7 +307,7 @@ Color and contrast:
 
 ## 10. Honesty of the visuals
 
-- Numbers on screen come only from the narration, `claims` or `facts`. Never show stars, forks, points, upvotes, likes, views, comment counts or anything that changes over time, even if `facts` has it.
+- Numbers on screen come only from the narration, `claims` or `facts`. Never show stars, forks, points, upvotes, likes, views, downloads, comment counts or anything that changes over time, even if `facts` has it and even if the narration says it. When a line is about popularity ("486 stars in a day"), illustrate the idea (new, early, catching on) with no number, and never build a scene, counter or stat around it.
 - Proportions must follow the spoken numbers (4x cheaper = 25% bar). No invented axis values, percentages, dates, versions, prices, benchmark names or competitor names. Unnamed rivals are skeleton rows.
 - Labels can use `facts` text that does not age: repo language/topics/latest release, subreddit, channel, author, paper authors, site name.
 - A diagram may simplify, never contradict: if the narration says "three steps", draw three.

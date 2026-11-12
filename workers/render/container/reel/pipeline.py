@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
@@ -132,15 +132,22 @@ def run_render(
             audio_seconds = video.media_seconds(audio_path)
             log.info("%s using supplied narration words=%d %.1fs", log_ctx, len(words), audio_seconds)
             if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
-                raise RenderError("too_large", f"narration is {audio_seconds:.1f}s, over the 60s cap")
+                raise RenderError("too_large", f"narration is {audio_seconds:.1f}s, over the video cap")
         else:
+            # b-roll quality scans and demo encodes are ffmpeg-heavy; on a 2-vCPU box they starve
+            # Kokoro (seen at 14x slower than real time), so let them finish before synthesis.
+            heavy = [job for job in (broll_job, demo_job) if job is not None]
+            if heavy:
+                waited = time.monotonic()
+                wait(heavy)
+                log.info("%s media prep done before tts in %.1fs", log_ctx, time.monotonic() - waited)
             words = synth(text, req.voice, rate, audio_path)
             audio_seconds = video.media_seconds(audio_path)
             if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
                 faster = timing.refit_rate(rate, audio_seconds)
                 if faster is None:
                     raise RenderError(
-                        "too_large", f"narration is {audio_seconds:.1f}s, over the 60s cap"
+                        "too_large", f"narration is {audio_seconds:.1f}s, over the video cap"
                     )
                 log.warning(
                     "%s narration %.1fs at %s, retrying at %s", log_ctx, audio_seconds, rate, faster
@@ -149,7 +156,7 @@ def run_render(
                 audio_seconds = video.media_seconds(audio_path)
                 if timing.total_video_seconds(audio_seconds) > timing.MAX_VIDEO_SECONDS:
                     raise RenderError(
-                        "too_large", f"narration is {audio_seconds:.1f}s at {faster}, over the 60s cap"
+                        "too_large", f"narration is {audio_seconds:.1f}s at {faster}, over the video cap"
                     )
         if req.narration_audio is None:
             provider = narrator.provider_of(synth)

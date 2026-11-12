@@ -177,6 +177,31 @@ class AudibleGuardTests(unittest.TestCase):
                 encode.assert_not_called()
 
 
+class KokoroPreloadTests(unittest.TestCase):
+    def test_preload_loads_the_shared_engine_off_thread(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, kokoro_tts.model_file()), "wb").close()
+            with mock.patch.object(kokoro_tts, "shared_engine") as load, mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("KOKORO_PRELOAD", None)
+                thread = kokoro_tts.preload_in_background(d)
+                thread.join(5)
+        load.assert_called_once()
+
+    def test_preload_skips_without_model_or_when_disabled(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(kokoro_tts, "shared_engine") as load:
+            self.assertIsNone(kokoro_tts.preload_in_background(d))
+            open(os.path.join(d, kokoro_tts.model_file()), "wb").close()
+            with mock.patch.dict(os.environ, {"KOKORO_PRELOAD": "0"}):
+                self.assertIsNone(kokoro_tts.preload_in_background(d))
+        load.assert_not_called()
+
+    def test_preload_failure_is_logged_not_raised(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, kokoro_tts.model_file()), "wb").close()
+            with mock.patch.object(kokoro_tts, "shared_engine", side_effect=KokoroError("boom")), self.assertLogs("reel.kokoro", "WARNING"):
+                kokoro_tts.preload_in_background(d).join(5)
+
+
 class KokoroSynthesisTests(unittest.TestCase):
     def synth(self, engine, text="Hello world. MOPD works, really."):
         path = os.path.join(tempfile.mkdtemp(), "n.mp3")

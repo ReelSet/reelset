@@ -133,6 +133,29 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual([s["kind"] for s in composition["scenes"]], ["hook", "beat", "beat", "outro"])
         self.assertEqual(meta["jobId"], "job12345")
 
+    def test_tts_waits_for_broll_prep(self):
+        order = []
+
+        def fetch_broll(entries, assets_dir):
+            __import__("time").sleep(0.2)
+            order.append("broll")
+            return []
+
+        def synth(text, voice, rate, audio_path):
+            order.append("tts")
+            make_silence(audio_path, 6)
+            return []
+
+        req = validate_render_request(
+            {**good_payload(), "broll": [{"url": "https://videos.pexels.com/a.mp4"}]}
+        )
+        job_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(job_dir, ignore_errors=True))
+        pipeline.run_render(
+            req, job_dir, synth=synth, fetch_broll=fetch_broll, render=fake_render(6.5), **NO_NET
+        )
+        self.assertEqual(order, ["broll", "tts"])
+
     def test_overlong_narration_is_retried_faster(self):
         rates = []
 

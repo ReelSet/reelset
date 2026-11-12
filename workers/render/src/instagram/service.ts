@@ -1,4 +1,5 @@
 import {
+  INSTAGRAM_LOST_ERROR,
   errorFields,
   type IgAccount,
   type IgAccountState,
@@ -150,7 +151,7 @@ export type QueueOutcome =
   | { ran: 'none'; reason: 'not_connected' | 'nothing_due' }
   | { ran: 'post' | 'delete'; postId: string; ok: boolean }
 
-const OUTCOME_UNKNOWN = 'Upload outcome unknown. Check Instagram before queueing this reel again.'
+const BUSY = 'busy'
 
 function mediaUrl(base: string, key: string): string {
   return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`
@@ -180,6 +181,10 @@ async function runPost(deps: IgDeps, post: ClaimedPost, state: IgState): Promise
     return true
   } catch (err) {
     log.error(errorFields(err), 'instagram post failed')
+    if (err instanceof IgCallError && err.code === BUSY) {
+      await deps.store.release(post.id, err.message)
+      return false
+    }
     if (err instanceof IgCallError && err.code === PROXY_DOWN) {
       await deps.store.release(post.id, err.message)
       await recordProxyDown(deps, err)
@@ -195,7 +200,7 @@ async function runPost(deps: IgDeps, post: ClaimedPost, state: IgState): Promise
       return false
     }
     const known = err instanceof IgCallError && err.reachedContainer
-    await deps.store.markFailed(post.id, known ? err.message : OUTCOME_UNKNOWN)
+    await deps.store.markFailed(post.id, known ? err.message : INSTAGRAM_LOST_ERROR)
     return false
   }
 }

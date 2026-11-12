@@ -233,6 +233,8 @@ export const SERVED_RENDER_ORDER_SQL =
   'coalesce(r.template_version, 0) desc, r.finished_at desc nulls last, r.created_at desc, r.id desc'
 
 export const INSTAGRAM_AUTO_REQUESTER = 'auto'
+/** Failed auto posts an item may have before it stops being retried. */
+export const INSTAGRAM_AUTO_MAX_ATTEMPTS = 3
 // Only reels first finished this recently are auto-posted, so turning it on never posts the archive.
 export const INSTAGRAM_AUTO_LOOKBACK_HOURS = 24
 
@@ -253,11 +255,16 @@ export async function autoPostsQueuedToday(db: Database): Promise<number> {
   const { rows } = await sql<{ n: string }>`
     select count(*) as n from instagram_post
     where requested_by = ${INSTAGRAM_AUTO_REQUESTER} and created_at >= date_trunc('day', now(), 'UTC')
+      and status <> ${S.failed}
   `.execute(db)
   return Number(rows[0]?.n ?? 0)
 }
 
-/** Newly rendered reels that have never had an Instagram post, newest first, with their served render. */
+/**
+ * Newly rendered reels with no live Instagram post, newest first, with their served render. A reel
+ * whose earlier posts failed is retried (up to INSTAGRAM_AUTO_MAX_ATTEMPTS failures), except while a
+ * lost upload is still being looked up on the account.
+ */
 export async function listAutoPostCandidates(
   db: Database,
   limit: number,
@@ -278,7 +285,13 @@ export async function listAutoPostCandidates(
     ) first_done on true
     where i.status = 'rendered'
       and first_done.at > now() - make_interval(hours => ${lookbackHours})
-      and not exists (select 1 from instagram_post p where p.item_id = i.id)
+      and not exists (
+        select 1 from instagram_post p where p.item_id = i.id
+          and (p.status <> ${S.failed} or p.error in (${INSTAGRAM_LOST_ERROR}, ${LEGACY_LOST_ERROR}))
+      )
+      and (
+        select count(*) from instagram_post p where p.item_id = i.id and p.status = ${S.failed}
+      ) < ${INSTAGRAM_AUTO_MAX_ATTEMPTS}
     order by first_done.at desc
     limit ${limit}
   `.execute(db)

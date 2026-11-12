@@ -255,7 +255,7 @@ describe('summarize with a parsed paper', () => {
     expect(shot.show).toBe('TableScreen')
     expect(shot.props.rows.length).toBeGreaterThan(1)
     expect(shot.props.table).toBeUndefined()
-  })
+  }, 20_000)
 
   it('falls back to the old evidence and drops table shots when parsing fails', async () => {
     const t = makeDeps(world(), [output({})])

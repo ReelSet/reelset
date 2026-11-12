@@ -25,4 +25,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build --prefix workers/render/container/skia
+      - name: Install ffmpeg (the Skia selftest encodes a short fixture)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - run: npm run selftest --prefix workers/render/container/skia
