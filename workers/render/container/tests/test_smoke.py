@@ -138,13 +138,13 @@ class PipelineTests(unittest.TestCase):
 
         def synth(text, voice, rate, audio_path):
             rates.append(rate)
-            make_silence(audio_path, 66 if len(rates) == 1 else 55)
+            make_silence(audio_path, 110 if len(rates) == 1 else 95)
             return []
 
-        _, _, meta = self.run_pipeline(synth, render=fake_render(55.5))
+        _, _, meta = self.run_pipeline(synth, render=fake_render(95.5))
         self.assertEqual(len(rates), 2)
         self.assertNotEqual(rates[0], rates[1])
-        self.assertLessEqual(meta["durationMs"], 60_000)
+        self.assertLessEqual(meta["durationMs"], 100_000)
 
     def test_unfixable_narration_is_too_large(self):
         def synth(text, voice, rate, audio_path):

@@ -332,11 +332,11 @@ describe('processRenderJob', () => {
     expect(path(container).at(-1)).toBe('DELETE /render/JOB')
   })
 
-  it('treats a video larger than 25 MB as a permanent failure', async () => {
+  it('treats a video larger than 40 MB as a permanent failure', async () => {
     const container = new FakeContainer({
       renderBody: {
         jobId: 'x',
-        bytes: 26 * 1024 * 1024,
+        bytes: 41 * 1024 * 1024,
         posterBytes: 50,
         durationMs: 30_000,
         ttsDurationMs: 1,
@@ -496,12 +496,12 @@ describe('aura-2 narration', () => {
     outro: 'Outro line.',
     claims: [],
   }
-  it('re-synthesizes once from a shortened script when aura runs past 58s', async () => {
+  it('re-synthesizes once from a shortened script when aura runs past the cap', async () => {
     const { deps, container, rec } = setup({
       store: new FakeStore(makeItem({ script: longScript })),
     })
     deps.voice = 'aura2-hera'
-    const ai = speakingAi([66, 52])
+    const ai = speakingAi([106, 92])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     const sent = container.requests[0]!.body as Record<string, any>
@@ -521,7 +521,7 @@ describe('aura-2 narration', () => {
     })
     deps.voice = 'aura2-hera'
     deps.edgeVoice = 'en-US-AriaNeural'
-    const ai = speakingAi([70, 64])
+    const ai = speakingAi([123, 112])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     const sent = container.requests[0]!.body as Record<string, any>
@@ -542,7 +542,7 @@ describe('aura-2 narration', () => {
     }
     const { deps, container } = setup({ store: new FakeStore(makeItem({ script })) })
     deps.voice = 'aura2-hera'
-    const ai = speakingAi([75, 62, 54])
+    const ai = speakingAi([115, 102, 94])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     const sent = container.requests[0]!.body as Record<string, any>
@@ -563,7 +563,7 @@ describe('aura-2 narration', () => {
   it('goes straight to edge-tts when nothing can be shortened', async () => {
     const { deps, container } = setup()
     deps.edgeVoice = 'en-US-AriaNeural'
-    const ai = speakingAi([70])
+    const ai = speakingAi([110])
     deps.aura = { ai, speaker: 'hera' }
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
     expect(ai.novaCalls).toBe(1)

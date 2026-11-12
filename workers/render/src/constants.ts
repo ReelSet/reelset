@@ -7,7 +7,7 @@ export const UNREACHABLE_MAX_RETRIES = 8
 export const UNREACHABLE_MAX_DELAY_SECONDS = 300
 
 export const CONTAINER_TITLE_MAX_CHARS = 200
-export const MAX_VIDEO_BYTES = 25 * 1024 * 1024
+export const MAX_VIDEO_BYTES = 40 * 1024 * 1024
 export const CONTAINER_BASE_URL = 'http://container'
 export const BOX_BUSY_STATUS = 429
 export const CLOUDFLARE_ORIGIN_TIMEOUT_STATUS = 524
