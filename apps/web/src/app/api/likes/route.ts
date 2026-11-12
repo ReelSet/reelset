@@ -1,6 +1,6 @@
 import { errorFields } from '@reelset/core'
 import { after } from 'next/server'
-import { reelPath } from '@/lib/auth/return-url'
+import { reelReturnPath } from '@/lib/auth/return-url'
 import { likeBodySchema } from '@/lib/likes'
 import { authErrorResponse, requireUser } from '@/server/auth'
 import { getDb } from '@/server/db'
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (!body.success) return Response.json({ error: 'invalid_body' }, { status: 400 })
 
   try {
-    const user = await requireUser(reelPath(body.data.itemId))
+    const user = await requireUser(reelReturnPath(body.data.itemId))
     const result = await setLike(
       getDb(),
       { profileId: user.id, itemId: body.data.itemId, liked: body.data.liked },

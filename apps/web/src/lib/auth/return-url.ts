@@ -1,3 +1,5 @@
+import { shortId } from '@/lib/reel-url'
+
 export const RETURN_PATH_HEADER = 'x-return-path'
 
 export function safeReturnPath(raw: string | null | undefined, fallback = '/'): string {
@@ -11,6 +13,7 @@ export function buildLoginUrl(returnTo: string): string {
   return `/login?next=${encodeURIComponent(safeReturnPath(returnTo))}`
 }
 
-export function reelPath(itemId: string): string {
-  return `/?reel=${encodeURIComponent(itemId)}`
+/** Where login returns after a like or save: the reel page, which leads with that reel. */
+export function reelReturnPath(itemId: string): string {
+  return `/r/${shortId(itemId)}`
 }

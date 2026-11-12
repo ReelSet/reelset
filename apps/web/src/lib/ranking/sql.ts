@@ -140,6 +140,7 @@ export function hydrateQuery(
       'item.id',
       'item.title',
       'item.tldr',
+      'item.script',
       'item.topics',
       'item.kind',
       'item.canonical_url',
