@@ -97,6 +97,28 @@ def shared_engine() -> Engine:
         return _engine
 
 
+def preload_in_background(model_dir: str = MODEL_DIR) -> threading.Thread | None:
+    """Loads the model off the request path at boot so the first render does not pay for it."""
+    if os.environ.get("KOKORO_PRELOAD", "1") == "0":
+        log.info("kokoro preload disabled")
+        return None
+    path = os.path.join(model_dir, model_file())
+    if not os.path.exists(path):
+        log.info("kokoro preload skipped, no model at %s", path)
+        return None
+
+    def load() -> None:
+        try:
+            shared_engine()
+        except KokoroError as err:
+            log.warning("kokoro preload failed: %s", err)
+
+    thread = threading.Thread(target=load, name="kokoro-preload", daemon=True)
+    thread.start()
+    log.info("kokoro preload started")
+    return thread
+
+
 def initial_speed() -> float:
     return min(PREFERRED_MAX_SPEED, max(MIN_SPEED, TARGET_WPM / BASE_WPM))
 

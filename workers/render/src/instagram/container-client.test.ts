@@ -55,6 +55,14 @@ describe('instagram container client post', () => {
   })
 })
 
+describe('instagram container client gateway errors', () => {
+  it('treats a cloudflare 524 without a box error body as an unknown outcome', async () => {
+    const t = fakeContainer(524, null)
+    const err = await t.client.post(STATE, UPLOAD).catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'gateway', reachedContainer: false })
+  })
+})
+
 describe('instagram container client find', () => {
   it('sends the caption and the start time in epoch seconds', async () => {
     const t = fakeContainer(200, {
