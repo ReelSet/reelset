@@ -1,11 +1,16 @@
 import type { ClaudeModel } from '@reelset/core'
 
 const MARKER = 'CITATIONS:'
-const MARKER_LINE = /(?:^|\n)CITATIONS:/
+const MARKER_LINE = /(?:^|\n)(?:CITATIONS|FOLLOWUPS):/
+const FOLLOWUPS_LINE = /(?:^|\n)FOLLOWUPS:([^\n]*)/
+const CITATIONS_LINE = /(?:^|\n)CITATIONS:([^\n]*)/
+const MAX_FOLLOWUPS = 3
+const FOLLOWUP_MIN_CHARS = 8
+const FOLLOWUP_MAX_CHARS = 120
 const MAX_ANSWER_CHARS = 6000
 const MAX_CITATIONS = 50
 
-export type ModelAnswer = { answer: string; citations: string[] }
+export type ModelAnswer = { answer: string; citations: string[]; followups: string[] }
 
 export type GeneratedAnswer = {
   text: string
@@ -23,8 +28,22 @@ export function parseCitationIds(raw: string): string[] {
   return [...new Set(ids)].slice(0, MAX_CITATIONS)
 }
 
-// The model writes the answer as plain text followed by a final "CITATIONS:" line, so the text
-// can be streamed to the client while the citation list is only parsed once the stream ends.
+export function parseFollowups(raw: string): string[] {
+  const out: string[] = []
+  for (const part of raw.split('|')) {
+    const q = part
+      .replace(/\[\d+\]/g, '')
+      .replace(/^[\s\-*\d.)]+/, '')
+      .trim()
+    if (q.length < FOLLOWUP_MIN_CHARS || q.length > FOLLOWUP_MAX_CHARS || !q.endsWith('?')) continue
+    if (!out.includes(q)) out.push(q)
+    if (out.length === MAX_FOLLOWUPS) break
+  }
+  return out
+}
+
+// The model writes the answer as plain text, then a "FOLLOWUPS:" line and a final "CITATIONS:"
+// line, so the text can be streamed to the client while the trailer is only parsed at the end.
 export function createAnswerSplitter(onText: (text: string) => void) {
   let full = ''
   let emitted = 0
@@ -51,8 +70,15 @@ export function createAnswerSplitter(onText: (text: string) => void) {
       }
       emitUpTo(markerAt)
       const answer = full.slice(0, markerAt).trim().slice(0, MAX_ANSWER_CHARS)
-      const trailer = full.slice(markerAt).replace(/^\n?CITATIONS:/, '')
-      return { text: full, parsed: { answer, citations: parseCitationIds(trailer) } }
+      const trailer = full.slice(markerAt)
+      return {
+        text: full,
+        parsed: {
+          answer,
+          citations: parseCitationIds(CITATIONS_LINE.exec(trailer)?.[1] ?? ''),
+          followups: parseFollowups(FOLLOWUPS_LINE.exec(trailer)?.[1] ?? ''),
+        },
+      }
     },
   }
 }

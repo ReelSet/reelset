@@ -12,7 +12,11 @@ import { routeLog } from '@/server/logger'
 
 export const dynamic = 'force-dynamic'
 
-const bodySchema = z.object({ question: z.unknown(), conversationId: z.guid().optional() })
+const bodySchema = z.object({
+  question: z.unknown(),
+  conversationId: z.guid().optional(),
+  regenerate: z.boolean().optional(),
+})
 
 export async function POST(request: Request) {
   const log = routeLog('api/ask')
@@ -50,7 +54,12 @@ export async function POST(request: Request) {
       try {
         const result = await runAsk(
           createAskDeps(log),
-          { profileId: userId, check, conversationId: body.data.conversationId },
+          {
+            profileId: userId,
+            check,
+            conversationId: body.data.conversationId,
+            regenerate: body.data.regenerate,
+          },
           (text) => send({ type: 'delta', text }),
         )
         const final: AskResponse =

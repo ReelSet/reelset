@@ -102,7 +102,11 @@ describe('generateAnswer', () => {
     )
     const deltas: string[] = []
     const out = await generateAnswer(config, 'q', [chunk], log, (t) => deltas.push(t), fetchImpl)
-    expect(out.parsed).toEqual({ answer: 'Bun is faster.', citations: ['c1', 'ghost'] })
+    expect(out.parsed).toEqual({
+      answer: 'Bun is faster.',
+      citations: ['c1', 'ghost'],
+      followups: [],
+    })
     expect(out).toMatchObject({ model: 'claude-haiku-5-5', inputTokens: 120, outputTokens: 42 })
     expect(deltas.join('')).toBe('Bun is faster.')
   })

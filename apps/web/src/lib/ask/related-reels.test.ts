@@ -30,6 +30,7 @@ describe('pickRelatedReels', () => {
     )
     expect(out.map((r) => r.itemId)).toEqual(['i2', 'i1'])
     expect(out[0]).toMatchObject({ source: 'github', posterUrl: 'https://media.test/p/i2.jpg' })
+    expect(out[1]?.chunkIds).toEqual(['c1', 'c2'])
   })
 
   it('skips citations whose item has no served reel', () => {

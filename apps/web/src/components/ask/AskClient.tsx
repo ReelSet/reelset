@@ -5,20 +5,14 @@ import type { AskResponse, AskStreamEvent } from '@/lib/api-types'
 import { createSseParser } from '@/lib/ask/sse'
 import { track } from '@/lib/client/track'
 import { ArrowRightIcon, ClockIcon, HomeIcon, SparkleIcon } from '@/components/ui/icons'
-import { RelatedReels, SourceCards } from './AnswerSources'
+import { stripCitationMarks } from '@/lib/ask/citation-marks'
+import { AnswerView } from './AnswerView'
 import { Wordmark } from '@/components/ui/Logo'
 import { Spinner } from '@/components/ui/Spinner'
 import { WarnIcon } from '@/components/ui/icons'
 import { useToast } from '@/components/ui/Toast'
 
 const RATE_LIMITED = 'You have asked a lot this hour. Please try again a bit later.'
-
-const SUGGESTIONS = [
-  'What is new in AI coding agents this week?',
-  'Which databases are developers talking about?',
-  'Any big security incidents lately?',
-  'What are people building with Rust?',
-]
 
 function Notice({
   tone,
@@ -65,7 +59,13 @@ type State =
   | { phase: 'done'; result: AskResponse }
   | { phase: 'failed'; message: string; title?: string; partial?: string }
 
-export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
+export function AskClient({
+  signedIn = false,
+  suggestions,
+}: {
+  signedIn?: boolean
+  suggestions: string[]
+}) {
   const conversationId = useRef<string | null>(null)
   const [question, setQuestion] = useState('')
   const [state, setState] = useState<State>({ phase: 'idle' })
@@ -74,7 +74,11 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
   const partialRef = useRef('')
   const toast = useToast()
 
-  async function submit(event?: React.FormEvent, override?: string) {
+  async function submit(
+    event?: React.FormEvent,
+    override?: string,
+    options: { regenerate?: boolean } = {},
+  ) {
     event?.preventDefault()
     const trimmed = (override ?? question).trim()
     if (inFlight.current || trimmed.length < 3) return
@@ -93,7 +97,11 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question: trimmed, conversationId: conversationId.current }),
+        body: JSON.stringify({
+          question: trimmed,
+          conversationId: conversationId.current,
+          ...(options.regenerate ? { regenerate: true } : {}),
+        }),
       })
       if (res.status === 401) {
         const body = (await res.json()) as { loginUrl: string }
@@ -191,7 +199,9 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </header>
 
-      <main className={`flex flex-1 flex-col ${idle ? 'justify-center pb-24' : 'gap-6 pt-8'}`}>
+      <main
+        className={`flex flex-1 flex-col gap-6 pt-8 ${idle ? 'lg:justify-center lg:pb-24' : ''}`}
+      >
         {idle && (
           <div className="animate-fade-up">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted">
@@ -222,7 +232,7 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
             </div>
             {state.partial ? (
               <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/90">
-                {state.partial}
+                {stripCitationMarks(state.partial)}
                 <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[3px] animate-[cursor-blink_1s_steps(1)_infinite] bg-accent" />
               </p>
             ) : (
@@ -254,13 +264,16 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
         )}
 
         {state.phase === 'done' && state.result.outcome === 'answered' && (
-          <section className="animate-fade-up flex flex-col gap-6">
-            <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/90">
-              {state.result.answer}
-            </p>
-            <RelatedReels reels={state.result.reels ?? []} />
-            <SourceCards citations={state.result.citations} />
-          </section>
+          <AnswerView
+            key={state.result.answer}
+            question={asked}
+            answer={state.result.answer}
+            citations={state.result.citations}
+            reels={state.result.reels ?? []}
+            followups={state.result.followups}
+            onFollowup={(q) => void submit(undefined, q)}
+            onRegenerate={() => void submit(undefined, asked, { regenerate: true })}
+          />
         )}
 
         {state.phase === 'done' && state.result.outcome === 'error' && (
@@ -288,9 +301,30 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
           <Notice tone="info" title="No answer yet" message={state.result.message} />
         )}
 
+        {idle && (
+          <ul className="flex flex-col gap-2 pb-2">
+            {suggestions.map((s, i) => (
+              <li
+                key={s}
+                className="animate-fade-up"
+                style={{ animationDelay: `${80 + 60 * i}ms` }}
+              >
+                <button
+                  type="button"
+                  onClick={() => void submit(undefined, s)}
+                  className="flex w-full items-center justify-between gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-[14px] leading-snug text-fg/90 transition hover:border-line-strong hover:bg-raised active:scale-[0.99]"
+                >
+                  <span className="line-clamp-2">{s}</span>
+                  <ArrowRightIcon className="h-4 w-4 shrink-0 text-faint" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
         <form
           onSubmit={submit}
-          className={`${idle ? 'mt-8' : 'sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] mt-auto bg-gradient-to-t from-bg from-70% to-transparent pt-6 pb-2 lg:bottom-0 lg:pb-safe'}`}
+          className={`sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 mt-auto bg-gradient-to-t from-bg from-70% to-transparent pt-6 pb-2 lg:bottom-0 lg:pb-safe ${idle ? 'lg:static lg:mt-2 lg:bg-none lg:pt-0' : ''}`}
         >
           <div className="flex items-end gap-2 rounded-[22px] border border-line bg-surface p-2 pl-4 transition focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(200_247_81/0.08)]">
             <textarea
@@ -321,26 +355,6 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
             <p className="mt-1.5 text-right text-xs text-faint">{question.length}/300</p>
           )}
         </form>
-
-        {idle && (
-          <ul className="mt-3 flex flex-wrap gap-2 pb-6">
-            {SUGGESTIONS.map((s, i) => (
-              <li
-                key={s}
-                className="animate-fade-up"
-                style={{ animationDelay: `${80 + 60 * i}ms` }}
-              >
-                <button
-                  type="button"
-                  onClick={() => void submit(undefined, s)}
-                  className="rounded-full border border-line bg-surface px-3.5 py-2 text-left text-[13px] text-muted transition hover:border-line-strong hover:bg-raised hover:text-fg active:scale-95"
-                >
-                  {s}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </main>
     </div>
   )

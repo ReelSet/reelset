@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import { AskClient } from '@/components/ask/AskClient'
+import { loadAskSuggestions } from '@/server/ask-suggestions'
 import { getOptionalUser } from '@/server/auth'
+import { getDb } from '@/server/db'
+import { routeLog } from '@/server/logger'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
@@ -9,6 +12,9 @@ export const metadata: Metadata = {
 }
 
 export default async function AskPage() {
-  const user = await getOptionalUser().catch(() => null)
-  return <AskClient signedIn={user !== null} />
+  const [user, suggestions] = await Promise.all([
+    getOptionalUser().catch(() => null),
+    loadAskSuggestions(getDb(), routeLog('ask/page')),
+  ])
+  return <AskClient signedIn={user !== null} suggestions={suggestions} />
 }

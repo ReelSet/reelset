@@ -7,6 +7,7 @@ import {
 } from '@reelset/core'
 import type { CitationDto } from '@/lib/api-types'
 import type { GeneratedAnswer } from './answer-stream'
+import { dropUnknownMarks } from './citation-marks'
 import { filterCitations, selectEvidence, type EvidenceChunk } from './evidence'
 import { decideSpendGate } from './gate'
 import { embeddingCostUsd, estimateTokens, llmCostUsd, type AskSpendKind } from './pricing'
@@ -72,7 +73,13 @@ export type AskDeps = {
 }
 
 export type AskResult =
-  | { outcome: 'answered'; answer: string; citations: CitationDto[]; cached: boolean }
+  | {
+      outcome: 'answered'
+      answer: string
+      citations: CitationDto[]
+      cached: boolean
+      followups?: string[]
+    }
   | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped'; message: string }
   | { outcome: 'error'; message: string; reason?: 'ai_unavailable' }
 
@@ -82,6 +89,7 @@ export async function runAsk(
     profileId: string
     check: Extract<QuestionCheck, { ok: true }>
     conversationId?: string | null
+    regenerate?: boolean
   },
   onText: (text: string) => void = () => undefined,
 ): Promise<AskResult> {
@@ -142,7 +150,7 @@ export async function runAsk(
     log.info({ reserved: reservationId !== null, hourlyLimit }, 'ask rate limit decided')
     if (!reservationId) return finish({ outcome: 'rate_limited', message: RATE_LIMITED_MESSAGE })
 
-    const cached = await deps.findCached(normalized)
+    const cached = input.regenerate ? null : await deps.findCached(normalized)
     if (cached) {
       log.info('ask served from cache')
       // Stored with cached=true so it shows in history but never refreshes the cache window.
@@ -181,14 +189,20 @@ export async function runAsk(
     const citations = filterCitations(generated.parsed.citations, evidence)
     const dropped = generated.parsed.citations.length - citations.length
     if (dropped > 0) log.warn({ dropped }, 'citations outside retrieved set dropped')
-    const answer = generated.parsed.answer.trim()
+    const answer = dropUnknownMarks(generated.parsed.answer.trim(), citations)
     if (!answer || citations.length === 0) {
       log.info('answer empty or uncited, treated as no evidence')
       return finish({ outcome: 'no_evidence', message: NO_EVIDENCE_MESSAGE }, tokens)
     }
 
     return finish(
-      { outcome: 'answered', answer, citations, cached: false },
+      {
+        outcome: 'answered',
+        answer,
+        citations,
+        cached: false,
+        followups: generated.parsed.followups,
+      },
       { ...tokens, answer, citations },
     )
   } catch (err) {

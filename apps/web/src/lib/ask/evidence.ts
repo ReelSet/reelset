@@ -12,7 +12,15 @@ export type EvidenceChunk = {
   similarity: number
 }
 
-export type Citation = { chunkId: string; title: string; url: string; publishedAt: string }
+export type Citation = {
+  chunkId: string
+  title: string
+  url: string
+  publishedAt: string
+  itemId: string
+  // 1-based positions of the evidence chunks behind this source, matching the [n] marks in the answer.
+  refs: number[]
+}
 
 export function selectEvidence(
   rows: readonly EvidenceChunk[],
@@ -29,19 +37,28 @@ export function filterCitations(
   chunkIds: readonly string[],
   retrieved: readonly EvidenceChunk[],
 ): Citation[] {
-  const byId = new Map(retrieved.map((chunk) => [chunk.id, chunk]))
-  const seenUrls = new Set<string>()
+  const byId = new Map(retrieved.map((chunk, i) => [chunk.id, { chunk, ref: i + 1 }]))
+  const byUrl = new Map<string, Citation>()
   const citations: Citation[] = []
   for (const id of chunkIds) {
-    const chunk = byId.get(id)
-    if (!chunk || seenUrls.has(chunk.url)) continue
-    seenUrls.add(chunk.url)
-    citations.push({
+    const hit = byId.get(id)
+    if (!hit) continue
+    const { chunk, ref } = hit
+    const existing = byUrl.get(chunk.url)
+    if (existing) {
+      if (!existing.refs.includes(ref)) existing.refs.push(ref)
+      continue
+    }
+    const citation: Citation = {
       chunkId: chunk.id,
       title: chunk.title,
       url: chunk.url,
       publishedAt: chunk.publishedAt,
-    })
+      itemId: chunk.itemId,
+      refs: [ref],
+    }
+    byUrl.set(chunk.url, citation)
+    citations.push(citation)
   }
   return citations
 }
