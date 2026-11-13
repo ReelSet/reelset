@@ -31,6 +31,15 @@ export function reelPath(item: { id: string; title?: string | null }): string {
   return `/r/${slug ? `${slug}-` : ''}${shortId(item.id)}`
 }
 
+/** Reel path that keeps the topic feed it was opened from, so scrolling stays in that topic. */
+export function reelHref(
+  item: { id: string; title?: string | null },
+  topic?: string | null,
+): string {
+  const path = reelPath(item)
+  return topic ? `${path}?topic=${encodeURIComponent(topic)}` : path
+}
+
 export type ReelParam = { shortId: string; slug: string; id: string | null }
 
 /** Reads `/r/<param>`: `slug-shortid`, a bare short id, or a full uuid (old links). */

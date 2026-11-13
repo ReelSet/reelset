@@ -4,7 +4,7 @@ import { getFeedItem } from '@/lib/ranking'
 import { getOptionalUser } from '@/server/auth'
 import { getDb } from '@/server/db'
 import { mediaBaseUrl } from '@/server/env'
-import { loadFeedResponse, toFeedDto } from '@/server/feed'
+import { loadFeedResponse, resolveTopicLabels, toFeedDto } from '@/server/feed'
 import { routeLog } from '@/server/logger'
 import { z } from 'zod'
 
@@ -14,6 +14,7 @@ const querySchema = z.object({
   cursor: z.string().max(200).optional(),
   limit: z.coerce.number().int().optional(),
   item: z.guid().optional(),
+  topic: z.string().min(1).max(80).optional(),
 })
 
 export async function GET(request: Request) {
@@ -37,12 +38,19 @@ export async function GET(request: Request) {
       )
     }
 
+    let labels: string[] | undefined
+    if (params.data.topic) {
+      labels = await resolveTopicLabels(db, params.data.topic)
+      if (labels.length === 0) return Response.json({ error: 'not_found' }, { status: 404 })
+    }
+
     const body = await loadFeedResponse(db, {
       profileId,
       authenticated: user !== null,
       base,
       cursor: params.data.cursor ?? null,
       limit: params.data.limit,
+      labels,
       log,
     })
     return Response.json(body, { headers: { 'cache-control': 'no-store' } })

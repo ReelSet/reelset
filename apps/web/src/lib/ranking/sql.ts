@@ -41,8 +41,12 @@ export function candidatesQuery(params: {
   poolSize: number
   minTemplate: number
   sources?: readonly string[]
+  labels?: readonly string[]
 }): RawBuilder<CandidateRow> {
   const { profileId, asOf, poolSize, minTemplate } = params
+  const labelFilter = params.labels?.length
+    ? sql`and i.topics && ${sql.val([...params.labels])}::text[]`
+    : sql``
   const sources = params.sources ?? []
   const sourceFilter = sources.length
     ? sql`and exists (
@@ -66,6 +70,7 @@ export function candidatesQuery(params: {
           and coalesce(r.template_version, 0) >= ${minTemplate}
       )
       ${sourceFilter}
+      ${labelFilter}
     order by i.published_at desc, i.id desc
     limit ${poolSize}`
 }
@@ -78,6 +83,7 @@ export async function loadCandidates(
     minTemplate: number
     poolSize?: number
     sources?: readonly string[]
+    labels?: readonly string[]
   },
 ): Promise<Candidate[]> {
   const result = await candidatesQuery({ poolSize: CANDIDATE_POOL_SIZE, ...params }).execute(db)

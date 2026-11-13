@@ -13,13 +13,16 @@ import { SITE_NAME, metaDescription, metaTitle } from '@/lib/seo/site'
 import { getOptionalUser } from '@/server/auth'
 import { getDb } from '@/server/db'
 import { mediaBaseUrl } from '@/server/env'
-import { loadFeedResponse } from '@/server/feed'
+import { loadFeedResponse, resolveTopicLabels } from '@/server/feed'
 import { routeLog } from '@/server/logger'
 import { loadReelPage } from '@/server/seo-queries'
 
 export const dynamic = 'force-dynamic'
 
-type Props = { params: Promise<{ slug: string }> }
+type Props = {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ topic?: string | string[] }>
+}
 
 // generateMetadata and the page share one lookup per request.
 const getReel = cache(async (slug: string) => {
@@ -54,12 +57,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default async function ReelRoute({ params }: Props) {
+export default async function ReelRoute({ params, searchParams }: Props) {
   const { slug } = await params
+  const rawTopic = (await searchParams).topic
+  const topicParam = (Array.isArray(rawTopic) ? rawTopic[0] : rawTopic) || null
   const reel = await getReel(slug)
   if (!reel) notFound()
   const canonical = reelPath(reel)
-  if (`/r/${slug}` !== canonical) permanentRedirect(canonical)
+  const query = topicParam ? `?topic=${encodeURIComponent(topicParam)}` : ''
+  if (`/r/${slug}` !== canonical) permanentRedirect(`${canonical}${query}`)
 
   const jsonLd = <JsonLd data={reelJsonLd(reel)} />
   const article = <ReelArticle reel={reel} />
@@ -86,14 +92,24 @@ export default async function ReelRoute({ params }: Props) {
 
   const log = routeLog('r/[slug]').child({ itemId: reel.id })
   let initial: FeedResponse | undefined
+  let topic: string | null = null
+  let labelsForFeed: string[] | undefined
   try {
     await cookies()
     const user = await getOptionalUser()
+    if (topicParam) {
+      const labels = await resolveTopicLabels(getDb(), topicParam)
+      if (labels.length > 0) {
+        topic = topicParam
+        labelsForFeed = labels
+      }
+    }
     initial = await loadFeedResponse(getDb(), {
       profileId: user?.id ?? null,
       authenticated: user !== null,
       base: mediaBaseUrl(),
       focusId: reel.id,
+      labels: labelsForFeed,
       log,
     })
   } catch (err) {
@@ -103,7 +119,7 @@ export default async function ReelRoute({ params }: Props) {
   return (
     <>
       {jsonLd}
-      <FeedClient initial={initial} about={article} aboutItemId={reel.id} />
+      <FeedClient initial={initial} about={article} aboutItemId={reel.id} topic={topic} />
     </>
   )
 }

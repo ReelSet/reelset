@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   legacyReelRedirect,
   parseReelParam,
+  reelHref,
   reelPath,
   shortId,
   shortIdRange,
@@ -38,6 +39,16 @@ describe('reelPath', () => {
   it('falls back to the bare short id', () => {
     expect(reelPath({ id: ID })).toBe('/r/e86d24f7')
     expect(reelPath({ id: ID, title: '日本語' })).toBe('/r/e86d24f7')
+  })
+})
+
+describe('reelHref', () => {
+  it('keeps the topic so the reel feed stays filtered', () => {
+    expect(reelHref({ id: ID, title: 'Hi' }, 'build-tools')).toBe(
+      '/r/hi-e86d24f7?topic=build-tools',
+    )
+    expect(reelHref({ id: ID, title: 'Hi' })).toBe('/r/hi-e86d24f7')
+    expect(reelHref({ id: ID, title: 'Hi' }, null)).toBe('/r/hi-e86d24f7')
   })
 })
 
