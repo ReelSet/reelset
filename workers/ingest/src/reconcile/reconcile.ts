@@ -104,6 +104,18 @@ async function reconcileStuck(db: Database, now: Date, log: Logger) {
     .where('status', 'in', ['found', 'summarized', 'embedded', 'voiced'])
     .where('queued_at', '<', cutoff)
     .where('status_changed_at', '<', cutoff)
+    // A queued or rendering render means the item is waiting its turn on a render box, not stuck.
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom('render')
+            .select('render.id')
+            .whereRef('render.item_id', '=', 'item.id')
+            .where('render.status', 'in', ['queued', 'rendering']),
+        ),
+      ),
+    )
     .limit(RECONCILE_BATCH)
     .execute()
 
@@ -160,14 +172,16 @@ async function enqueueStage(
   queue: BatchSender<{ itemId: string; attempt: number }>,
   status: 'summarized' | 'embedded' | 'voiced',
   log: Logger,
+  limit = RECONCILE_BATCH,
 ): Promise<number> {
+  if (limit <= 0) return 0
   const rows = await db
     .selectFrom('item')
     .select('id')
     .where('status', '=', status)
     .where('queued_at', 'is', null)
     .orderBy('score', 'desc')
-    .limit(RECONCILE_BATCH)
+    .limit(Math.min(limit, RECONCILE_BATCH))
     .execute()
   const claimed = await claim(
     db,
@@ -177,6 +191,19 @@ async function enqueueStage(
   const sent = await sendClaimed(db, queue, claimed, log)
   if (sent > 0) log.info({ status, sent }, 'items enqueued')
   return sent
+}
+
+async function renderBudget(db: Database, log: Logger): Promise<number> {
+  const maxInFlight = await getSetting(db, SETTINGS.renderMaxInFlight, log)
+  const row = await db
+    .selectFrom('item')
+    .select(sql<string>`count(*)`.as('n'))
+    .where('status', 'in', ['embedded', 'voiced'])
+    .where('queued_at', 'is not', null)
+    .executeTakeFirst()
+  const inFlight = Number(row?.n ?? 0)
+  log.info({ inFlight, maxInFlight }, 'render budget')
+  return Math.max(0, maxInFlight - inFlight)
 }
 
 async function countAdmittedToday(db: Database, now: Date): Promise<number> {
@@ -393,11 +420,16 @@ export async function reconcile(
     result.stuckRequeued = stuck.requeued
     result.stuckFailed = stuck.failed
   })
+  let budget = 0
+  await step('render budget', async () => {
+    budget = await renderBudget(db, l)
+  })
   await step('embedded', async () => {
-    result.enqueuedEmbedded = await enqueueStage(db, queues.render, 'embedded', l)
+    result.enqueuedEmbedded = await enqueueStage(db, queues.render, 'embedded', l, budget)
+    budget -= result.enqueuedEmbedded
   })
   await step('voiced', async () => {
-    result.enqueuedVoiced = await enqueueStage(db, queues.render, 'voiced', l)
+    result.enqueuedVoiced = await enqueueStage(db, queues.render, 'voiced', l, budget)
   })
   await step('summarized', async () => {
     if (result.paused) return

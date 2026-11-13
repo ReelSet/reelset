@@ -36,6 +36,7 @@ export type PipelinePause = z.infer<typeof pipelinePauseSchema>
 
 export const SETTINGS = {
   dailyReelCap: def('daily_reel_cap', z.number().int().positive(), 10),
+  renderMaxInFlight: def('render_max_in_flight', z.number().int().min(1).max(100), 6),
   minItemScore: def('min_item_score', z.number().min(0).max(1), 0.35),
   feedMinTemplate: def('feed_min_template', z.number().int().min(0), 0),
   reelRetentionDays: def('reel_retention_days', z.number().int().positive(), 30),
