@@ -178,6 +178,7 @@ model Item {
   promptVersion   String?                    @map("prompt_version") @db.VarChar(32)
   embedding       Unsupported("vector(768)")?
   attempts        Int                        @default(0)
+  viewCount       Int                        @default(0) @map("view_count")
   lastError       String?                    @map("last_error")
   publishedAt     DateTime                   @map("published_at") @db.Timestamptz(6)
   firstSeenAt     DateTime                   @default(now()) @map("first_seen_at") @db.Timestamptz(6)
@@ -195,6 +196,7 @@ model Item {
   likes    Like[]
   saves    Save[]
   usage    Event[]
+  views    ItemView[]
 
   @@index([status, publishedAt(sort: Desc)], map: "item_feed_idx")
   @@index([status, statusChangedAt], map: "item_status_changed_idx")
@@ -408,6 +410,19 @@ model Save {
   @@id([profileId, itemId])
   @@index([itemId], map: "save_item_idx")
   @@map("save")
+}
+
+model ItemView {
+  itemId    String   @map("item_id") @db.Uuid
+  viewerKey String   @map("viewer_key") @db.VarChar(64)
+  day       DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, viewerKey, day])
+  @@index([viewerKey, createdAt(sort: Desc)], map: "item_view_viewer_created_idx")
+  @@map("item_view")
 }
 
 model Event {
