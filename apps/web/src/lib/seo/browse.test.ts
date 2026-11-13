@@ -4,8 +4,10 @@ import {
   buildShelves,
   clockDuration,
   filterHref,
+  matchesQuery,
   relatedTopics,
   sourceChips,
+  withVisibleViews,
 } from './browse'
 import type { ReelSummary } from './types'
 
@@ -97,5 +99,34 @@ describe('small helpers', () => {
     const r = { ...reel('1', []), source: 'hn' }
     expect(asSeenOn([r], 'reddit')[0]?.source).toBe('reddit')
     expect(asSeenOn([r], null)[0]?.source).toBe('hn')
+  })
+})
+
+describe('withVisibleViews', () => {
+  const withViews = (views: number) => ({ ...reel('a', ['rust']), views })
+
+  it('drops views when the rule hides them or the threshold is not reached', () => {
+    const hidden = withVisibleViews([withViews(500)], { show: false, min: 0 })
+    const low = withVisibleViews([withViews(50)], { show: true, min: 100 })
+    expect(hidden[0]).not.toHaveProperty('views')
+    expect(low[0]).not.toHaveProperty('views')
+  })
+
+  it('keeps views at or above the threshold', () => {
+    expect(withVisibleViews([withViews(100)], { show: true, min: 100 })[0]?.views).toBe(100)
+  })
+})
+
+describe('matchesQuery', () => {
+  const r = { title: 'Rust 1.9 ships', topics: ['Rust', 'Open Source'], tldr: 'Faster builds' }
+
+  it('matches every term across title, topics and summary, case-insensitively', () => {
+    expect(matchesQuery(r, 'rust builds')).toBe(true)
+    expect(matchesQuery(r, 'OPEN source')).toBe(true)
+  })
+
+  it('rejects when any term is missing and accepts an empty query', () => {
+    expect(matchesQuery(r, 'rust python')).toBe(false)
+    expect(matchesQuery(r, '  ')).toBe(true)
   })
 })

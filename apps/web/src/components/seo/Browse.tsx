@@ -1,8 +1,11 @@
-import { ArrowRightIcon } from '@/components/ui/icons'
+import { ArrowRightIcon, EyeIcon } from '@/components/ui/icons'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
+import { formatCount } from '@/lib/counts'
 import { reelHref, type FeedScope } from '@/lib/reel-url'
 import { clockDuration, filterHref, type Shelf, type SourceChip } from '@/lib/seo/browse'
 import type { ReelSummary, TopicCount } from '@/lib/seo/types'
+
+const MOBILE_SHELF_REELS = 4
 
 export function PosterCard({
   reel,
@@ -44,7 +47,13 @@ export function PosterCard({
         )}
       </span>
       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent p-2.5 pt-12 text-[13px] font-medium leading-snug text-white">
-        <span className="line-clamp-3 [overflow-wrap:anywhere]">{reel.title}</span>
+        <span className="line-clamp-2 [overflow-wrap:anywhere]">{reel.title}</span>
+        {reel.views !== undefined && (
+          <span className="mt-1 flex items-center gap-1 text-[11px] font-normal text-white/70 tabular-nums">
+            <EyeIcon className="h-3.5 w-3.5" />
+            {formatCount(reel.views)}
+          </span>
+        )}
       </span>
     </a>
   )
@@ -67,11 +76,15 @@ export function ReelGrid({ reels, scope }: { reels: ReelSummary[]; scope?: FeedS
 }
 
 /** Sticky row of source filters; plain links so it works without JS and crawlers can follow it. */
-export function SourceFilter({ chips }: { chips: SourceChip[] }) {
+export function SourceFilter({ chips, sticky = true }: { chips: SourceChip[]; sticky?: boolean }) {
   return (
     <nav
       aria-label="Filter by source"
-      className="sticky top-0 z-20 -mx-5 border-b border-line bg-bg/85 px-5 py-3 backdrop-blur-md"
+      className={
+        sticky
+          ? 'sticky top-0 z-20 -mx-5 border-b border-line bg-bg/85 px-5 py-3 backdrop-blur-md'
+          : ''
+      }
     >
       <ul className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
         {chips.map((chip) => (
@@ -120,9 +133,12 @@ export function TopicShelf({ shelf, source }: { shelf: Shelf; source: string | n
           <ArrowRightIcon className="h-3.5 w-3.5" />
         </a>
       </div>
-      <ul className="no-scrollbar -mx-5 mt-3 flex snap-x snap-mandatory scroll-px-5 gap-2 overflow-x-auto px-5">
+      <ul className="no-scrollbar mt-3 grid grid-cols-2 gap-2 sm:-mx-5 sm:flex sm:snap-x sm:snap-mandatory sm:scroll-px-5 sm:overflow-x-auto sm:px-5">
         {shelf.reels.map((r, i) => (
-          <li key={r.id} className="w-[38%] shrink-0 snap-start sm:w-40">
+          <li
+            key={r.id}
+            className={`sm:w-40 sm:shrink-0 sm:snap-start ${i >= MOBILE_SHELF_REELS ? 'hidden sm:block' : ''}`}
+          >
             <PosterCard reel={r} eager={i < 3} scope={{ topic: shelf.topic.slug, source }} />
           </li>
         ))}

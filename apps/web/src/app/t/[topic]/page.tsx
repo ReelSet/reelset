@@ -5,13 +5,14 @@ import { cache } from 'react'
 import { EmptyFilter, ReelGrid, SourceFilter, TopicPills } from '@/components/seo/Browse'
 import { JsonLd, PageChrome } from '@/components/seo/PageChrome'
 import { sourceMeta } from '@/components/ui/sources'
-import { asSeenOn, relatedTopics, sourceChips } from '@/lib/seo/browse'
+import { asSeenOn, relatedTopics, sourceChips, withVisibleViews } from '@/lib/seo/browse'
 import { groupTopics } from '@/lib/seo/feeds'
 import { topicJsonLd } from '@/lib/seo/json-ld'
 import { MIN_INDEXED_TOPIC_REELS, SITE_NAME } from '@/lib/seo/site'
 import { topicSlug } from '@/lib/reel-url'
 import { getDb } from '@/server/db'
 import { mediaBaseUrl } from '@/server/env'
+import { loadCountRules } from '@/server/counts'
 import { routeLog } from '@/server/logger'
 import {
   labelsForSlug,
@@ -86,6 +87,7 @@ export default async function TopicPage({ params, searchParams }: Props) {
         source,
       })
     : topic.reels
+  const rules = await loadCountRules(getDb(), routeLog('t/[topic]'))
   const related = relatedTopics(topic.reels, topic.slug, RELATED_TOPICS)
 
   return (
@@ -133,7 +135,10 @@ export default async function TopicPage({ params, searchParams }: Props) {
 
       <div className="mt-6">
         {reels.length > 0 ? (
-          <ReelGrid reels={asSeenOn(reels, source)} scope={{ topic: topic.slug, source }} />
+          <ReelGrid
+            reels={withVisibleViews(asSeenOn(reels, source), rules.views)}
+            scope={{ topic: topic.slug, source }}
+          />
         ) : (
           <EmptyFilter label={source ? sourceMeta(source).label : ''} resetHref={path} />
         )}

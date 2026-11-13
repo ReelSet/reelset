@@ -18,7 +18,7 @@ export function PageChrome({
 }) {
   return (
     <div className={`mx-auto w-full px-5 pb-20 ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}>
-      <header className="flex items-center justify-between pt-safe">
+      <header className="flex items-center justify-between pt-safe lg:hidden">
         <a href="/" aria-label="Reelset home">
           <Wordmark className="text-[15px]" />
         </a>

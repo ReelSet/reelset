@@ -41,6 +41,7 @@ type ReelRow = {
 type SummaryRow = Omit<ReelRow, 'kind' | 'canonical_url' | 'rendered_at' | 'script'> & {
   updated_at: Date
   source?: string | null
+  view_count?: number
 }
 
 function iso(value: Date | string | null): string | null {
@@ -147,6 +148,7 @@ function toSummary(row: SummaryRow, mediaBase: string): ReelSummary {
     posterUrl: mediaUrl(mediaBase, row.poster_key),
     durationMs: row.video_duration_ms,
     source: row.source ?? null,
+    ...(row.view_count === undefined ? {} : { views: row.view_count }),
   }
 }
 
@@ -168,7 +170,7 @@ export async function listReelSummaries(
 ): Promise<ReelSummary[]> {
   const topicFilter = opts.labels ? sql`and i.topics && ${opts.labels}::text[]` : sql``
   const { rows } = await sql<SummaryRow>`
-    select i.id, i.title, i.tldr, i.topics, i.published_at, ${leadSource},
+    select i.id, i.title, i.tldr, i.topics, i.published_at, i.view_count, ${leadSource},
       coalesce(i.rendered_at, i.published_at) as updated_at,
       served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
