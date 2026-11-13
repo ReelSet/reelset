@@ -46,6 +46,7 @@ export async function loadFeedResponse(
     limit?: number
     focusId?: string | null
     labels?: readonly string[]
+    source?: string | null
     log: Logger
   },
 ): Promise<FeedResponse> {
@@ -56,6 +57,7 @@ export async function loadFeedResponse(
       cursor: params.cursor ?? null,
       limit: params.limit ?? DEFAULT_FEED_LIMIT,
       labels: params.labels,
+      source: params.source,
       log,
     }),
     profileId

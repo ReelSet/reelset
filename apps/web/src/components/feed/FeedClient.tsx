@@ -5,7 +5,7 @@ import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import { DEFAULT_COUNT_RULES } from '@/lib/counts'
 import { useReelViews } from './useReelViews'
-import { reelHref } from '@/lib/reel-url'
+import { reelHref, type FeedScope } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
 import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
@@ -58,9 +58,17 @@ type FeedClientProps = {
   aboutItemId?: string
   /** Topic slug when the feed is one topic's reels; every page then stays in that topic. */
   topic?: string | null
+  /** Source (hn, github, ...) when the feed was opened from a source filter. */
+  source?: string | null
 }
 
-export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedClientProps = {}) {
+export function FeedClient({
+  initial,
+  about,
+  aboutItemId,
+  topic = null,
+  source = null,
+}: FeedClientProps = {}) {
   const [items, setItems] = useState<FeedItemDto[]>(initial?.items ?? [])
   const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null)
   const [phase, setPhase] = useState<Phase>(initial ? 'ready' : 'loading')
@@ -181,13 +189,13 @@ export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedCl
   const loadInitial = useCallback(async () => {
     setPhase('loading')
     try {
-      const res = await fetch(feedUrl(topic))
+      const res = await fetch(feedUrl({ topic, source }))
       if (!res.ok) throw new Error(String(res.status))
       applyFeed((await res.json()) as FeedResponse)
     } catch {
       setPhase('error')
     }
-  }, [applyFeed, topic])
+  }, [applyFeed, topic, source])
 
   const initialRef = useRef(initial)
   const mounted = useRef(false)
@@ -203,7 +211,7 @@ export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedCl
     loadingMore.current = true
     setMoreState('loading')
     try {
-      const res = await fetch(feedUrl(topic, cursor))
+      const res = await fetch(feedUrl({ topic, source }, cursor))
       if (!res.ok) throw new Error(String(res.status))
       const feed = (await res.json()) as FeedResponse
       setItems((cur) => {
@@ -217,7 +225,7 @@ export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedCl
     } finally {
       loadingMore.current = false
     }
-  }, [cursor, topic])
+  }, [cursor, topic, source])
 
   useEffect(() => {
     if (phase === 'ready' && moreState !== 'failed' && active >= items.length - 3) void loadMore()
@@ -242,12 +250,12 @@ export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedCl
     const first = !urlSynced.current
     urlSynced.current = true
     if (first && window.location.pathname === '/') return
-    const href = reelHref(current, topic)
+    const href = reelHref(current, { topic, source })
     if (window.location.pathname + window.location.search !== href) {
       window.history.replaceState(null, '', href)
     }
     document.title = `${metaTitle(current.title)} | Reelset`
-  }, [active, items, phase, topic])
+  }, [active, items, phase, topic, source])
 
   const goTo = useCallback((index: number) => {
     const target = scrollerRef.current?.children[index]
@@ -521,10 +529,11 @@ export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedCl
   )
 }
 
-function feedUrl(topic: string | null, cursor?: string | null): string {
+function feedUrl(scope: FeedScope, cursor?: string | null): string {
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)
-  if (topic) query.set('topic', topic)
+  if (scope.topic) query.set('topic', scope.topic)
+  if (scope.source) query.set('source', scope.source)
   const qs = query.toString()
   return qs ? `/api/feed?${qs}` : '/api/feed'
 }

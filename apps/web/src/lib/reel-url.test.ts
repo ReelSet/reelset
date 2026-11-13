@@ -43,12 +43,16 @@ describe('reelPath', () => {
 })
 
 describe('reelHref', () => {
-  it('keeps the topic so the reel feed stays filtered', () => {
-    expect(reelHref({ id: ID, title: 'Hi' }, 'build-tools')).toBe(
+  it('keeps the topic and source so the reel feed stays filtered', () => {
+    expect(reelHref({ id: ID, title: 'Hi' }, { source: 'hn' })).toBe('/r/hi-e86d24f7?source=hn')
+    expect(reelHref({ id: ID, title: 'Hi' }, { topic: 'ai', source: 'github' })).toBe(
+      '/r/hi-e86d24f7?topic=ai&source=github',
+    )
+    expect(reelHref({ id: ID, title: 'Hi' }, { topic: 'build-tools' })).toBe(
       '/r/hi-e86d24f7?topic=build-tools',
     )
     expect(reelHref({ id: ID, title: 'Hi' })).toBe('/r/hi-e86d24f7')
-    expect(reelHref({ id: ID, title: 'Hi' }, null)).toBe('/r/hi-e86d24f7')
+    expect(reelHref({ id: ID, title: 'Hi' }, { topic: null, source: null })).toBe('/r/hi-e86d24f7')
   })
 })
 

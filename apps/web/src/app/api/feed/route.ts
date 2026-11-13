@@ -1,4 +1,4 @@
-import { errorFields } from '@reelset/core'
+import { errorFields, parseSource } from '@reelset/core'
 import { cookies } from 'next/headers'
 import { getFeedItem } from '@/lib/ranking'
 import { getOptionalUser } from '@/server/auth'
@@ -15,6 +15,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().optional(),
   item: z.guid().optional(),
   topic: z.string().min(1).max(80).optional(),
+  source: z.string().max(20).optional(),
 })
 
 export async function GET(request: Request) {
@@ -44,6 +45,10 @@ export async function GET(request: Request) {
       if (labels.length === 0) return Response.json({ error: 'not_found' }, { status: 404 })
     }
 
+    const source = params.data.source ? parseSource(params.data.source, log) : null
+    if (params.data.source && !source)
+      return Response.json({ error: 'invalid_query' }, { status: 400 })
+
     const body = await loadFeedResponse(db, {
       profileId,
       authenticated: user !== null,
@@ -51,6 +56,7 @@ export async function GET(request: Request) {
       cursor: params.data.cursor ?? null,
       limit: params.data.limit,
       labels,
+      source,
       log,
     })
     return Response.json(body, { headers: { 'cache-control': 'no-store' } })
