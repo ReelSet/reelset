@@ -9,14 +9,8 @@ import { reelHref, type FeedScope } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
 import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
-import {
-  ChevronIcon,
-  HashIcon,
-  HomeIcon,
-  SearchIcon,
-  SparkleIcon,
-  UserIcon,
-} from '@/components/ui/icons'
+import { ChevronIcon, HashIcon, SearchIcon, UserIcon } from '@/components/ui/icons'
+import { SideNav } from '@/components/ui/AppNav'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LogoMark, Wordmark } from '@/components/ui/Logo'
@@ -321,20 +315,7 @@ export function FeedClient({
           <p className="mt-4 max-w-[14rem] text-sm leading-relaxed text-muted">
             What developers are building, in 60-second reels.
           </p>
-          <nav className="mt-8 flex flex-col gap-1 text-sm">
-            <SideLink href="/" active icon={<HomeIcon className="h-[18px] w-[18px]" />}>
-              Feed
-            </SideLink>
-            <SideLink href="/t" icon={<HashIcon className="h-[18px] w-[18px]" />}>
-              Topics
-            </SideLink>
-            <SideLink href="/ask" icon={<SparkleIcon className="h-[18px] w-[18px]" />}>
-              Ask
-            </SideLink>
-            <SideLink href={accountHref} icon={<UserIcon className="h-[18px] w-[18px]" />}>
-              {viewer.authenticated ? 'Profile' : 'Sign in'}
-            </SideLink>
-          </nav>
+          <SideNav accountHref={accountHref} authenticated={viewer.authenticated} />
         </div>
         <div className="flex flex-col gap-6">
           <ul className="flex flex-col gap-2 text-xs text-faint">
@@ -536,31 +517,6 @@ function feedUrl(scope: FeedScope, cursor?: string | null): string {
   if (scope.source) query.set('source', scope.source)
   const qs = query.toString()
   return qs ? `/api/feed?${qs}` : '/api/feed'
-}
-
-function SideLink({
-  href,
-  icon,
-  active,
-  children,
-}: {
-  href: string
-  icon: React.ReactNode
-  active?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <a
-      href={href}
-      aria-current={active ? 'page' : undefined}
-      className={`flex w-40 items-center gap-3 rounded-md px-3 py-2 transition ${
-        active ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
-      }`}
-    >
-      {icon}
-      {children}
-    </a>
-  )
 }
 
 function NavButton({
