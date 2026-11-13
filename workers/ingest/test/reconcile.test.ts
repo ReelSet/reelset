@@ -251,6 +251,25 @@ describe('reconcile', () => {
     expect(stuck.params).toEqual(expect.arrayContaining(['queued', 'rendering']))
   })
 
+  it('only treats a render as live while it changed within the live windows', async () => {
+    const fake = scriptedDb({})
+    await reconcile(fake.db, queues(), testLog, now)
+    const stuck = fake.find('"queued_at" <')[0]!
+    const times = stuck.params.filter((p): p is Date => p instanceof Date).map((d) => d.getTime())
+    expect(times).toContain(now.getTime() - 5 * 60 * 60_000)
+    expect(times).toContain(now.getTime() - 75 * 60_000)
+    expect(stuck.sql).toContain('"item"."queued_at" >')
+    expect(stuck.sql).toContain('"render"."started_at" >')
+  })
+
+  it('ignores items queued past the live window when counting in-flight renders', async () => {
+    const fake = scriptedDb({})
+    await reconcile(fake.db, queues(), testLog, now)
+    const count = fake.find('select count(*) as "n" from "item"')[0]!
+    expect(count.sql).toContain('"queued_at" >')
+    expect(count.params).toContainEqual(new Date(now.getTime() - 5 * 60 * 60_000))
+  })
+
   it('enqueues only as many render jobs as the in-flight cap leaves free', async () => {
     const fake = scriptedDb({
       embedded: [{ id: 'item-e1' }, { id: 'item-e2' }],

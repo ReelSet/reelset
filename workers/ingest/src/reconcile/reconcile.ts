@@ -17,6 +17,8 @@ import {
   ENQUEUE_CHUNK,
   RECONCILE_BATCH,
   SPEND_CATEGORIES_FOR_CAP,
+  RENDER_QUEUED_LIVE_MS,
+  RENDER_RENDERING_LIVE_MS,
   STUCK_AFTER_MS,
 } from '../config'
 import type { IngestItemMessage, RenderJobMessage } from '../env'
@@ -104,7 +106,8 @@ async function reconcileStuck(db: Database, now: Date, log: Logger) {
     .where('status', 'in', ['found', 'summarized', 'embedded', 'voiced'])
     .where('queued_at', '<', cutoff)
     .where('status_changed_at', '<', cutoff)
-    // A queued or rendering render means the item is waiting its turn on a render box, not stuck.
+    // A fresh queued or rendering render means the item is waiting its turn on a render box, not
+    // stuck. Past the live windows the queue message is presumed gone and the item is requeued.
     .where((eb) =>
       eb.not(
         eb.exists(
@@ -112,7 +115,18 @@ async function reconcileStuck(db: Database, now: Date, log: Logger) {
             .selectFrom('render')
             .select('render.id')
             .whereRef('render.item_id', '=', 'item.id')
-            .where('render.status', 'in', ['queued', 'rendering']),
+            .where((rb) =>
+              rb.or([
+                rb.and([
+                  rb('render.status', '=', 'queued'),
+                  rb('item.queued_at', '>', new Date(now.getTime() - RENDER_QUEUED_LIVE_MS)),
+                ]),
+                rb.and([
+                  rb('render.status', '=', 'rendering'),
+                  rb('render.started_at', '>', new Date(now.getTime() - RENDER_RENDERING_LIVE_MS)),
+                ]),
+              ]),
+            ),
         ),
       ),
     )
@@ -193,13 +207,13 @@ async function enqueueStage(
   return sent
 }
 
-async function renderBudget(db: Database, log: Logger): Promise<number> {
+async function renderBudget(db: Database, now: Date, log: Logger): Promise<number> {
   const maxInFlight = await getSetting(db, SETTINGS.renderMaxInFlight, log)
   const row = await db
     .selectFrom('item')
     .select(sql<string>`count(*)`.as('n'))
     .where('status', 'in', ['embedded', 'voiced'])
-    .where('queued_at', 'is not', null)
+    .where('queued_at', '>', new Date(now.getTime() - RENDER_QUEUED_LIVE_MS))
     .executeTakeFirst()
   const inFlight = Number(row?.n ?? 0)
   log.info({ inFlight, maxInFlight }, 'render budget')
@@ -422,7 +436,7 @@ export async function reconcile(
   })
   let budget = 0
   await step('render budget', async () => {
-    budget = await renderBudget(db, l)
+    budget = await renderBudget(db, now, l)
   })
   await step('embedded', async () => {
     result.enqueuedEmbedded = await enqueueStage(db, queues.render, 'embedded', l, budget)
