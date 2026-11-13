@@ -1,5 +1,7 @@
 import { errorFields, type Database, type Logger } from '@reelset/core'
+import { sql } from 'kysely'
 import { sourcesSchema, storedSources, topicsSchema } from '@/lib/preferences'
+import { MAX_FOLLOWED_TOPICS } from '@/lib/topics'
 
 export type SaveResult<T> = { ok: true; value: T } | { ok: false; error: 'invalid' }
 
@@ -45,6 +47,39 @@ export async function saveSources(
     return { ok: true, value: parsed.data.sources }
   } catch (err) {
     log.error(errorFields(err), 'sources save failed')
+    throw err
+  }
+}
+
+export type SetFollowResult =
+  { status: 'ok'; topics: string[] } | { status: 'full'; topics: string[] }
+
+export async function setTopicFollow(
+  db: Database,
+  input: { profileId: string; topic: string; following: boolean },
+  log: Logger,
+): Promise<SetFollowResult> {
+  const { profileId, topic, following } = input
+  try {
+    const row = await db
+      .updateTable('profile')
+      .set({
+        topics: following
+          ? sql<
+              string[]
+            >`CASE WHEN ${topic} = ANY(topics) OR cardinality(topics) >= ${MAX_FOLLOWED_TOPICS} THEN topics ELSE array_append(topics, ${topic}) END`
+          : sql<string[]>`array_remove(topics, ${topic})`,
+        updated_at: new Date(),
+      })
+      .where('id', '=', profileId)
+      .returning('topics')
+      .executeTakeFirst()
+    const topics = row?.topics ?? []
+    const status = following && !topics.includes(topic) ? 'full' : 'ok'
+    log.info({ profileId, topic, following, status }, 'topic follow applied')
+    return { status, topics }
+  } catch (err) {
+    log.error(errorFields(err), 'topic follow failed')
     throw err
   }
 }
