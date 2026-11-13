@@ -19,6 +19,21 @@ const db = new Kysely({
   },
 }) as unknown as Database
 
+describe('candidatesQuery topic filter', () => {
+  const base = { profileId: null, asOf: '2026-11-09T12:00:00.000Z', poolSize: 10, minTemplate: 5 }
+
+  it('restricts the pool to items tagged with any topic label', () => {
+    const q = candidatesQuery({ ...base, labels: ['Rust', 'rust-lang'] }).compile(db)
+    expect(q.sql).toMatch(/i\.topics && \$\d+::text\[\]/)
+    expect(q.parameters).toContainEqual(['Rust', 'rust-lang'])
+  })
+
+  it('adds no topic filter without labels', () => {
+    expect(candidatesQuery(base).compile(db).sql).not.toMatch(/i\.topics &&/)
+    expect(candidatesQuery({ ...base, labels: [] }).compile(db).sql).not.toMatch(/i\.topics &&/)
+  })
+})
+
 describe('candidatesQuery source preference', () => {
   const base = {
     profileId: 'p-1',

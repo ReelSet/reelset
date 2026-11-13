@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
-import { reelPath } from '@/lib/reel-url'
+import { DEFAULT_COUNT_RULES } from '@/lib/counts'
+import { useReelViews } from './useReelViews'
+import { reelHref } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
+import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
 import {
   ChevronIcon,
@@ -53,15 +56,18 @@ type FeedClientProps = {
   /** Details panel for the reel a /r/ page opened, shown beside it on wide screens. */
   about?: React.ReactNode
   aboutItemId?: string
+  /** Topic slug when the feed is one topic's reels; every page then stays in that topic. */
+  topic?: string | null
 }
 
-export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}) {
+export function FeedClient({ initial, about, aboutItemId, topic = null }: FeedClientProps = {}) {
   const [items, setItems] = useState<FeedItemDto[]>(initial?.items ?? [])
   const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null)
   const [phase, setPhase] = useState<Phase>(initial ? 'ready' : 'loading')
   const [viewer, setViewer] = useState(
     initial?.viewer ?? { authenticated: false, needsTopics: false },
   )
+  const [countRules, setCountRules] = useState(initial?.countRules ?? DEFAULT_COUNT_RULES)
   const [active, setActive] = useState(0)
   const [soundOn, setSoundOn] = useState(false)
   const [sourcesFor, setSourcesFor] = useState<FeedItemDto | null>(null)
@@ -125,7 +131,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
     async (item: FeedItemDto) => {
       const current = itemsRef.current.find((it) => it.id === item.id) ?? item
       const saved = !current.saved
-      patchItem(item.id, { saved })
+      patchItem(item.id, { saved, saveCount: Math.max(0, current.saveCount + (saved ? 1 : -1)) })
       try {
         const res = await fetch('/api/saves', {
           method: 'POST',
@@ -140,7 +146,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
         if (!res.ok) throw new Error(String(res.status))
         toast.show(saved ? 'Saved to your profile' : 'Removed from saved', 'ok')
       } catch {
-        patchItem(item.id, { saved: current.saved })
+        patchItem(item.id, { saved: current.saved, saveCount: current.saveCount })
         toast.show(
           navigator.onLine ? 'Could not save this reel. Try again.' : 'You are offline.',
           'error',
@@ -155,6 +161,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
       setItems(feed.items)
       setCursor(feed.nextCursor)
       setViewer(feed.viewer)
+      setCountRules(feed.countRules)
       setPickerOpen(
         feed.viewer.needsTopics && readStorage(localStorage, TOPICS_DISMISSED_KEY) === null,
       )
@@ -174,13 +181,13 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
   const loadInitial = useCallback(async () => {
     setPhase('loading')
     try {
-      const res = await fetch('/api/feed')
+      const res = await fetch(feedUrl(topic))
       if (!res.ok) throw new Error(String(res.status))
       applyFeed((await res.json()) as FeedResponse)
     } catch {
       setPhase('error')
     }
-  }, [applyFeed])
+  }, [applyFeed, topic])
 
   const initialRef = useRef(initial)
   const mounted = useRef(false)
@@ -196,7 +203,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
     loadingMore.current = true
     setMoreState('loading')
     try {
-      const res = await fetch(`/api/feed?cursor=${encodeURIComponent(cursor)}`)
+      const res = await fetch(feedUrl(topic, cursor))
       if (!res.ok) throw new Error(String(res.status))
       const feed = (await res.json()) as FeedResponse
       setItems((cur) => {
@@ -210,11 +217,13 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
     } finally {
       loadingMore.current = false
     }
-  }, [cursor])
+  }, [cursor, topic])
 
   useEffect(() => {
     if (phase === 'ready' && moreState !== 'failed' && active >= items.length - 3) void loadMore()
   }, [active, items.length, phase, loadMore, moreState])
+
+  useReelViews(phase === 'ready' ? items[active]?.id : undefined)
 
   const startedFor = useRef<string | null>(null)
   useEffect(() => {
@@ -233,10 +242,12 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
     const first = !urlSynced.current
     urlSynced.current = true
     if (first && window.location.pathname === '/') return
-    const path = reelPath(current)
-    if (window.location.pathname !== path) window.history.replaceState(null, '', path)
+    const href = reelHref(current, topic)
+    if (window.location.pathname + window.location.search !== href) {
+      window.history.replaceState(null, '', href)
+    }
     document.title = `${metaTitle(current.title)} | Reelset`
-  }, [active, items, phase])
+  }, [active, items, phase, topic])
 
   const goTo = useCallback((index: number) => {
     const target = scrollerRef.current?.children[index]
@@ -370,13 +381,9 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
       </div>
 
       <aside className="hidden flex-col items-start justify-end gap-6 py-10 lg:flex">
-        {about && (
-          <div
-            className={`no-scrollbar max-h-[calc(100dvh-20rem)] w-80 overflow-y-auto ${
-              items[active]?.id === aboutItemId ? '' : 'hidden'
-            }`}
-          >
-            {about}
+        {items[active] && (
+          <div className="no-scrollbar max-h-[calc(100dvh-20rem)] w-80 overflow-y-auto">
+            {about && items[active].id === aboutItemId ? about : <ReelAbout item={items[active]} />}
           </div>
         )}
         {canNavigate && (
@@ -457,6 +464,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
         <ReelCard
           key={item.id}
           item={item}
+          countRules={countRules}
           index={index}
           active={index === active}
           inWindow={Math.abs(index - active) <= 2}
@@ -511,6 +519,14 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
     </div>,
     true,
   )
+}
+
+function feedUrl(topic: string | null, cursor?: string | null): string {
+  const query = new URLSearchParams()
+  if (cursor) query.set('cursor', cursor)
+  if (topic) query.set('topic', topic)
+  const qs = query.toString()
+  return qs ? `/api/feed?${qs}` : '/api/feed'
 }
 
 function SideLink({

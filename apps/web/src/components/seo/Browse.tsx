@@ -1,14 +1,22 @@
 import { ArrowRightIcon } from '@/components/ui/icons'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
-import { reelPath } from '@/lib/reel-url'
+import { reelHref } from '@/lib/reel-url'
 import { clockDuration, filterHref, type Shelf, type SourceChip } from '@/lib/seo/browse'
 import type { ReelSummary, TopicCount } from '@/lib/seo/types'
 
-export function PosterCard({ reel, eager }: { reel: ReelSummary; eager?: boolean }) {
+export function PosterCard({
+  reel,
+  eager,
+  topic,
+}: {
+  reel: ReelSummary
+  eager?: boolean
+  topic?: string
+}) {
   const duration = clockDuration(reel.durationMs)
   return (
     <a
-      href={reelPath(reel)}
+      href={reelHref(reel, topic)}
       className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-gradient-to-b from-raised to-surface transition active:scale-[0.97]"
     >
       {reel.posterUrl && (
@@ -42,7 +50,7 @@ export function PosterCard({ reel, eager }: { reel: ReelSummary; eager?: boolean
   )
 }
 
-export function ReelGrid({ reels }: { reels: ReelSummary[] }) {
+export function ReelGrid({ reels, topic }: { reels: ReelSummary[]; topic?: string }) {
   return (
     <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       {reels.map((r, i) => (
@@ -51,7 +59,7 @@ export function ReelGrid({ reels }: { reels: ReelSummary[] }) {
           className="animate-fade-up"
           style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
         >
-          <PosterCard reel={r} eager={i < 6} />
+          <PosterCard reel={r} eager={i < 6} topic={topic} />
         </li>
       ))}
     </ul>
@@ -115,7 +123,7 @@ export function TopicShelf({ shelf, source }: { shelf: Shelf; source: string | n
       <ul className="no-scrollbar -mx-5 mt-3 flex snap-x snap-mandatory scroll-px-5 gap-2 overflow-x-auto px-5">
         {shelf.reels.map((r, i) => (
           <li key={r.id} className="w-[38%] shrink-0 snap-start sm:w-40">
-            <PosterCard reel={r} eager={i < 3} />
+            <PosterCard reel={r} eager={i < 3} topic={shelf.topic.slug} />
           </li>
         ))}
       </ul>

@@ -133,7 +133,7 @@ export default async function TopicPage({ params, searchParams }: Props) {
 
       <div className="mt-6">
         {reels.length > 0 ? (
-          <ReelGrid reels={asSeenOn(reels, source)} />
+          <ReelGrid reels={asSeenOn(reels, source)} topic={topic.slug} />
         ) : (
           <EmptyFilter label={source ? sourceMeta(source).label : ''} resetHref={path} />
         )}
