@@ -67,6 +67,9 @@ export const MODE_MAX_PAGES = { incremental: 3, backfill: 10 } as const
 export const MODE_HOST_INTERVAL_MS = { incremental: 300, backfill: 500 } as const
 
 export const STUCK_AFTER_MS = 30 * 60_000
+// Busy-box deferrals last up to ~4h (320 x 45s) and a render is failed after 60 min.
+export const RENDER_QUEUED_LIVE_MS = 5 * 60 * 60_000
+export const RENDER_RENDERING_LIVE_MS = 75 * 60_000
 export const MAX_STUCK_ATTEMPTS = 3
 export const RECONCILE_BATCH = 200
 export const ADMISSION_CANDIDATES = 600
