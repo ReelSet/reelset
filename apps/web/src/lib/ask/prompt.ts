@@ -11,8 +11,8 @@ export const ASK_SYSTEM_PROMPT = [
   'Write the answer as plain text, under 150 words, with no markdown fences.',
   'Right after each claim, mark its support with the chunk number in square brackets, like [2] or [1][3]. Use only the n values of chunks you relied on.',
   'After the answer, write a line: FOLLOWUPS: followed by 3 short, self-contained follow-up questions a developer might ask next, separated by | and each ending with a question mark.',
-  'Then end with one final line: CITATIONS: followed by the comma-separated ids of the chunks you relied on.',
-  'Cite only ids that appear in the evidence.',
+  'Then end with one final line: CITATIONS: followed by the comma-separated n values (such as 1, 3) of the chunks you relied on.',
+  'Cite only n values that appear in the evidence.',
   'If the evidence does not support an answer, reply with only the line: CITATIONS: none',
 ].join('\n')
 

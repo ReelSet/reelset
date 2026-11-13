@@ -38,10 +38,17 @@ export function filterCitations(
   retrieved: readonly EvidenceChunk[],
 ): Citation[] {
   const byId = new Map(retrieved.map((chunk, i) => [chunk.id, { chunk, ref: i + 1 }]))
+  // The prompt numbers chunks by n, so a bare number means the n-th chunk; ids are still accepted.
+  const lookup = (id: string) => {
+    const hit = byId.get(id)
+    if (hit || !/^\d{1,3}$/.test(id)) return hit
+    const chunk = retrieved[Number(id) - 1]
+    return chunk ? { chunk, ref: Number(id) } : undefined
+  }
   const byUrl = new Map<string, Citation>()
   const citations: Citation[] = []
   for (const id of chunkIds) {
-    const hit = byId.get(id)
+    const hit = lookup(id)
     if (!hit) continue
     const { chunk, ref } = hit
     const existing = byUrl.get(chunk.url)
