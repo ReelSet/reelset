@@ -488,7 +488,6 @@ export function FeedClient({
     [toast],
   )
 
-  const accountHref = viewer.authenticated ? '/profile' : '/login'
   const shell = (children: React.ReactNode, canNavigate = false) => (
     <div className="h-dvh w-full lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-10 lg:px-8">
       <aside className="hidden flex-col justify-between py-10 lg:flex">
@@ -497,7 +496,7 @@ export function FeedClient({
           <p className="mt-4 max-w-[14rem] text-sm leading-relaxed text-muted">
             What developers are building, in 60-second reels.
           </p>
-          <SideNav accountHref={accountHref} authenticated={viewer.authenticated} />
+          <SideNav authenticated={viewer.authenticated} />
         </div>
         <div className="flex flex-col gap-6">
           <ul className="flex flex-col gap-2 text-xs text-faint">
@@ -567,7 +566,7 @@ export function FeedClient({
           <dd>Like</dd>
         </dl>
       </aside>
-      <BottomTabs translucent accountHref={accountHref} authenticated={viewer.authenticated} />
+      <BottomTabs translucent authenticated={viewer.authenticated} />
     </div>
   )
 

@@ -196,7 +196,18 @@ export type Profile = {
   topics: Generated<string[]>
   sources: Generated<string[]>
   signal_count: Generated<number>
+  display_name: string | null
+  bio: string | null
+  avatar_hidden: Generated<boolean>
+  edit_window_at: Timestamp | null
+  edit_count: Generated<number>
   created_at: Generated<Timestamp>
+  updated_at: Generated<Timestamp>
+}
+export type ProfileAvatar = {
+  profile_id: string
+  content_type: string
+  bytes: Buffer
   updated_at: Generated<Timestamp>
 }
 export type Render = {
@@ -259,6 +270,7 @@ export type DB = {
   like: Like
   mention: Mention
   profile: Profile
+  profile_avatar: ProfileAvatar
   render: Render
   save: Save
   source_watermark: SourceWatermark
