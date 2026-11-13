@@ -31,13 +31,20 @@ export function reelPath(item: { id: string; title?: string | null }): string {
   return `/r/${slug ? `${slug}-` : ''}${shortId(item.id)}`
 }
 
-/** Reel path that keeps the topic feed it was opened from, so scrolling stays in that topic. */
-export function reelHref(
-  item: { id: string; title?: string | null },
-  topic?: string | null,
-): string {
-  const path = reelPath(item)
-  return topic ? `${path}?topic=${encodeURIComponent(topic)}` : path
+export type FeedScope = { topic?: string | null; source?: string | null }
+
+/** Query string (with `?`, or empty) that keeps a feed on one topic and/or source. */
+export function scopeQuery(scope?: FeedScope): string {
+  const query = new URLSearchParams()
+  if (scope?.topic) query.set('topic', scope.topic)
+  if (scope?.source) query.set('source', scope.source)
+  const qs = query.toString()
+  return qs ? `?${qs}` : ''
+}
+
+/** Reel path that keeps the topic/source feed it was opened from, so scrolling stays in it. */
+export function reelHref(item: { id: string; title?: string | null }, scope?: FeedScope): string {
+  return `${reelPath(item)}${scopeQuery(scope)}`
 }
 
 export type ReelParam = { shortId: string; slug: string; id: string | null }

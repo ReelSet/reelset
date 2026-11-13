@@ -196,3 +196,13 @@ describe('toRankedItem / orderRows', () => {
     expect(orderRows([row, b], ['b', 'gone', 'i1']).map((r) => r.id)).toEqual(['b', 'i1'])
   })
 })
+
+describe('candidatesQuery source scope', () => {
+  const base = { profileId: null, asOf: '2026-11-09T12:00:00.000Z', poolSize: 10, minTemplate: 5 }
+
+  it('combines a source with topic labels', () => {
+    const q = candidatesQuery({ ...base, sources: ['hn'], labels: ['ai'] }).compile(db)
+    expect(q.sql).toMatch(/m\.source::text = any/)
+    expect(q.sql).toMatch(/i\.topics &&/)
+  })
+})

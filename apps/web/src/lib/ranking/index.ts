@@ -37,6 +37,7 @@ export type RankFeedParams = {
   cursor: string | null
   limit: number
   labels?: readonly string[]
+  source?: string | null
   log?: Logger
 }
 
@@ -93,7 +94,7 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
       profileId: params.profileId,
       asOf,
       minTemplate,
-      sources: params.labels?.length ? [] : profile.sources,
+      sources: params.source ? [params.source] : params.labels?.length ? [] : profile.sources,
       labels: params.labels,
     })
     const ranked = rankCandidates(candidates, {

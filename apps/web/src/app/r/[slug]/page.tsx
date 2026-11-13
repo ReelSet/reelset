@@ -1,4 +1,4 @@
-import { errorFields } from '@reelset/core'
+import { errorFields, parseSource } from '@reelset/core'
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { notFound, permanentRedirect } from 'next/navigation'
@@ -7,7 +7,7 @@ import { FeedClient } from '@/components/feed/FeedClient'
 import { JsonLd, PageChrome } from '@/components/seo/PageChrome'
 import { ReelArticle } from '@/components/seo/ReelArticle'
 import type { FeedResponse } from '@/lib/api-types'
-import { parseReelParam, reelPath } from '@/lib/reel-url'
+import { parseReelParam, reelPath, scopeQuery } from '@/lib/reel-url'
 import { reelJsonLd } from '@/lib/seo/json-ld'
 import { SITE_NAME, metaDescription, metaTitle } from '@/lib/seo/site'
 import { getOptionalUser } from '@/server/auth'
@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 
 type Props = {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ topic?: string | string[] }>
+  searchParams: Promise<{ topic?: string | string[]; source?: string | string[] }>
 }
 
 // generateMetadata and the page share one lookup per request.
@@ -59,13 +59,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ReelRoute({ params, searchParams }: Props) {
   const { slug } = await params
-  const rawTopic = (await searchParams).topic
-  const topicParam = (Array.isArray(rawTopic) ? rawTopic[0] : rawTopic) || null
+  const query = await searchParams
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) || null
+  const topicParam = first(query.topic)
+  const sourceParam = parseSource(first(query.source), routeLog('r/[slug]'))
   const reel = await getReel(slug)
   if (!reel) notFound()
   const canonical = reelPath(reel)
-  const query = topicParam ? `?topic=${encodeURIComponent(topicParam)}` : ''
-  if (`/r/${slug}` !== canonical) permanentRedirect(`${canonical}${query}`)
+  if (`/r/${slug}` !== canonical) {
+    permanentRedirect(`${canonical}${scopeQuery({ topic: topicParam, source: sourceParam })}`)
+  }
 
   const jsonLd = <JsonLd data={reelJsonLd(reel)} />
   const article = <ReelArticle reel={reel} />
@@ -110,6 +113,7 @@ export default async function ReelRoute({ params, searchParams }: Props) {
       base: mediaBaseUrl(),
       focusId: reel.id,
       labels: labelsForFeed,
+      source: sourceParam,
       log,
     })
   } catch (err) {
@@ -119,7 +123,13 @@ export default async function ReelRoute({ params, searchParams }: Props) {
   return (
     <>
       {jsonLd}
-      <FeedClient initial={initial} about={article} aboutItemId={reel.id} topic={topic} />
+      <FeedClient
+        initial={initial}
+        about={article}
+        aboutItemId={reel.id}
+        topic={topic}
+        source={sourceParam}
+      />
     </>
   )
 }
