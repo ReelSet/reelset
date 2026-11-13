@@ -4,16 +4,85 @@ import { useState } from 'react'
 import { LogoMark } from '@/components/ui/Logo'
 import { SocialLinks } from '@/components/ui/SocialLinks'
 import { Spinner } from '@/components/ui/Spinner'
-import { describeSignInError, validateEmail } from '@/lib/auth/email'
+import { describeOAuthError, describeSignInError, validateEmail } from '@/lib/auth/email'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 
 type Status = 'idle' | 'sending' | 'sent' | 'error'
+
+async function googleEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/settings`, {
+      headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '' },
+    })
+    if (!res.ok) return true
+    const body = (await res.json()) as { external?: { google?: boolean } }
+    return body.external?.google !== false
+  } catch {
+    return true
+  }
+}
+
+function GoogleMark() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5">
+      <path
+        fill="#4285F4"
+        d="M23.5 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.45a5.51 5.51 0 0 1-2.39 3.62v3h3.87c2.27-2.09 3.57-5.16 3.57-8.81z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.87-3c-1.07.72-2.45 1.15-4.06 1.15-3.12 0-5.77-2.11-6.71-4.94H1.29v3.09A12 12 0 0 0 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.29 14.3a7.2 7.2 0 0 1 0-4.6V6.61H1.29a12 12 0 0 0 0 10.78l4-3.09z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.76 0 3.34.61 4.59 1.8l3.43-3.43C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.29 6.61l4 3.09C6.23 6.86 8.88 4.75 12 4.75z"
+      />
+    </svg>
+  )
+}
 
 export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<Status>('idle')
   const [touched, setTouched] = useState(false)
   const [message, setMessage] = useState(failed ? 'That sign-in link did not work. Try again.' : '')
+
+  const [googleBusy, setGoogleBusy] = useState(false)
+
+  async function continueWithGoogle() {
+    if (googleBusy) return
+    if (!navigator.onLine) {
+      setStatus('error')
+      setMessage('You are offline. Reconnect to the internet, then try again.')
+      return
+    }
+    setGoogleBusy(true)
+    setMessage('')
+    try {
+      if (!(await googleEnabled())) {
+        setGoogleBusy(false)
+        setStatus('error')
+        setMessage(describeOAuthError({ message: 'provider is not enabled' }))
+        return
+      }
+      const supabase = createSupabaseBrowserClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
+      })
+      if (error) throw error
+    } catch (err) {
+      setGoogleBusy(false)
+      setStatus('error')
+      setMessage(describeOAuthError(err instanceof Error ? err : {}))
+    }
+  }
 
   const fieldError = touched ? validateEmail(email) : null
 
@@ -60,7 +129,7 @@ export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
         </a>
         <h1 className="mt-6 text-[28px] font-semibold tracking-tight">Sign in to Reelset</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Like reels and tune your feed. We email you a magic link, no password needed.
+          Like reels and tune your feed. Continue with Google, or we email you a magic link.
         </p>
 
         {status === 'sent' ? (
@@ -83,6 +152,21 @@ export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
           </div>
         ) : (
           <form onSubmit={submit} noValidate className="mt-8 flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={continueWithGoogle}
+              disabled={googleBusy || status === 'sending'}
+              aria-busy={googleBusy}
+              className="inline-flex items-center justify-center gap-2.5 rounded-md border border-line bg-surface px-4 py-3 text-sm font-medium text-fg transition hover:border-line-strong active:scale-[0.98] disabled:opacity-60"
+            >
+              {googleBusy ? <Spinner /> : <GoogleMark />}
+              Continue with Google
+            </button>
+            <div className="flex items-center gap-3 text-xs text-faint" aria-hidden>
+              <span className="h-px flex-1 bg-line" />
+              or
+              <span className="h-px flex-1 bg-line" />
+            </div>
             <label htmlFor="email" className="sr-only">
               Email
             </label>

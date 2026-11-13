@@ -39,6 +39,9 @@ describe('providerProfile', () => {
       providerProfile({ full_name: 'Ada L', avatar_url: 'https://lh3.googleusercontent.com/a' }),
     ).toEqual({ name: 'Ada L', avatar: 'https://lh3.googleusercontent.com/a' })
     expect(providerProfile({ picture: 'http://x.test/a.png' }).avatar).toBeNull()
+    expect(
+      providerProfile({ name: 'Grace H', picture: 'https://lh3.googleusercontent.com/p' }),
+    ).toEqual({ name: 'Grace H', avatar: 'https://lh3.googleusercontent.com/p' })
     expect(providerProfile({ avatar_url: 'javascript:alert(1)' }).avatar).toBeNull()
     expect(providerProfile(undefined)).toEqual({ name: null, avatar: null })
   })

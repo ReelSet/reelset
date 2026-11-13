@@ -19,3 +19,14 @@ export function describeSignInError(error: { message?: string; status?: number; 
   if (text.includes('invalid') && text.includes('email')) return 'That email address is not valid.'
   return 'We could not send the sign-in link. Please try again.'
 }
+
+export function describeOAuthError(error: { message?: string; status?: number; code?: string }) {
+  const text = `${error.code ?? ''} ${error.message ?? ''}`.toLowerCase()
+  if (text.includes('fetch') || text.includes('network')) {
+    return 'Could not reach the server. Check your connection and try again.'
+  }
+  if (text.includes('provider') && (text.includes('enabled') || text.includes('unsupported'))) {
+    return 'Google sign-in is not available yet. Use the email link instead.'
+  }
+  return 'We could not start Google sign-in. Try again or use the email link.'
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeSignInError, validateEmail } from './email'
+import { describeOAuthError, describeSignInError, validateEmail } from './email'
 
 describe('validateEmail', () => {
   it('accepts normal addresses', () => {
@@ -30,5 +30,15 @@ describe('describeSignInError', () => {
   it('maps network failures and falls back to a generic message', () => {
     expect(describeSignInError({ message: 'Failed to fetch' })).toMatch(/connection/)
     expect(describeSignInError({ message: 'weird internal detail' })).toMatch(/could not send/i)
+  })
+})
+
+describe('describeOAuthError', () => {
+  it('explains a disabled provider, network failures and the generic case', () => {
+    expect(
+      describeOAuthError({ message: 'Unsupported provider: provider is not enabled' }),
+    ).toMatch(/not available/)
+    expect(describeOAuthError({ message: 'Failed to fetch' })).toMatch(/connection/)
+    expect(describeOAuthError({ message: 'boom' })).toMatch(/could not start/i)
   })
 })
