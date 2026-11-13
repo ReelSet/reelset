@@ -83,10 +83,10 @@ function setup(overrides: Partial<MaintenanceStore> = {}, listPage?: unknown) {
 }
 
 describe('maintenance', () => {
-  it('fails renders stuck longer than 30 minutes', async () => {
+  it('fails renders stuck longer than 60 minutes', async () => {
     const { deps, calls } = setup()
     expect(await failStuck(deps, now, silentLog)).toBe(1)
-    expect((calls.stuck![0] as Date).toISOString()).toBe('2026-11-09T11:30:00.000Z')
+    expect((calls.stuck![0] as Date).toISOString()).toBe('2026-11-09T11:00:00.000Z')
   })
 
   it('deletes orphaned objects and resets the scan cursor when the listing ends', async () => {

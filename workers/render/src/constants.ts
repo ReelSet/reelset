@@ -23,7 +23,7 @@ export const BOX_HEALTH_TIMEOUT_MS = 20_000
 export const BOX_SAMPLE_RETENTION_DAYS = 30
 export const DEFAULT_MEDIA_BASE_URL = 'https://media.reelset.app'
 
-export const STUCK_RENDER_MINUTES = 30
+export const STUCK_RENDER_MINUTES = 60
 export const ORPHAN_MIN_AGE_MS = 24 * 60 * 60_000
 export const ORPHAN_SCAN_PAGE_SIZE = 1000
 export const RETENTION_BATCH_SIZE = 100

@@ -95,6 +95,7 @@ function scriptedDb(rows: {
   voiced?: Row[]
   stuck?: Row[]
   admitted?: number
+  inFlight?: number
   spent?: number
   settings?: Record<string, unknown>
 }) {
@@ -106,6 +107,8 @@ function scriptedDb(rows: {
     }
     if (s.includes('from "spend_ledger"')) return [{ total: String(rows.spent ?? 0) }]
     if (s.includes('count(distinct item_event.item_id)')) return [{ n: String(rows.admitted ?? 0) }]
+    if (s.startsWith('select count(*) as "n" from "item"'))
+      return [{ n: String(rows.inFlight ?? 0) }]
     if (s.includes('"queued_at" <')) return rows.stuck ?? []
     if (s.startsWith('select "id", "score" from "item"')) return rows.found ?? []
     if (s.startsWith('select "id" from "item"')) {
@@ -237,6 +240,45 @@ describe('reconcile', () => {
     expect(failed).toHaveLength(1)
     expect(failed[0]!.params).toContain('failed')
     expect(failed[0]!.params).toContain('item-b')
+  })
+
+  it('leaves items with a queued or rendering render out of stuck handling', async () => {
+    const fake = scriptedDb({})
+    await reconcile(fake.db, queues(), testLog, now)
+    const stuck = fake.find('"queued_at" <')[0]!
+    expect(stuck.sql).toContain('not exists (select "render"."id" from "render"')
+    expect(stuck.sql).toContain('"render"."item_id" = "item"."id"')
+    expect(stuck.params).toEqual(expect.arrayContaining(['queued', 'rendering']))
+  })
+
+  it('enqueues only as many render jobs as the in-flight cap leaves free', async () => {
+    const fake = scriptedDb({
+      embedded: [{ id: 'item-e1' }, { id: 'item-e2' }],
+      voiced: [{ id: 'item-v' }],
+      inFlight: 4,
+      settings: { render_max_in_flight: 6 },
+    })
+    const q = queues()
+    const result = await reconcile(fake.db, q, testLog, now)
+    const select = fake.find('select "id" from "item"').find((c) => c.params[0] === 'embedded')!
+    expect(select.params).toContain(2)
+    expect(result.enqueuedEmbedded).toBe(2)
+    expect(result.enqueuedVoiced).toBe(0)
+    expect(fake.find('select "id" from "item"').some((c) => c.params[0] === 'voiced')).toBe(false)
+  })
+
+  it('holds back every render job when the in-flight cap is full', async () => {
+    const fake = scriptedDb({
+      embedded: [{ id: 'item-e' }],
+      voiced: [{ id: 'item-v' }],
+      inFlight: 9,
+      settings: { render_max_in_flight: 6 },
+    })
+    const q = queues()
+    const result = await reconcile(fake.db, q, testLog, now)
+    expect(result.enqueuedEmbedded).toBe(0)
+    expect(result.enqueuedVoiced).toBe(0)
+    expect(q.render.sendBatch).not.toHaveBeenCalled()
   })
 
   it('keeps going when one step throws', async () => {

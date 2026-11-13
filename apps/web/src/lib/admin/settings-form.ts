@@ -32,6 +32,8 @@ const MODEL_PRICES = `per MTok in/out: ${CLAUDE_MODELS.map(modelPriceLabel).join
 const HINTS: Record<string, string> = {
   daily_reel_cap:
     'Reels made per UTC day (max items admitted to the pipeline); also caps Instagram auto posts',
+  render_max_in_flight:
+    'Max items queued or rendering at once; the rest wait as embedded until a render box frees up',
   min_item_score: 'Admission threshold, 0 to 1',
   reel_retention_days: 'Days a reel stays in R2 after publishing',
   pipeline_daily_spend_cap_usd: 'Ingest and render spend cap per UTC day, USD',
