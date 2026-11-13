@@ -375,15 +375,33 @@ model Profile {
   sources        String[]                   @default([])
   tasteEmbedding Unsupported("vector(768)")? @map("taste_embedding")
   signalCount    Int                        @default(0) @map("signal_count")
+  displayName    String?                    @map("display_name") @db.VarChar(40)
+  bio            String?                    @db.VarChar(160)
+  avatarHidden   Boolean                    @default(false) @map("avatar_hidden")
+  editWindowAt   DateTime?                  @map("edit_window_at") @db.Timestamptz(6)
+  editCount      Int                        @default(0) @map("edit_count")
   createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
 
+  avatar ProfileAvatar?
   likes  Like[]
   saves  Save[]
   events Event[]
   asks   AskQuery[]
 
   @@map("profile")
+}
+
+// Resized 256px webp kept apart from profile so profile reads never carry image bytes.
+model ProfileAvatar {
+  profileId   String   @id @map("profile_id") @db.Uuid
+  contentType String   @map("content_type") @db.VarChar(32)
+  bytes       Bytes
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("profile_avatar")
 }
 
 model Like {

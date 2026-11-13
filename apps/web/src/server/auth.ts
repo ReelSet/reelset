@@ -1,11 +1,17 @@
 import { UserRole, errorFields } from '@reelset/core'
+import { providerProfile } from '@/lib/profile-edit'
 import { isAdminEmail } from '@/lib/auth/admin-emails'
 import { buildLoginUrl } from '@/lib/auth/return-url'
 import { getDb } from './db'
 import { log } from './logger'
 import { createSupabaseServerClient } from './supabase'
 
-export type AuthUser = { id: string; email: string | null }
+export type AuthUser = {
+  id: string
+  email: string | null
+  providerName?: string | null
+  providerAvatar?: string | null
+}
 
 export class UnauthorizedError extends Error {
   constructor(readonly loginUrl: string) {
@@ -51,7 +57,13 @@ export async function getOptionalUser(): Promise<AuthUser | null> {
   const { data, error } = await supabase.auth.getUser()
   if (error || !data.user) return null
 
-  const user: AuthUser = { id: data.user.id, email: data.user.email ?? null }
+  const provider = providerProfile(data.user.user_metadata)
+  const user: AuthUser = {
+    id: data.user.id,
+    email: data.user.email ?? null,
+    providerName: provider.name,
+    providerAvatar: provider.avatar,
+  }
   try {
     await ensureProfile(user.id, user.email)
   } catch (err) {

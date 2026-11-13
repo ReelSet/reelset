@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { EditProfile } from '@/components/profile/EditProfile'
 import { ProfileLibrary } from '@/components/profile/ProfileLibrary'
 import { ProfileSources } from '@/components/profile/ProfileSources'
 import { ProfileTopics } from '@/components/profile/ProfileTopics'
+import { Avatar } from '@/components/ui/Avatar'
 import { ClockIcon, HomeIcon } from '@/components/ui/icons'
 import { Wordmark } from '@/components/ui/Logo'
 import { CommunityRows } from '@/components/ui/SocialLinks'
 import { buildLoginUrl } from '@/lib/auth/return-url'
-import { getOptionalUser } from '@/server/auth'
 import { getDb } from '@/server/db'
 import { mediaBaseUrl } from '@/server/env'
 import { profileSummary } from '@/server/profile'
+import { getViewer } from '@/server/viewer'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Profile', robots: { index: false } }
@@ -37,10 +39,10 @@ function Section({
 }
 
 export default async function ProfilePage() {
-  const user = await getOptionalUser()
-  if (!user) redirect(buildLoginUrl('/profile'))
+  const viewer = await getViewer()
+  if (!viewer) redirect(buildLoginUrl('/profile'))
+  const { user, identity } = viewer
   const profile = await profileSummary(getDb(), user.id, mediaBaseUrl())
-  const initial = (user.email ?? '?').trim().charAt(0).toUpperCase() || '?'
   const since = profile.memberSince
     ? new Date(profile.memberSince).toLocaleDateString('en-US', {
         month: 'long',
@@ -64,18 +66,29 @@ export default async function ProfilePage() {
         </a>
       </header>
 
-      <section className="animate-fade-up mt-10 flex items-center gap-4">
-        <div
-          aria-hidden
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-line-strong bg-raised text-2xl font-semibold text-accent"
-        >
-          {initial}
-        </div>
+      <section className="animate-fade-up mt-10 flex items-start gap-4">
+        <Avatar
+          url={identity.avatarUrl}
+          initial={identity.initial}
+          className="h-16 w-16 text-2xl"
+        />
         <div className="min-w-0">
           <h1 className="line-clamp-2 text-[22px] font-semibold leading-tight tracking-tight [overflow-wrap:anywhere]">
-            {user.email ?? 'Signed in'}
+            {identity.name}
           </h1>
-          {since && <p className="mt-0.5 text-sm text-muted">Member since {since}</p>}
+          {user.email && <p className="mt-0.5 truncate text-sm text-muted">{user.email}</p>}
+          {since && <p className="text-sm text-faint">Member since {since}</p>}
+          {identity.bio && (
+            <p className="mt-2 text-sm leading-snug text-fg/90 [overflow-wrap:anywhere]">
+              {identity.bio}
+            </p>
+          )}
+          <EditProfile
+            name={identity.name}
+            bio={identity.bio}
+            avatarUrl={identity.avatarUrl}
+            initial={identity.initial}
+          />
         </div>
       </section>
 
