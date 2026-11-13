@@ -5,6 +5,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { cache } from 'react'
 import { FeedClient } from '@/components/feed/FeedClient'
 import { JsonLd, PageChrome } from '@/components/seo/PageChrome'
+import { ReelPanel } from '@/components/feed/ReelPanel'
 import { ReelArticle } from '@/components/seo/ReelArticle'
 import type { FeedResponse } from '@/lib/api-types'
 import { parseReelParam, reelPath, scopeQuery } from '@/lib/reel-url'
@@ -125,7 +126,7 @@ export default async function ReelRoute({ params, searchParams }: Props) {
       {jsonLd}
       <FeedClient
         initial={initial}
-        about={article}
+        about={<ReelPanel reel={reel} />}
         aboutItemId={reel.id}
         topic={topic}
         source={sourceParam}
