@@ -167,8 +167,8 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5">
-      <header className="flex items-center justify-between pt-safe">
-        <a href="/" aria-label="Reelset home">
+      <header className="flex items-center justify-between pt-safe lg:justify-end">
+        <a href="/" aria-label="Reelset home" className="lg:hidden">
           <Wordmark className="text-[15px]" />
         </a>
         <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
           )}
           <a
             href="/"
-            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95 lg:hidden"
           >
             <HomeIcon className="h-4 w-4" />
             Feed

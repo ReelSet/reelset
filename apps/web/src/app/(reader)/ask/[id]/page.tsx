@@ -30,8 +30,8 @@ export default async function AskEntryPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="mx-auto w-full max-w-2xl px-5 pb-16">
-      <header className="flex items-center justify-between pt-safe">
-        <a href="/" aria-label="Reelset home">
+      <header className="flex items-center justify-between pt-safe lg:justify-end">
+        <a href="/" aria-label="Reelset home" className="lg:hidden">
           <Wordmark className="text-[15px]" />
         </a>
         <div className="flex items-center gap-2">

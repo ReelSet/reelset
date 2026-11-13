@@ -63,7 +63,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <div
           role="status"
           data-testid="offline-banner"
-          className="animate-fade-in fixed inset-x-0 top-0 z-[90] bg-warn px-4 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] text-center text-xs font-medium text-black"
+          className="animate-fade-in fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-[90] bg-warn px-4 py-2 text-center text-xs font-medium text-black lg:bottom-auto lg:top-0 lg:pt-[max(0.5rem,env(safe-area-inset-top))]"
         >
           You are offline. Reconnect to keep browsing.
         </div>

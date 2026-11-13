@@ -40,6 +40,7 @@ export type ReelSummary = {
   posterUrl: string | null
   durationMs: number | null
   source?: string | null
+  views?: number
 }
 
 export type TopicCount = { slug: string; label: string; count: number }

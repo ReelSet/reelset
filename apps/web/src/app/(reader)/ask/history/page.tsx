@@ -13,7 +13,7 @@ export default async function AskHistoryPage() {
   if (!user) redirect(buildLoginUrl('/ask/history'))
   return (
     <div className="mx-auto w-full max-w-2xl px-5 pb-16">
-      <header className="flex items-center justify-between pt-safe">
+      <header className="flex items-center justify-between pt-safe lg:hidden">
         <a href="/" aria-label="Reelset home">
           <Wordmark className="text-[15px]" />
         </a>

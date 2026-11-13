@@ -1,3 +1,4 @@
+import { visibleCount, type CountRule } from '@/lib/counts'
 import { topicSlug } from '@/lib/reel-url'
 import { topicLabel } from './site'
 import type { ReelSummary, TopicCount } from './types'
@@ -82,4 +83,22 @@ export function clockDuration(ms: number | null | undefined): string | null {
   if (!ms || ms <= 0) return null
   const total = Math.round(ms / 1000)
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+/** Keeps `views` only on reels whose count the admin rule allows to be shown. */
+export function withVisibleViews(reels: ReelSummary[], rule: CountRule): ReelSummary[] {
+  return reels.map(({ views, ...rest }) => {
+    const shown = views === undefined ? null : visibleCount(views, rule)
+    return shown === null ? rest : { ...rest, views: shown }
+  })
+}
+
+export type SearchableReel = Pick<ReelSummary, 'title' | 'topics' | 'tldr'>
+
+/** Every whitespace-separated term must appear in the title, a topic or the summary. */
+export function matchesQuery(reel: SearchableReel, query: string): boolean {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return true
+  const hay = `${reel.title} ${reel.topics.join(' ')} ${reel.tldr ?? ''}`.toLowerCase()
+  return terms.every((t) => hay.includes(t))
 }
