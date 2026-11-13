@@ -20,15 +20,14 @@ import { metaTitle } from '@/lib/seo/site'
 import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
 import { ChevronIcon } from '@/components/ui/icons'
-import { BottomTabs, SideNav } from '@/components/ui/AppNav'
+import { BottomTabs } from '@/components/ui/AppNav'
+import { SideRail } from '@/components/ui/SideRail'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { LogoMark, Wordmark } from '@/components/ui/Logo'
-import { SocialLinks } from '@/components/ui/SocialLinks'
+import { LogoMark } from '@/components/ui/Logo'
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { ReelSkeleton } from './ReelSkeleton'
-import { SourceDot, SOURCES } from '@/components/ui/sources'
 import { DetailsSheet } from './DetailsSheet'
 import { FeedbackMenu } from './FeedbackMenu'
 import { SourcesSheet } from './SourcesSheet'
@@ -69,6 +68,8 @@ type FeedClientProps = {
   /** Source (hn, github, ...) when the feed was opened from a source filter. */
   source?: string | null
 }
+
+const FADE = 'linear-gradient(to bottom, black calc(100% - 28px), transparent)'
 
 export function FeedClient({
   initial,
@@ -489,27 +490,8 @@ export function FeedClient({
   )
 
   const shell = (children: React.ReactNode, canNavigate = false) => (
-    <div className="h-dvh w-full lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-10 lg:px-8">
-      <aside className="hidden flex-col justify-between py-10 lg:flex">
-        <div>
-          <Wordmark className="text-lg" />
-          <p className="mt-4 max-w-[14rem] text-sm leading-relaxed text-muted">
-            What developers are building, in 60-second reels.
-          </p>
-          <SideNav authenticated={viewer.authenticated} />
-        </div>
-        <div className="flex flex-col gap-6">
-          <ul className="flex flex-col gap-2 text-xs text-faint">
-            {Object.entries(SOURCES).map(([key, s]) => (
-              <li key={key} className="flex items-center gap-2">
-                <SourceDot source={key} />
-                {s.label}
-              </li>
-            ))}
-          </ul>
-          <SocialLinks />
-        </div>
-      </aside>
+    <div className="h-dvh w-full lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-10 lg:pr-8">
+      <SideRail authenticated={viewer.authenticated} />
 
       <div className="relative h-dvh w-full overflow-hidden bg-black [--bar:calc(3.5rem+env(safe-area-inset-bottom))] lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)] lg:[--bar:0px]">
         {children}
@@ -535,14 +517,17 @@ export function FeedClient({
         )}
       </div>
 
-      <aside className="hidden flex-col items-start justify-end gap-6 py-10 lg:flex">
+      <aside className="hidden h-dvh min-h-0 flex-col items-start justify-end gap-6 py-10 lg:flex">
         {items[active] && (
-          <div className="no-scrollbar max-h-[calc(100dvh-20rem)] w-80 overflow-y-auto">
+          <div
+            style={{ maskImage: FADE, WebkitMaskImage: FADE }}
+            className="no-scrollbar min-h-0 w-80 shrink overflow-y-auto pb-6"
+          >
             {about && items[active].id === aboutItemId ? about : <ReelAbout item={items[active]} />}
           </div>
         )}
         {canNavigate && (
-          <div className="flex flex-col gap-2">
+          <div className="flex shrink-0 flex-col gap-2">
             <NavButton
               label="Previous reel"
               disabled={active === 0}
@@ -555,7 +540,7 @@ export function FeedClient({
             </NavButton>
           </div>
         )}
-        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs text-faint">
+        <dl className="grid shrink-0 grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs text-faint">
           <Kbd>↑ ↓</Kbd>
           <dd>Browse</dd>
           <Kbd>Space</Kbd>

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NAV_AVATAR_CACHE } from '@/components/ui/AppNav'
 import { Avatar } from '@/components/ui/Avatar'
 import { CloseIcon } from '@/components/ui/icons'
@@ -62,14 +63,45 @@ function EditSheet({ name, bio, avatarUrl, initial, onClose }: Props & { onClose
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const dialogRef = useRef<HTMLFormElement>(null)
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const opener = document.activeElement as HTMLElement | null
+    const focusable = () =>
+      Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]):not(.sr-only), textarea:not([disabled])',
+        ) ?? [],
+      )
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return onClose()
+      if (e.key !== 'Tab') return
+      const items = focusable()
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (!first || !last) return
+      const current = document.activeElement
+      if (!dialogRef.current?.contains(current)) {
+        e.preventDefault()
+        first.focus()
+      } else if (e.shiftKey && current === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && current === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
     window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    focusable()
+      .find((el) => el.tagName === 'INPUT')
+      ?.focus()
     return () => {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
+      opener?.focus?.()
     }
   }, [onClose])
 
@@ -138,12 +170,13 @@ function EditSheet({ name, bio, avatarUrl, initial, onClose }: Props & { onClose
     }
   }
 
-  return (
+  return createPortal(
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex flex-col justify-end bg-black/60 sm:items-center sm:justify-center"
+      className="animate-fade-in fixed inset-0 z-[110] flex flex-col justify-end bg-black/60 sm:items-center sm:justify-center"
       onClick={onClose}
     >
       <form
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Edit profile"
@@ -258,6 +291,7 @@ function EditSheet({ name, bio, avatarUrl, initial, onClose }: Props & { onClose
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }
