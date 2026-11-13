@@ -290,7 +290,7 @@ export function AskClient({ signedIn = false }: { signedIn?: boolean }) {
 
         <form
           onSubmit={submit}
-          className={`${idle ? 'mt-8' : 'sticky bottom-0 mt-auto bg-gradient-to-t from-bg from-70% to-transparent pt-6 pb-safe'}`}
+          className={`${idle ? 'mt-8' : 'sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] mt-auto bg-gradient-to-t from-bg from-70% to-transparent pt-6 pb-2 lg:bottom-0 lg:pb-safe'}`}
         >
           <div className="flex items-end gap-2 rounded-[22px] border border-line bg-surface p-2 pl-4 transition focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(200_247_81/0.08)]">
             <textarea
