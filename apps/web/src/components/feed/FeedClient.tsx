@@ -5,12 +5,21 @@ import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import { DEFAULT_COUNT_RULES } from '@/lib/counts'
 import { useReelViews } from './useReelViews'
-import { reelHref, type FeedScope } from '@/lib/reel-url'
+import {
+  FEEDBACK_KEY,
+  emptyFeedback,
+  hideItem,
+  isSuppressed,
+  muteTopics,
+  parseFeedback,
+} from '@/lib/feed-feedback'
+import { withFollowed, type FeedTab } from '@/lib/feed-tabs'
+import { reelHref, scopeQuery, type FeedScope } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
 import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
-import { ChevronIcon, HashIcon, SearchIcon, UserIcon } from '@/components/ui/icons'
-import { SideNav } from '@/components/ui/AppNav'
+import { ChevronIcon } from '@/components/ui/icons'
+import { BottomTabs, SideNav } from '@/components/ui/AppNav'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LogoMark, Wordmark } from '@/components/ui/Logo'
@@ -19,11 +28,16 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { ReelSkeleton } from './ReelSkeleton'
 import { SourceDot, SOURCES } from '@/components/ui/sources'
+import { DetailsSheet } from './DetailsSheet'
+import { FeedbackMenu } from './FeedbackMenu'
 import { SourcesSheet } from './SourcesSheet'
+import { SwipeHint } from './SwipeHint'
 import { TopicPicker } from './TopicPicker'
+import { TopicTabs } from './TopicTabs'
 
 const PENDING_LIKE_KEY = 'reelset.pendingLike'
 const TOPICS_DISMISSED_KEY = 'reelset.topicsDismissed'
+const SWIPE_HINT_KEY = 'reelset.swipeHintSeen'
 
 type Phase = 'loading' | 'ready' | 'error'
 
@@ -75,6 +89,18 @@ export function FeedClient({
   const [sourcesFor, setSourcesFor] = useState<FeedItemDto | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [moreState, setMoreState] = useState<'idle' | 'loading' | 'failed'>('idle')
+  const [scope, setScope] = useState<FeedScope>({ topic, source })
+  const [tabs, setTabs] = useState<FeedTab[]>([])
+  const [followed, setFollowed] = useState<string[]>([])
+  const [menuFor, setMenuFor] = useState<FeedItemDto | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [showHint, setShowHint] = useState(false)
+  const [mobile, setMobile] = useState(false)
+  const scopeRef = useRef(scope)
+  scopeRef.current = scope
+  const feedback = useRef(emptyFeedback())
+  const requestId = useRef(0)
+  const urlSynced = useRef(false)
   const loadingMore = useRef(false)
   const toast = useToast()
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -158,9 +184,18 @@ export function FeedClient({
     [patchItem, toast],
   )
 
+  const visible = useCallback(
+    (list: FeedItemDto[], at: FeedScope) =>
+      list.filter(
+        (it) => !isSuppressed(feedback.current, it, { keep: aboutItemId, scopedTopic: at.topic }),
+      ),
+    [aboutItemId],
+  )
+
   const applyFeed = useCallback(
     (feed: FeedResponse) => {
-      setItems(feed.items)
+      const shown = visible(feed.items, scopeRef.current)
+      setItems(shown)
       setCursor(feed.nextCursor)
       setViewer(feed.viewer)
       setCountRules(feed.countRules)
@@ -173,29 +208,51 @@ export function FeedClient({
       const pending = readStorage(sessionStorage, PENDING_LIKE_KEY)
       if (pending && feed.viewer.authenticated) {
         writeStorage(sessionStorage, PENDING_LIKE_KEY, null)
-        const target = feed.items.find((it) => it.id === pending)
+        const target = shown.find((it) => it.id === pending)
         if (target && !target.liked) void sendLike(target, true)
       }
     },
-    [sendLike],
+    [sendLike, visible],
   )
 
-  const loadInitial = useCallback(async () => {
-    setPhase('loading')
-    try {
-      const res = await fetch(feedUrl({ topic, source }))
-      if (!res.ok) throw new Error(String(res.status))
-      applyFeed((await res.json()) as FeedResponse)
-    } catch {
-      setPhase('error')
-    }
-  }, [applyFeed, topic, source])
+  const loadScope = useCallback(
+    async (next: FeedScope) => {
+      const id = ++requestId.current
+      setPhase('loading')
+      setActive(0)
+      setMoreState('idle')
+      try {
+        const res = await fetch(feedUrl(next))
+        if (!res.ok) throw new Error(String(res.status))
+        const feed = (await res.json()) as FeedResponse
+        if (id === requestId.current) applyFeed(feed)
+      } catch {
+        if (id === requestId.current) setPhase('error')
+      }
+    },
+    [applyFeed],
+  )
+
+  const loadInitial = useCallback(() => loadScope(scopeRef.current), [loadScope])
+
+  const selectTab = useCallback(
+    (slug: string | null) => {
+      const next: FeedScope = { topic: slug, source: null }
+      scopeRef.current = next
+      setScope(next)
+      urlSynced.current = false
+      window.history.replaceState(null, '', `/${scopeQuery(next)}`)
+      void loadScope(next)
+    },
+    [loadScope],
+  )
 
   const initialRef = useRef(initial)
   const mounted = useRef(false)
   useEffect(() => {
     if (mounted.current) return
     mounted.current = true
+    feedback.current = parseFeedback(readStorage(localStorage, FEEDBACK_KEY))
     if (initialRef.current) applyFeed(initialRef.current)
     else void loadInitial()
   }, [applyFeed, loadInitial])
@@ -205,12 +262,14 @@ export function FeedClient({
     loadingMore.current = true
     setMoreState('loading')
     try {
-      const res = await fetch(feedUrl({ topic, source }, cursor))
+      const at = scopeRef.current
+      const res = await fetch(feedUrl(at, cursor))
       if (!res.ok) throw new Error(String(res.status))
       const feed = (await res.json()) as FeedResponse
+      if (at !== scopeRef.current) return
       setItems((cur) => {
         const seen = new Set(cur.map((it) => it.id))
-        return [...cur, ...feed.items.filter((it) => !seen.has(it.id))]
+        return [...cur, ...visible(feed.items, at).filter((it) => !seen.has(it.id))]
       })
       setCursor(feed.nextCursor)
       setMoreState('idle')
@@ -219,7 +278,7 @@ export function FeedClient({
     } finally {
       loadingMore.current = false
     }
-  }, [cursor, topic, source])
+  }, [cursor, visible])
 
   useEffect(() => {
     if (phase === 'ready' && moreState !== 'failed' && active >= items.length - 3) void loadMore()
@@ -237,19 +296,18 @@ export function FeedClient({
 
   // Like Instagram: the address bar names the reel on screen. replaceState keeps Back meaning
   // "leave the feed"; the home page keeps `/` until the viewer first moves.
-  const urlSynced = useRef(false)
   useEffect(() => {
     const current = items[active]
     if (phase !== 'ready' || !current) return
     const first = !urlSynced.current
     urlSynced.current = true
     if (first && window.location.pathname === '/') return
-    const href = reelHref(current, { topic, source })
+    const href = reelHref(current, scope)
     if (window.location.pathname + window.location.search !== href) {
       window.history.replaceState(null, '', href)
     }
     document.title = `${metaTitle(current.title)} | Reelset`
-  }, [active, items, phase, topic, source])
+  }, [active, items, phase, scope])
 
   const goTo = useCallback((index: number) => {
     const target = scrollerRef.current?.children[index]
@@ -264,7 +322,7 @@ export function FeedClient({
       const el = e.target as HTMLElement | null
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return
-      if (sourcesFor || pickerOpen) return
+      if (sourcesFor || pickerOpen || menuFor || detailsOpen) return
       const current = itemsRef.current[active]
       switch (e.key) {
         case 'ArrowDown':
@@ -292,7 +350,7 @@ export function FeedClient({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, active, goTo, toggleLike, sourcesFor, pickerOpen])
+  }, [phase, active, goTo, toggleLike, sourcesFor, pickerOpen, menuFor, detailsOpen])
 
   const [offline, setOffline] = useState(false)
   useEffect(() => {
@@ -305,6 +363,88 @@ export function FeedClient({
       window.removeEventListener('offline', sync)
     }
   }, [])
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 1023px)')
+    const sync = () => setMobile(query.matches)
+    sync()
+    query.addEventListener('change', sync)
+    return () => query.removeEventListener('change', sync)
+  }, [])
+
+  useEffect(() => {
+    const ctl = new AbortController()
+    fetch('/api/feed/tabs', { signal: ctl.signal })
+      .then((res) =>
+        res.ok ? (res.json() as Promise<{ tabs: FeedTab[]; following: string[] }>) : null,
+      )
+      .then((data) => {
+        if (!data) return
+        setTabs(data.tabs)
+        setFollowed(data.following)
+      })
+      .catch(() => {})
+    return () => ctl.abort()
+  }, [])
+
+  const dismissHint = useCallback(() => {
+    setShowHint(false)
+    writeStorage(localStorage, SWIPE_HINT_KEY, '1')
+  }, [])
+
+  useEffect(() => {
+    if (phase !== 'ready' || !mobile || items.length < 2) return
+    if (readStorage(localStorage, SWIPE_HINT_KEY) !== null) return
+    const timer = setTimeout(() => setShowHint(true), 1200)
+    return () => clearTimeout(timer)
+  }, [phase, mobile, items.length])
+
+  useEffect(() => {
+    if (active > 0 && showHint) dismissHint()
+  }, [active, showHint, dismissHint])
+
+  const followTopic = useCallback(
+    async (slug: string, label: string) => {
+      const next = withFollowed(followed, slug)
+      if (!next) {
+        toast.show('You follow 8 topics already. Manage them in your profile.', 'info')
+        return
+      }
+      const before = followed
+      setFollowed(next)
+      try {
+        const res = await fetch('/api/profile/topics', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ topics: next }),
+        })
+        if (res.status === 401) {
+          const body = (await res.json()) as { loginUrl: string }
+          window.location.assign(body.loginUrl)
+          return
+        }
+        if (!res.ok) throw new Error(String(res.status))
+        toast.show(`Following ${label}`, 'ok')
+      } catch {
+        setFollowed(before)
+        toast.show('Could not follow this topic. Try again.', 'error')
+      }
+    },
+    [followed, toast],
+  )
+
+  const giveFeedback = useCallback(
+    (item: FeedItemDto, fewer: boolean) => {
+      let next = hideItem(feedback.current, item.id)
+      if (fewer) next = muteTopics(next, item.topics)
+      feedback.current = next
+      writeStorage(localStorage, FEEDBACK_KEY, JSON.stringify(next))
+      setItems((cur) => cur.filter((it) => it.id !== item.id))
+      setMenuFor(null)
+      toast.show(fewer ? 'Got it. You will see fewer like this.' : 'Got it. Reel hidden.', 'ok')
+    },
+    [toast],
+  )
 
   const accountHref = viewer.authenticated ? '/profile' : '/login'
   const shell = (children: React.ReactNode, canNavigate = false) => (
@@ -330,35 +470,21 @@ export function FeedClient({
         </div>
       </aside>
 
-      <div className="relative h-dvh w-full overflow-hidden bg-black lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)]">
+      <div className="relative h-dvh w-full overflow-hidden bg-black [--bar:calc(3.5rem+env(safe-area-inset-bottom))] lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)] lg:[--bar:0px]">
         {children}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-4 pb-6 pt-safe lg:hidden">
-          <Wordmark className="text-[15px] text-white" />
-          <div className="pointer-events-auto flex items-center gap-2">
-            <a
-              href="/t"
-              aria-label="Topics"
-              className="glass grid h-9 w-9 place-items-center rounded-full transition active:scale-90"
-            >
-              <HashIcon className="h-[18px] w-[18px]" />
-            </a>
-            <a
-              href="/ask"
-              aria-label="Ask"
-              className="glass grid h-9 w-9 place-items-center rounded-full transition active:scale-90"
-            >
-              <SearchIcon className="h-[18px] w-[18px]" />
-            </a>
-            <a
-              href={accountHref}
-              aria-label={viewer.authenticated ? 'Profile' : 'Sign in'}
-              className="glass grid h-9 w-9 place-items-center rounded-full transition active:scale-90"
-            >
-              <UserIcon className="h-[18px] w-[18px]" />
-            </a>
-          </div>
-        </div>
+        <TopicTabs tabs={tabs} active={scope.topic ?? null} onSelect={selectTab} />
         {sourcesFor && <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />}
+        {menuFor && (
+          <FeedbackMenu
+            onNotInterested={() => giveFeedback(menuFor, false)}
+            onShowFewer={() => giveFeedback(menuFor, true)}
+            onClose={() => setMenuFor(null)}
+          />
+        )}
+        {detailsOpen && items[active] && (
+          <DetailsSheet item={items[active]} onClose={() => setDetailsOpen(false)} />
+        )}
+        {showHint && !sourcesFor && !detailsOpen && <SwipeHint onDone={dismissHint} />}
         {pickerOpen && (
           <TopicPicker
             onDone={() => {
@@ -400,6 +526,7 @@ export function FeedClient({
           <dd>Like</dd>
         </dl>
       </aside>
+      <BottomTabs translucent accountHref={accountHref} authenticated={viewer.authenticated} />
     </div>
   )
 
@@ -465,6 +592,11 @@ export function FeedClient({
           onToggleLike={toggleLike}
           onToggleSave={toggleSave}
           onOpenSources={setSourcesFor}
+          onOpenDetails={() => setDetailsOpen(true)}
+          onOpenMenu={setMenuFor}
+          onFollow={(slug, label) => void followTopic(slug, label)}
+          followed={followed}
+          mobile={mobile}
         />
       ))}
       {cursor && moreState === 'failed' && (
@@ -483,7 +615,7 @@ export function FeedClient({
         </section>
       )}
       {!cursor && (
-        <section className="grid h-full snap-start place-items-center bg-surface px-8 text-center">
+        <section className="grid h-full snap-start place-items-center bg-surface px-8 pb-[var(--bar,0px)] text-center">
           <div className="animate-fade-up">
             <LogoMark className="mx-auto h-10 w-10" />
             <p className="mt-4 text-lg font-semibold tracking-tight">You are all caught up</p>

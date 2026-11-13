@@ -47,7 +47,7 @@ export function ProfileTopics({ initial }: { initial: string[] }) {
 
   return (
     <div>
-      <TopicChips selected={selected} onToggle={toggle} />
+      <TopicChips selected={selected} onToggle={toggle} extra={saved} />
       <div className="mt-3 flex items-center gap-3 text-xs text-faint">
         <span className="tabular-nums">
           {selected.length}/{MAX} selected

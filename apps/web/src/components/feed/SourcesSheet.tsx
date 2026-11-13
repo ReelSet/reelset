@@ -25,7 +25,7 @@ export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
 
   return (
     <div
-      className="animate-fade-in absolute inset-0 z-40 flex flex-col justify-end bg-black/60"
+      className="animate-fade-in absolute inset-0 z-50 flex flex-col justify-end bg-black/60"
       onClick={onClose}
     >
       <div

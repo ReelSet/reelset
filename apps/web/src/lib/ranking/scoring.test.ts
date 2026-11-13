@@ -8,6 +8,7 @@ import {
   personalizedScore,
   rankCandidates,
   stalePenalty,
+  topicOverlap,
   type Candidate,
   type RankContext,
 } from './scoring'
@@ -156,5 +157,13 @@ describe('stalePenalty', () => {
     const stale = { id: 's', score: 1, publishedAt: ago(10), topics: [], similarity: null }
     const fresh = { id: 'f', score: 0.4, publishedAt: ago(1), topics: [], similarity: null }
     expect(mainScore(fresh, ctx)).toBeGreaterThan(mainScore(stale, ctx))
+  })
+})
+
+describe('topicOverlap', () => {
+  it('matches raw labels and followed slugs', () => {
+    expect(topicOverlap(['ai'], ['ai'])).toBe(true)
+    expect(topicOverlap(['claude code'], ['claude-code'])).toBe(true)
+    expect(topicOverlap(['rust'], ['claude-code'])).toBe(false)
   })
 })

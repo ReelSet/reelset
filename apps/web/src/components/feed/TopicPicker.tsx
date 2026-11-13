@@ -33,7 +33,7 @@ export function TopicPicker({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="animate-fade-in absolute inset-0 z-40 flex flex-col justify-end bg-black/70 backdrop-blur-sm">
+    <div className="animate-fade-in absolute inset-0 z-50 flex flex-col justify-end bg-black/70 backdrop-blur-sm">
       <div className="animate-sheet-up rounded-t-[28px] border-t border-line bg-surface px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">
         <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-white/15" />
         <h2 className="text-lg font-semibold tracking-tight">What do you want to see?</h2>
@@ -68,31 +68,36 @@ export function TopicChips({
   selected,
   onToggle,
   className = '',
+  extra = [],
 }: {
   selected: string[]
   onToggle: (topic: string) => void
   className?: string
+  /** Followed topics outside the picker list, shown after it. */
+  extra?: string[]
 }) {
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
-      {TOPICS.map((topic) => {
-        const on = selected.includes(topic)
-        return (
-          <button
-            key={topic}
-            type="button"
-            onClick={() => onToggle(topic)}
-            aria-pressed={on}
-            className={`rounded-full border px-3.5 py-1.5 text-sm transition duration-150 active:scale-95 ${
-              on
-                ? 'border-accent bg-accent text-accent-fg'
-                : 'border-line bg-raised text-fg hover:border-line-strong'
-            }`}
-          >
-            {topic}
-          </button>
-        )
-      })}
+      {[...TOPICS, ...extra.filter((t) => !(TOPICS as readonly string[]).includes(t))].map(
+        (topic) => {
+          const on = selected.includes(topic)
+          return (
+            <button
+              key={topic}
+              type="button"
+              onClick={() => onToggle(topic)}
+              aria-pressed={on}
+              className={`rounded-full border px-3.5 py-1.5 text-sm transition duration-150 active:scale-95 ${
+                on
+                  ? 'border-accent bg-accent text-accent-fg'
+                  : 'border-line bg-raised text-fg hover:border-line-strong'
+              }`}
+            >
+              {topic}
+            </button>
+          )
+        },
+      )}
     </div>
   )
 }
