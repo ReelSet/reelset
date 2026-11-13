@@ -120,6 +120,12 @@ export const SETTINGS = {
     z.string().min(DIRECTOR_REVIEW_MIN_CHARS).max(DIRECTOR_REVIEW_MAX_CHARS),
     DIRECTOR_DEFAULT_REVIEW,
   ),
+  showViewCount: def('show_view_count', z.boolean(), false),
+  viewCountThreshold: def('view_count_threshold', z.number().int().min(0), 100),
+  showLikeCount: def('show_like_count', z.boolean(), true),
+  likeCountThreshold: def('like_count_threshold', z.number().int().min(0), 1),
+  showSaveCount: def('show_save_count', z.boolean(), false),
+  saveCountThreshold: def('save_count_threshold', z.number().int().min(0), 5),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 

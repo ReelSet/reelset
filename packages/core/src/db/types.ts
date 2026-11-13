@@ -141,6 +141,7 @@ export type Item = {
   content_hash: string | null
   prompt_version: string | null
   attempts: Generated<number>
+  view_count: Generated<number>
   last_error: string | null
   published_at: Timestamp
   first_seen_at: Generated<Timestamp>
@@ -159,6 +160,12 @@ export type ItemEvent = {
   duration_ms: number | null
   error: string | null
   meta: unknown | null
+  created_at: Generated<Timestamp>
+}
+export type ItemView = {
+  item_id: string
+  viewer_key: string
+  day: Timestamp
   created_at: Generated<Timestamp>
 }
 export type Like = {
@@ -248,6 +255,7 @@ export type DB = {
   instagram_post: InstagramPost
   item: Item
   item_event: ItemEvent
+  item_view: ItemView
   like: Like
   mention: Mention
   profile: Profile

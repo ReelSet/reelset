@@ -50,6 +50,12 @@ const HINTS: Record<string, string> = {
   image_vet_model: `Vets up to 6 images per item; ${MODEL_PRICES}`,
   ask_model: `Answers Ask questions from the next request; ${MODEL_PRICES}`,
   render_upgrade_enabled: 'Re-render older reels when a newer template ships',
+  show_view_count: 'Show the view count on reels once it reaches view_count_threshold',
+  view_count_threshold: 'Minimum views before the count is shown (0 = always)',
+  show_like_count: 'Show the like count on reels once it reaches like_count_threshold',
+  like_count_threshold: 'Minimum likes before the count is shown (0 = always, shows 0)',
+  show_save_count: 'Show the save count on reels once it reaches save_count_threshold',
+  save_count_threshold: 'Minimum saves before the count is shown (0 = always)',
   instagram_auto_post:
     'Queue every new reel for Instagram (up to daily_reel_cap per day); false = post by hand only',
 }

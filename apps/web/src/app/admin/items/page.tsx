@@ -39,6 +39,8 @@ const COLUMNS: SortColumn<ItemSortKey>[] = [
   { key: 'source', label: 'Source', firstDir: 'asc' },
   { key: 'status', label: 'Status', firstDir: 'asc' },
   { key: 'score', label: 'Score' },
+  { key: 'views', label: 'Views' },
+  { key: 'likes', label: 'Likes' },
   { key: 'attempts', label: 'Attempts' },
   { key: 'changed', label: 'Changed (UTC)' },
 ]
@@ -150,6 +152,8 @@ export default async function ItemsPage({ searchParams }: Props) {
                     <Status value={i.status} />
                   </td>
                   <td className={`${td} tabular-nums`}>{i.score.toFixed(1)}</td>
+                  <td className={`${td} tabular-nums`}>{i.view_count}</td>
+                  <td className={`${td} tabular-nums`}>{Number(i.like_count)}</td>
                   <td className={`${td} tabular-nums`}>{i.attempts}</td>
                   <td className={`${td} whitespace-nowrap text-muted`}>
                     {fmtDate(i.status_changed_at)}

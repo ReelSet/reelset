@@ -3,9 +3,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { FeedItemDto } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
+import { formatCount, visibleCount, type CountRules } from '@/lib/counts'
 import {
   ArrowUpRightIcon,
   BookmarkIcon,
+  EyeIcon,
   HeartIcon,
   LayersIcon,
   PlayIcon,
@@ -21,6 +23,7 @@ export type ReelControls = { toggle: () => void }
 
 type Props = {
   item: FeedItemDto
+  countRules: CountRules
   index: number
   active: boolean
   inWindow: boolean
@@ -46,8 +49,15 @@ function host(url: string): string {
 }
 
 export function ReelCard(props: Props) {
-  const { item, index, active, inWindow, preload, soundOn, controls } = props
+  const { item, countRules, index, active, inWindow, preload, soundOn, controls } = props
   const { onVisible, onSound, onToggleLike, onToggleSave, onOpenSources } = props
+  const formatted = (n: number, rule: CountRules['views']) => {
+    const shown = visibleCount(n, rule)
+    return shown === null ? null : formatCount(shown)
+  }
+  const views = formatted(item.viewCount, countRules.views)
+  const likes = formatted(item.likeCount, countRules.likes)
+  const saves = formatted(item.saveCount, countRules.saves)
   const sectionRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -442,10 +452,19 @@ export function ReelCard(props: Props) {
       </div>
 
       <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2 short:bottom-[max(0.75rem,env(safe-area-inset-bottom))] short:gap-0.5 cropped:bottom-[max(0.5rem,env(safe-area-inset-bottom))] cropped:gap-0 cropped:[&>button]:min-h-10">
+        {views !== null && (
+          <div
+            aria-label={`${views} views`}
+            className="flex min-h-11 w-full flex-col items-center justify-center gap-0.5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)]"
+          >
+            <EyeIcon className="h-[26px] w-[26px]" />
+            <span className="text-[12px] font-semibold leading-none tabular-nums">{views}</span>
+          </div>
+        )}
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}
-          text={String(item.likeCount)}
+          text={likes ?? undefined}
           onClick={() => onToggleLike(item)}
         >
           <HeartIcon
@@ -463,6 +482,7 @@ export function ReelCard(props: Props) {
         <RailButton
           label={item.saved ? 'Unsave' : 'Save'}
           pressed={item.saved}
+          text={saves ?? undefined}
           onClick={() => onToggleSave(item)}
         >
           <BookmarkIcon

@@ -1,3 +1,5 @@
+import type { CountRules } from '@/lib/counts'
+
 export type MentionDto = { source: string; score: number | null; url: string }
 
 export const PEXELS_HOME_URL = 'https://www.pexels.com'
@@ -21,6 +23,8 @@ export type FeedItemDto = {
   posterUrl: string | null
   durationMs: number | null
   likeCount: number
+  viewCount: number
+  saveCount: number
   liked: boolean
   saved: boolean
   mentions: MentionDto[]
@@ -29,6 +33,7 @@ export type FeedItemDto = {
 
 export type FeedResponse = {
   items: FeedItemDto[]
+  countRules: CountRules
   nextCursor: string | null
   viewer: { authenticated: boolean; needsTopics: boolean }
 }

@@ -71,3 +71,21 @@ describe('shouldSendAlert', () => {
     expect(shouldSendAlert(new Date('2026-11-09T11:00:00Z'), now)).toBe(true)
   })
 })
+
+describe('reel count settings', () => {
+  it('default to hidden views and saves, likes shown from 1', () => {
+    expect(SETTINGS.showViewCount.default).toBe(false)
+    expect(SETTINGS.viewCountThreshold.default).toBe(100)
+    expect(SETTINGS.showLikeCount.default).toBe(true)
+    expect(SETTINGS.likeCountThreshold.default).toBe(1)
+    expect(SETTINGS.showSaveCount.default).toBe(false)
+  })
+
+  it('falls back to the default on a negative or fractional threshold', () => {
+    expect(parseSetting(SETTINGS.viewCountThreshold, -1, log)).toBe(100)
+    expect(parseSetting(SETTINGS.viewCountThreshold, 2.5, log)).toBe(100)
+    expect(parseSetting(SETTINGS.viewCountThreshold, 0, log)).toBe(0)
+    expect(parseSetting(SETTINGS.showViewCount, 'yes', log)).toBe(false)
+    expect(parseSetting(SETTINGS.showViewCount, true, log)).toBe(true)
+  })
+})

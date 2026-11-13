@@ -64,13 +64,24 @@ export async function sourceStatusMatrix(db: Database) {
   return rows.map((r) => ({ source: r.source, status: r.status, count: Number(r.n) }))
 }
 
-export const ITEM_SORT_KEYS = ['title', 'source', 'status', 'score', 'attempts', 'changed'] as const
+export const ITEM_SORT_KEYS = [
+  'title',
+  'source',
+  'status',
+  'score',
+  'views',
+  'likes',
+  'attempts',
+  'changed',
+] as const
 export type ItemSortKey = (typeof ITEM_SORT_KEYS)[number]
 const ITEM_SORT: Record<ItemSortKey, RawBuilder<unknown>> = {
   title: ref('item.title'),
   source: itemSource,
   status: ref('item.status'),
   score: ref('item.score'),
+  views: ref('item.view_count'),
+  likes: sql`(select count(*) from "like" l where l.item_id = item.id)`,
   attempts: ref('item.attempts'),
   changed: ref('item.status_changed_at'),
 }
@@ -92,10 +103,12 @@ export async function listItems(
       'kind',
       'score',
       'attempts',
+      'view_count',
       'last_error',
       'published_at',
       'status_changed_at',
       itemSource.as('source'),
+      sql<string>`(select count(*) from "like" l where l.item_id = item.id)`.as('like_count'),
     ])
   if (filters.status) query = query.where('status', '=', filters.status)
   if (filters.source) query = query.where(sql<boolean>`${itemSource} = ${filters.source}`)
