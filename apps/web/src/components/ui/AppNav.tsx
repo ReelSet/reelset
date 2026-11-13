@@ -24,7 +24,7 @@ function tabs(accountHref: string, authenticated: boolean): Tab[] {
   ]
 }
 
-type NavProps = { accountHref?: string; authenticated?: boolean }
+type NavProps = { accountHref?: string; authenticated?: boolean; translucent?: boolean }
 
 export function SideNav({ accountHref = '/profile', authenticated = true }: NavProps) {
   const path = usePathname()
@@ -50,12 +50,18 @@ export function SideNav({ accountHref = '/profile', authenticated = true }: NavP
   )
 }
 
-export function BottomTabs({ accountHref = '/profile', authenticated = true }: NavProps) {
+export function BottomTabs({
+  accountHref = '/profile',
+  authenticated = true,
+  translucent = false,
+}: NavProps) {
   const path = usePathname()
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(3.5rem+env(safe-area-inset-bottom))] grid-cols-4 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      className={`fixed inset-x-0 bottom-0 z-40 grid h-[calc(3.5rem+env(safe-area-inset-bottom))] grid-cols-4 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden ${
+        translucent ? 'border-white/10 bg-black/45 backdrop-blur-md' : 'border-line bg-bg/95'
+      }`}
     >
       {tabs(accountHref, authenticated).map(({ href, label, icon: Icon, match }) => {
         const active = match(path)
@@ -65,7 +71,7 @@ export function BottomTabs({ accountHref = '/profile', authenticated = true }: N
             href={href}
             aria-current={active ? 'page' : undefined}
             className={`flex flex-col items-center justify-center gap-0.5 text-[11px] transition active:scale-95 ${
-              active ? 'text-fg' : 'text-muted'
+              active ? 'text-fg' : translucent ? 'text-white/65' : 'text-muted'
             }`}
           >
             <Icon className="h-5 w-5" />

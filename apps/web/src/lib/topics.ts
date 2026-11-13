@@ -15,6 +15,12 @@ export const TOPICS = [
   'hardware',
 ] as const
 
+// Picker topics plus any topic slug a viewer followed from a reel.
+const topicSlugSchema = z
+  .string()
+  .max(40)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+
 export const topicsBodySchema = z.object({
-  topics: z.array(z.enum(TOPICS)).min(1).max(8),
+  topics: z.array(topicSlugSchema).min(1).max(8),
 })

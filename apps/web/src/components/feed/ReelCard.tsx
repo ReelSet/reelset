@@ -7,7 +7,6 @@ import { formatCount, visibleCount, type CountRules } from '@/lib/counts'
 import {
   ArrowUpRightIcon,
   BookmarkIcon,
-  EyeIcon,
   HeartIcon,
   LayersIcon,
   PlayIcon,
@@ -17,6 +16,7 @@ import {
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
+import { followableTopic } from '@/lib/feed-tabs'
 import { reelPath } from '@/lib/reel-url'
 
 export type ReelControls = { toggle: () => void }
@@ -35,6 +35,11 @@ type Props = {
   onToggleLike: (item: FeedItemDto) => void
   onToggleSave: (item: FeedItemDto) => void
   onOpenSources: (item: FeedItemDto) => void
+  onOpenDetails: (item: FeedItemDto) => void
+  onOpenMenu: (item: FeedItemDto) => void
+  onFollow: (slug: string, label: string) => void
+  followed: readonly string[]
+  mobile: boolean
 }
 
 const DOUBLE_TAP_MS = 280
@@ -51,6 +56,8 @@ function host(url: string): string {
 export function ReelCard(props: Props) {
   const { item, countRules, index, active, inWindow, preload, soundOn, controls } = props
   const { onVisible, onSound, onToggleLike, onToggleSave, onOpenSources } = props
+  const { onOpenDetails, onOpenMenu, onFollow, followed, mobile } = props
+  const follow = followableTopic(item.topics)
   const formatted = (n: number, rule: CountRules['views']) => {
     const shown = visibleCount(n, rule)
     return shown === null ? null : formatCount(shown)
@@ -257,6 +264,7 @@ export function ReelCard(props: Props) {
 
   const sources = [...new Set(item.mentions.map((m) => m.source))]
   const hasMore = Boolean(item.tldr) || item.title.length > 80
+  const isFollowing = follow ? followed.includes(follow.slug) : false
 
   return (
     <section
@@ -380,7 +388,7 @@ export function ReelCard(props: Props) {
         className={`absolute inset-0 z-[15] bg-gradient-to-t from-black/80 via-black/60 to-black/50 transition-opacity duration-300 ease-out ${expanded ? 'cursor-pointer opacity-100' : 'pointer-events-none opacity-0'}`}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3.5 pr-[16%] pt-10 short:pb-[max(0.5rem,env(safe-area-inset-bottom))] short:pt-4">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[calc(var(--bar,0px)+0.75rem)] pl-3.5 pr-16 pt-10 short:pb-[calc(var(--bar,0px)+0.5rem)] short:pt-4">
         <div
           aria-hidden
           className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"
@@ -390,20 +398,50 @@ export function ReelCard(props: Props) {
           className={`absolute inset-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}
         />
         <div className="relative flex min-h-0 flex-col" onClick={(e) => e.stopPropagation()}>
-          <p className="pointer-events-auto mb-1 flex w-fit max-w-full items-center gap-1.5 text-[13px] text-white/70">
-            <SourceDot source={sources[0] ?? 'news'} />
-            <span className="shrink-0 font-medium text-white/85">
-              {sourceMeta(sources[0] ?? 'news').label}
-            </span>
-            <span aria-hidden>·</span>
-            <span className="truncate">{host(item.canonicalUrl)}</span>
-          </p>
+          <div className="pointer-events-auto mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <a
+              href={item.canonicalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() =>
+                track({ name: 'item_open', itemId: item.id, meta: { source: 'original' } })
+              }
+              aria-label={`Open original on ${host(item.canonicalUrl)}`}
+              className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full bg-white/15 px-2.5 text-[12px] text-white/90 backdrop-blur-md transition active:scale-95"
+            >
+              <SourceDot source={sources[0] ?? 'news'} />
+              <span className="shrink-0 font-medium">{sourceMeta(sources[0] ?? 'news').label}</span>
+              <span aria-hidden className="text-white/50">
+                ·
+              </span>
+              <span className="truncate text-white/75">{host(item.canonicalUrl)}</span>
+              <ArrowUpRightIcon className="h-3 w-3 shrink-0 text-white/60" />
+            </a>
+            {follow && (
+              <button
+                type="button"
+                disabled={isFollowing}
+                onClick={() => onFollow(follow.slug, follow.label)}
+                className={`inline-flex min-h-7 items-center rounded-full px-3 text-[12px] font-medium transition active:scale-95 ${isFollowing ? 'bg-white/15 text-white/70' : 'border border-white/40 text-white'}`}
+              >
+                {isFollowing ? 'Following' : `Follow ${follow.label}`}
+              </button>
+            )}
+            {views !== null && (
+              <span className="text-[12px] text-white/60 tabular-nums">{views} views</span>
+            )}
+          </div>
           <h2 className="pointer-events-auto text-[15px] font-semibold leading-snug text-white [overflow-wrap:anywhere]">
             <button
               type="button"
-              aria-expanded={expanded}
-              aria-controls={detailsId}
-              onClick={() => hasMore && setExpanded((v) => !v)}
+              aria-expanded={mobile ? undefined : expanded}
+              aria-controls={mobile ? undefined : detailsId}
+              aria-haspopup={mobile ? 'dialog' : undefined}
+              onClick={() => {
+                if (!hasMore) return
+                if (mobile) onOpenDetails(item)
+                else setExpanded((v) => !v)
+              }}
               className={`relative block w-full text-left ${hasMore ? 'cursor-pointer' : 'cursor-default'}`}
             >
               {expanded ? item.title : <ClampedTitle title={item.title} more={hasMore} lines={2} />}
@@ -451,16 +489,7 @@ export function ReelCard(props: Props) {
         </div>
       </div>
 
-      <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-0 z-30 flex w-[14%] flex-col items-center gap-2 short:bottom-[max(0.75rem,env(safe-area-inset-bottom))] short:gap-0.5 cropped:bottom-[max(0.5rem,env(safe-area-inset-bottom))] cropped:gap-0 cropped:[&>button]:min-h-10">
-        {views !== null && (
-          <div
-            aria-label={`${views} views`}
-            className="flex min-h-11 w-full flex-col items-center justify-center gap-0.5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)]"
-          >
-            <EyeIcon className="h-[26px] w-[26px]" />
-            <span className="text-[12px] font-semibold leading-none tabular-nums">{views}</span>
-          </div>
-        )}
+      <div className="absolute bottom-[calc(var(--bar,0px)+1rem)] right-3 z-30 flex w-11 flex-col items-center gap-2 short:bottom-[calc(var(--bar,0px)+0.75rem)] short:gap-0.5 cropped:bottom-[calc(var(--bar,0px)+0.5rem)] cropped:gap-0 cropped:[&>button]:min-h-10">
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}
@@ -473,8 +502,8 @@ export function ReelCard(props: Props) {
           />
         </RailButton>
         <RailButton
-          label="Sources"
-          text={String(item.mentions.length)}
+          label={`Sources, ${item.mentions.length}`}
+          text="Sources"
           onClick={() => onOpenSources(item)}
         >
           <LayersIcon className="h-[28px] w-[28px]" />
@@ -502,9 +531,16 @@ export function ReelCard(props: Props) {
         >
           <VolumeIcon muted={!soundOn} className="h-[26px] w-[26px]" />
         </RailButton>
+        <RailButton label="More options" onClick={() => onOpenMenu(item)}>
+          <svg viewBox="0 0 24 24" className="h-[26px] w-[26px]" fill="currentColor" aria-hidden>
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </RailButton>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-30 h-[3px] bg-white/10">
+      <div className="absolute inset-x-0 bottom-[var(--bar,0px)] z-30 h-[3px] bg-white/10">
         <div
           ref={barRef}
           className="h-full origin-left scale-x-0 bg-accent will-change-transform"
@@ -590,10 +626,10 @@ function RailButton({
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className="group flex min-h-11 w-full min-w-11 flex-col items-center justify-center gap-0.5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)]"
+      className="group flex min-h-11 w-11 flex-col items-center justify-center gap-0.5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)]"
     >
       <span className="transition duration-150 ease-out group-active:scale-90">{children}</span>
-      {text && <span className="text-[12px] font-semibold leading-none tabular-nums">{text}</span>}
+      {text && <span className="text-[11px] font-semibold leading-none tabular-nums">{text}</span>}
     </button>
   )
 }

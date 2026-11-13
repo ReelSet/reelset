@@ -1,3 +1,5 @@
+import { topicSlug } from '@/lib/reel-url'
+
 export const PERSONALIZE_MIN_SIGNALS = 10
 export const SIMILARITY_WEIGHT = 0.6
 export const FRESHNESS_WEIGHT = 0.25
@@ -55,7 +57,7 @@ export function popularityScore(itemScore: number, fresh: number): number {
 }
 
 export function topicOverlap(itemTopics: readonly string[], profileTopics: readonly string[]) {
-  return itemTopics.some((t) => profileTopics.includes(t))
+  return itemTopics.some((t) => profileTopics.includes(t) || profileTopics.includes(topicSlug(t)))
 }
 
 export function coldStartScore(c: Candidate, ctx: RankContext): number {

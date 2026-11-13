@@ -8,22 +8,38 @@ import { SITE_NAME, SITE_TAGLINE } from '@/lib/seo/site'
 import { getOptionalUser } from '@/server/auth'
 import { getDb } from '@/server/db'
 import { mediaBaseUrl } from '@/server/env'
-import { loadFeedResponse } from '@/server/feed'
+import { loadFeedResponse, resolveTopicLabels } from '@/server/feed'
 import { routeLog } from '@/server/logger'
 
 export const dynamic = 'force-dynamic'
 
 // Old `/?reel=<uuid>` share links are redirected in proxy.ts before this renders.
-export default async function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ topic?: string | string[] }>
+}) {
   const log = routeLog('feed-page')
+  const rawTopic = (await searchParams).topic
+  const topicParam = (Array.isArray(rawTopic) ? rawTopic[0] : rawTopic) || null
   let initial: FeedResponse | undefined
+  let topic: string | null = null
   try {
     await cookies()
     const user = await getOptionalUser()
+    let labels: string[] | undefined
+    if (topicParam) {
+      const found = await resolveTopicLabels(getDb(), topicParam)
+      if (found.length > 0) {
+        topic = topicParam
+        labels = found
+      }
+    }
     initial = await loadFeedResponse(getDb(), {
       profileId: user?.id ?? null,
       authenticated: user !== null,
       base: mediaBaseUrl(),
+      labels,
       log,
     })
   } catch (err) {
@@ -36,7 +52,7 @@ export default async function FeedPage() {
       <h1 className="sr-only">
         {SITE_NAME}: {SITE_TAGLINE}
       </h1>
-      <FeedClient initial={initial} />
+      <FeedClient initial={initial} topic={topic} />
     </>
   )
 }
