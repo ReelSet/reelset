@@ -37,7 +37,7 @@ type Props = {
   onOpenSources: (item: FeedItemDto) => void
   onOpenDetails: (item: FeedItemDto) => void
   onOpenMenu: (item: FeedItemDto) => void
-  onFollow: (slug: string, label: string) => void
+  onFollow: (slug: string) => void
   followed: readonly string[]
   mobile: boolean
 }
@@ -420,8 +420,8 @@ export function ReelCard(props: Props) {
             {follow && (
               <button
                 type="button"
-                disabled={isFollowing}
-                onClick={() => onFollow(follow.slug, follow.label)}
+                aria-pressed={isFollowing}
+                onClick={() => onFollow(follow.slug)}
                 className={`inline-flex min-h-7 items-center rounded-full px-3 text-[12px] font-medium transition active:scale-95 ${isFollowing ? 'bg-white/15 text-white/70' : 'border border-white/40 text-white'}`}
               >
                 {isFollowing ? 'Following' : `Follow ${follow.label}`}

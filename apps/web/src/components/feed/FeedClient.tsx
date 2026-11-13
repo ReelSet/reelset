@@ -13,7 +13,8 @@ import {
   muteTopics,
   parseFeedback,
 } from '@/lib/feed-feedback'
-import { withFollowed, type FeedTab } from '@/lib/feed-tabs'
+import { createIntentQueue } from '@/lib/intent-queue'
+import { MAX_FOLLOWED_TOPICS } from '@/lib/topics'
 import { reelHref, scopeQuery, type FeedScope } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
 import { ReelAbout } from './ReelAbout'
@@ -33,7 +34,6 @@ import { FeedbackMenu } from './FeedbackMenu'
 import { SourcesSheet } from './SourcesSheet'
 import { SwipeHint } from './SwipeHint'
 import { TopicPicker } from './TopicPicker'
-import { TopicTabs } from './TopicTabs'
 
 const PENDING_LIKE_KEY = 'reelset.pendingLike'
 const TOPICS_DISMISSED_KEY = 'reelset.topicsDismissed'
@@ -90,7 +90,6 @@ export function FeedClient({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [moreState, setMoreState] = useState<'idle' | 'loading' | 'failed'>('idle')
   const [scope, setScope] = useState<FeedScope>({ topic, source })
-  const [tabs, setTabs] = useState<FeedTab[]>([])
   const [followed, setFollowed] = useState<string[]>([])
   const [menuFor, setMenuFor] = useState<FeedItemDto | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -112,76 +111,118 @@ export function FeedClient({
     setItems((cur) => cur.map((it) => (it.id === id ? { ...it, ...patch } : it)))
   }, [])
 
-  const sendLike = useCallback(
-    async (item: FeedItemDto, liked: boolean) => {
-      patchItem(item.id, {
-        liked,
-        likeCount: Math.max(0, item.likeCount + (liked ? 1 : -1)),
-      })
-      track({ name: liked ? 'like' : 'unlike', itemId: item.id })
-      try {
+  const setFlag = useCallback((id: string, field: 'liked' | 'saved', on: boolean) => {
+    const count = field === 'liked' ? 'likeCount' : 'saveCount'
+    setItems((cur) =>
+      cur.map((it) =>
+        it.id === id && it[field] !== on
+          ? { ...it, [field]: on, [count]: Math.max(0, it[count] + (on ? 1 : -1)) }
+          : it,
+      ),
+    )
+  }, [])
+
+  const redirectToLogin = useCallback(async (res: Response) => {
+    const body = (await res.json()) as { loginUrl: string }
+    window.location.assign(body.loginUrl)
+  }, [])
+
+  const toastRef = useRef(toast)
+  toastRef.current = toast
+
+  const [likeQueue] = useState(() =>
+    createIntentQueue<boolean, { likeCount: number } | null, FeedItemDto>({
+      send: async (itemId, liked) => {
         const res = await fetch('/api/likes', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ itemId: item.id, liked }),
+          body: JSON.stringify({ itemId, liked }),
         })
         if (res.status === 401) {
-          const body = (await res.json()) as { loginUrl: string }
-          if (liked) writeStorage(sessionStorage, PENDING_LIKE_KEY, item.id)
-          window.location.assign(body.loginUrl)
-          return
+          if (liked) writeStorage(sessionStorage, PENDING_LIKE_KEY, itemId)
+          await redirectToLogin(res)
+          return null
         }
         if (!res.ok) throw new Error(String(res.status))
-        const body = (await res.json()) as { liked: boolean; likeCount: number }
-        patchItem(item.id, { liked: body.liked, likeCount: body.likeCount })
-      } catch {
-        patchItem(item.id, { liked: item.liked, likeCount: item.likeCount })
-        toast.show(
+        return (await res.json()) as { likeCount: number }
+      },
+      onSettled: (itemId, liked, result) => {
+        if (result) patchItem(itemId, { liked, likeCount: result.likeCount })
+      },
+      onFailed: (itemId, base, confirmed) => {
+        patchItem(itemId, {
+          liked: confirmed?.value ?? base.liked,
+          likeCount: confirmed?.result?.likeCount ?? base.likeCount,
+        })
+        toastRef.current.show(
           navigator.onLine
             ? 'Could not save your like. Try again.'
             : 'You are offline. Your like was not saved.',
           'error',
         )
-      }
+      },
+    }),
+  )
+
+  const [saveQueue] = useState(() =>
+    createIntentQueue<boolean, boolean, FeedItemDto>({
+      send: async (itemId, saved) => {
+        const res = await fetch('/api/saves', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ itemId, saved }),
+        })
+        if (res.status === 401) {
+          await redirectToLogin(res)
+          return false
+        }
+        if (!res.ok) throw new Error(String(res.status))
+        return true
+      },
+      onSettled: (_itemId, saved, ok) => {
+        if (ok) toastRef.current.show(saved ? 'Saved to your profile' : 'Removed from saved', 'ok')
+      },
+      onFailed: (itemId, base, confirmed) => {
+        const saved = confirmed?.value ?? base.saved
+        const delta = saved === base.saved ? 0 : saved ? 1 : -1
+        patchItem(itemId, { saved, saveCount: Math.max(0, base.saveCount + delta) })
+        toastRef.current.show(
+          navigator.onLine ? 'Could not save this reel. Try again.' : 'You are offline.',
+          'error',
+        )
+      },
+    }),
+  )
+
+  const sendLike = useCallback(
+    (item: FeedItemDto, liked: boolean) => {
+      const queue = likeQueue
+      const current = itemsRef.current.find((it) => it.id === item.id) ?? item
+      setFlag(item.id, 'liked', liked)
+      queue.set(item.id, liked, current)
+      track({ name: liked ? 'like' : 'unlike', itemId: item.id })
     },
-    [patchItem, toast],
+    [setFlag, likeQueue],
   )
 
   const toggleLike = useCallback(
     (item: FeedItemDto) => {
       const current = itemsRef.current.find((it) => it.id === item.id) ?? item
-      void sendLike(current, !current.liked)
+      const wanted = likeQueue.wanted(item.id) ?? current.liked
+      sendLike(current, !wanted)
     },
-    [sendLike],
+    [sendLike, likeQueue],
   )
 
   const toggleSave = useCallback(
-    async (item: FeedItemDto) => {
+    (item: FeedItemDto) => {
+      const queue = saveQueue
       const current = itemsRef.current.find((it) => it.id === item.id) ?? item
-      const saved = !current.saved
-      patchItem(item.id, { saved, saveCount: Math.max(0, current.saveCount + (saved ? 1 : -1)) })
-      try {
-        const res = await fetch('/api/saves', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ itemId: item.id, saved }),
-        })
-        if (res.status === 401) {
-          const body = (await res.json()) as { loginUrl: string }
-          window.location.assign(body.loginUrl)
-          return
-        }
-        if (!res.ok) throw new Error(String(res.status))
-        toast.show(saved ? 'Saved to your profile' : 'Removed from saved', 'ok')
-      } catch {
-        patchItem(item.id, { saved: current.saved, saveCount: current.saveCount })
-        toast.show(
-          navigator.onLine ? 'Could not save this reel. Try again.' : 'You are offline.',
-          'error',
-        )
-      }
+      const saved = !(queue.wanted(item.id) ?? current.saved)
+      setFlag(item.id, 'saved', saved)
+      queue.set(item.id, saved, current)
     },
-    [patchItem, toast],
+    [setFlag],
   )
 
   const visible = useCallback(
@@ -209,7 +250,7 @@ export function FeedClient({
       if (pending && feed.viewer.authenticated) {
         writeStorage(sessionStorage, PENDING_LIKE_KEY, null)
         const target = shown.find((it) => it.id === pending)
-        if (target && !target.liked) void sendLike(target, true)
+        if (target && !target.liked) sendLike(target, true)
       }
     },
     [sendLike, visible],
@@ -234,18 +275,6 @@ export function FeedClient({
   )
 
   const loadInitial = useCallback(() => loadScope(scopeRef.current), [loadScope])
-
-  const selectTab = useCallback(
-    (slug: string | null) => {
-      const next: FeedScope = { topic: slug, source: null }
-      scopeRef.current = next
-      setScope(next)
-      urlSynced.current = false
-      window.history.replaceState(null, '', `/${scopeQuery(next)}`)
-      void loadScope(next)
-    },
-    [loadScope],
-  )
 
   const initialRef = useRef(initial)
   const mounted = useRef(false)
@@ -374,13 +403,10 @@ export function FeedClient({
 
   useEffect(() => {
     const ctl = new AbortController()
-    fetch('/api/feed/tabs', { signal: ctl.signal })
-      .then((res) =>
-        res.ok ? (res.json() as Promise<{ tabs: FeedTab[]; following: string[] }>) : null,
-      )
+    fetch('/api/feed/following', { signal: ctl.signal })
+      .then((res) => (res.ok ? (res.json() as Promise<{ following: string[] }>) : null))
       .then((data) => {
         if (!data) return
-        setTabs(data.tabs)
         setFollowed(data.following)
       })
       .catch(() => {})
@@ -403,34 +429,50 @@ export function FeedClient({
     if (active > 0 && showHint) dismissHint()
   }, [active, showHint, dismissHint])
 
+  const [followQueue] = useState(() =>
+    createIntentQueue<boolean, string[] | null, { followed: string[] }>({
+      send: async (slug, following) => {
+        const res = await fetch('/api/profile/follow', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ topic: slug, following }),
+        })
+        if (res.status === 401) {
+          await redirectToLogin(res)
+          return null
+        }
+        if (res.status === 409) throw new Error('full')
+        if (!res.ok) throw new Error(String(res.status))
+        return ((await res.json()) as { topics: string[] }).topics
+      },
+      onSettled: (slug, following, topics) => {
+        if (!topics) {
+          setFollowed((cur) => cur.filter((t) => t !== slug))
+          return
+        }
+        setFollowed(topics)
+        if (following) toastRef.current.show('Following. See more of this in your feed.', 'ok')
+      },
+      onFailed: (slug, base) => {
+        setFollowed(base.followed)
+        toastRef.current.show('Could not update this topic. Try again.', 'error')
+      },
+    }),
+  )
+
   const followTopic = useCallback(
-    async (slug: string, label: string) => {
-      const next = withFollowed(followed, slug)
-      if (!next) {
+    (slug: string) => {
+      const wanted = !(followQueue.wanted(slug) ?? followed.includes(slug))
+      if (wanted && !followQueue.wanted(slug) && followed.length >= MAX_FOLLOWED_TOPICS) {
         toast.show('You follow 8 topics already. Manage them in your profile.', 'info')
         return
       }
-      const before = followed
-      setFollowed(next)
-      try {
-        const res = await fetch('/api/profile/topics', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ topics: next }),
-        })
-        if (res.status === 401) {
-          const body = (await res.json()) as { loginUrl: string }
-          window.location.assign(body.loginUrl)
-          return
-        }
-        if (!res.ok) throw new Error(String(res.status))
-        toast.show(`Following ${label}`, 'ok')
-      } catch {
-        setFollowed(before)
-        toast.show('Could not follow this topic. Try again.', 'error')
-      }
+      setFollowed((cur) =>
+        wanted ? (cur.includes(slug) ? cur : [...cur, slug]) : cur.filter((t) => t !== slug),
+      )
+      followQueue.set(slug, wanted, { followed })
     },
-    [followed, toast],
+    [followed, followQueue, toast],
   )
 
   const giveFeedback = useCallback(
@@ -472,7 +514,6 @@ export function FeedClient({
 
       <div className="relative h-dvh w-full overflow-hidden bg-black [--bar:calc(3.5rem+env(safe-area-inset-bottom))] lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)] lg:[--bar:0px]">
         {children}
-        <TopicTabs tabs={tabs} active={scope.topic ?? null} onSelect={selectTab} />
         {sourcesFor && <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />}
         {menuFor && (
           <FeedbackMenu
@@ -594,7 +635,7 @@ export function FeedClient({
           onOpenSources={setSourcesFor}
           onOpenDetails={() => setDetailsOpen(true)}
           onOpenMenu={setMenuFor}
-          onFollow={(slug, label) => void followTopic(slug, label)}
+          onFollow={followTopic}
           followed={followed}
           mobile={mobile}
         />

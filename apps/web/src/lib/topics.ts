@@ -24,3 +24,7 @@ const topicSlugSchema = z
 export const topicsBodySchema = z.object({
   topics: z.array(topicSlugSchema).min(1).max(8),
 })
+
+export const MAX_FOLLOWED_TOPICS = 8
+
+export const followBodySchema = z.object({ topic: topicSlugSchema, following: z.boolean() })
