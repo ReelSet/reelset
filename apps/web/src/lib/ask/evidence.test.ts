@@ -41,7 +41,17 @@ describe('filterCitations', () => {
       title: 'Title a',
       url: 'https://x.test/a',
       publishedAt: '2026-11-01T00:00:00.000Z',
+      itemId: 'item-a',
+      refs: [1],
     })
+  })
+
+  it('numbers sources by evidence position and merges refs of chunks sharing a url', () => {
+    const out = filterCitations(['c', 'b', 'a'], retrieved)
+    expect(out.map((c) => [c.chunkId, c.refs])).toEqual([
+      ['c', [3, 1]],
+      ['b', [2]],
+    ])
   })
 
   it('dedupes repeated ids and chunks that share a url', () => {

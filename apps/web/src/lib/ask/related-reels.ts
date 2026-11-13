@@ -16,21 +16,24 @@ export function pickRelatedReels(
   posterUrl: (key: string | null) => string | null,
   limit = MAX_RELATED_REELS,
 ): RelatedReelDto[] {
-  const seen = new Set<string>()
-  const out: RelatedReelDto[] = []
+  const byItem = new Map<string, RelatedReelDto>()
   for (const citation of citations) {
     const itemId = chunkItems.get(citation.chunkId)
-    if (!itemId || seen.has(itemId)) continue
+    if (!itemId) continue
+    const existing = byItem.get(itemId)
+    if (existing) {
+      existing.chunkIds?.push(citation.chunkId)
+      continue
+    }
     const reel = reels.get(itemId)
-    if (!reel) continue
-    seen.add(itemId)
-    out.push({
+    if (!reel || byItem.size >= limit) continue
+    byItem.set(itemId, {
       itemId,
       title: reel.title,
       posterUrl: posterUrl(reel.poster_key),
       source: reel.source ?? 'news',
+      chunkIds: [citation.chunkId],
     })
-    if (out.length >= limit) break
   }
-  return out
+  return [...byItem.values()]
 }

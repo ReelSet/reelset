@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
-import { RelatedReels, SourceCards } from '@/components/ask/AnswerSources'
+import { AnswerView } from '@/components/ask/AnswerView'
 import { ConversationDelete } from '@/components/ask/ConversationDelete'
 import { Wordmark } from '@/components/ui/Logo'
 import { buildLoginUrl } from '@/lib/auth/return-url'
@@ -50,11 +50,12 @@ export default async function AskEntryPage({ params }: { params: Promise<{ id: s
             <h1 className="text-2xl font-semibold leading-snug tracking-tight [text-wrap:balance]">
               {turn.question}
             </h1>
-            <p className="whitespace-pre-wrap text-[16px] leading-[1.7] text-fg/90">
-              {turn.answer}
-            </p>
-            <RelatedReels reels={turn.reels} />
-            <SourceCards citations={turn.citations} />
+            <AnswerView
+              question={turn.question}
+              answer={turn.answer}
+              citations={turn.citations}
+              reels={turn.reels}
+            />
           </article>
         ))}
       </div>

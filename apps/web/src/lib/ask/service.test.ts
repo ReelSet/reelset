@@ -40,7 +40,11 @@ function makeDeps(overrides: Partial<AskDeps> = {}) {
       model: 'claude-haiku-5-5' as const,
       inputTokens: 100,
       outputTokens: 20,
-      parsed: { answer: 'Yes, mostly.', citations: ['a', 'ghost'] },
+      parsed: {
+        answer: 'Yes, mostly. [1][2]',
+        citations: ['a', 'ghost'],
+        followups: ['Why is it faster?'],
+      },
     })),
     recordSpend: vi.fn(async () => undefined),
     logQuery: async (entry) => {
@@ -58,7 +62,12 @@ describe('runAsk', () => {
   it('answers with only citations from the retrieved set and records spend', async () => {
     const { deps, logged } = makeDeps()
     const result = await runAsk(deps, input)
-    expect(result).toMatchObject({ outcome: 'answered', answer: 'Yes, mostly.', cached: false })
+    expect(result).toMatchObject({
+      outcome: 'answered',
+      answer: 'Yes, mostly. [1]',
+      cached: false,
+      followups: ['Why is it faster?'],
+    })
     if (result.outcome === 'answered') expect(result.citations.map((c) => c.chunkId)).toEqual(['a'])
     expect(deps.recordSpend).toHaveBeenCalledWith(
       'embedding',
@@ -129,7 +138,7 @@ describe('runAsk', () => {
           model: 'claude-haiku-5-5' as const,
           inputTokens: 1,
           outputTokens: 1,
-          parsed: { answer: 'Yes, mostly.', citations: ['a'] },
+          parsed: { answer: 'Yes, mostly.', citations: ['a'], followups: [] },
         }
       }),
     })
@@ -147,6 +156,21 @@ describe('runAsk', () => {
     expect(logged[0]).toMatchObject({ outcome: 'answered', answer: 'cached', cached: true })
   })
 
+  it('skips the cache when regenerating and still embeds and records spend', async () => {
+    const findCached = vi.fn(async () => ({ answer: 'cached', citations: [] }))
+    const { deps } = makeDeps({ findCached })
+    const result = await runAsk(deps, { ...input, regenerate: true })
+    expect(findCached).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ outcome: 'answered', cached: false })
+    expect(deps.embed).toHaveBeenCalled()
+    expect(deps.recordSpend).toHaveBeenCalledWith(
+      'llm',
+      120,
+      expect.any(Number),
+      'claude-haiku-5-5',
+    )
+  })
+
   it('answers no_evidence when nothing clears the similarity threshold', async () => {
     const { deps } = makeDeps({ retrieve: vi.fn(async () => [evidence('a', 0.2)]) })
     const result = await runAsk(deps, input)
@@ -161,7 +185,7 @@ describe('runAsk', () => {
         model: 'claude-haiku-5-5' as const,
         inputTokens: 1,
         outputTokens: 1,
-        parsed: { answer: 'Made up', citations: ['ghost'] },
+        parsed: { answer: 'Made up', citations: ['ghost'], followups: [] },
       })),
     })
     expect((await runAsk(deps, input)).outcome).toBe('no_evidence')

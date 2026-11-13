@@ -43,9 +43,17 @@ export type RelatedReelDto = {
   title: string
   posterUrl: string | null
   source: string
+  chunkIds?: string[]
 }
 
-export type CitationDto = { chunkId: string; title: string; url: string; publishedAt: string }
+export type CitationDto = {
+  chunkId: string
+  title: string
+  url: string
+  publishedAt: string
+  itemId?: string
+  refs?: number[]
+}
 
 export type AskResponse =
   | {
@@ -54,6 +62,7 @@ export type AskResponse =
       citations: CitationDto[]
       cached: boolean
       reels?: RelatedReelDto[]
+      followups?: string[]
     }
   | { outcome: 'no_evidence' | 'rate_limited' | 'spend_capped'; message: string }
   | { outcome: 'error'; message: string; reason?: 'ai_unavailable' }
