@@ -54,6 +54,14 @@ describe('filterCitations', () => {
     ])
   })
 
+  it('accepts evidence numbers (n) in place of ids', () => {
+    const out = filterCitations(['1', '2', '9'], retrieved)
+    expect(out.map((c) => [c.chunkId, c.refs])).toEqual([
+      ['a', [1]],
+      ['b', [2]],
+    ])
+  })
+
   it('dedupes repeated ids and chunks that share a url', () => {
     expect(filterCitations(['a', 'a', 'c'], retrieved).map((c) => c.chunkId)).toEqual(['a'])
   })
