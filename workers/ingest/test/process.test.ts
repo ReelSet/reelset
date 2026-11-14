@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decideOnError, retryDelaySeconds, stageFor } from '../src/pipeline/decide'
 import { handleMessage, type MessageLike } from '../src/pipeline/consumer'
 import { processItem } from '../src/pipeline/process'
@@ -11,6 +11,15 @@ import {
   transitionTargets,
   validOutput,
 } from './helpers/process-deps'
+import { useFetch } from './helpers/mock-fetch'
+
+// Enrichment calls HN/Reddit/GitHub; without a stub these tests hit the real network and time out.
+beforeEach(() => {
+  useFetch()
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 const FOREIGN_CHUNK = '99999999-9999-4999-8999-999999999999'
 
