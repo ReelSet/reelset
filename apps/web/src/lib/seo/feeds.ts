@@ -13,6 +13,24 @@ import type { ReelSummary, TopicCount } from './types'
 
 const DAY_MS = 86_400_000
 
+const XML_ENTITIES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&apos;',
+}
+
+/**
+ * Next writes sitemap fields into the XML verbatim, so a title like "Max & 27B" breaks the whole
+ * file for Google. Escape here and drop control characters XML 1.0 does not allow.
+ */
+export function xmlText(value: string): string {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
+    .replace(/[&<>"']/g, (c) => XML_ENTITIES[c] ?? c)
+}
+
 /** Groups raw topic labels by URL slug; the most used spelling names the group. */
 export function groupTopics(rows: { label: string; count: number }[]): TopicCount[] {
   const groups = new Map<string, { label: string; best: number; count: number }>()
@@ -55,19 +73,19 @@ export function buildSitemap(input: {
   }))
   const reels = input.reels.map((r) => {
     const entry: MetadataRoute.Sitemap[number] = {
-      url: absoluteUrl(reelPath(r)),
+      url: xmlText(absoluteUrl(reelPath(r))),
       lastModified: r.updatedAt,
       changeFrequency: 'monthly',
       priority: 0.8,
     }
-    if (r.posterUrl) entry.images = [r.posterUrl]
+    if (r.posterUrl) entry.images = [xmlText(r.posterUrl)]
     if (r.videoUrl && r.posterUrl) {
       entry.videos = [
         {
-          title: r.title.slice(0, 100),
-          thumbnail_loc: r.posterUrl,
-          description: metaDescription(r.tldr, r.title),
-          content_loc: r.videoUrl,
+          title: xmlText(r.title.slice(0, 100)),
+          thumbnail_loc: xmlText(r.posterUrl),
+          description: xmlText(metaDescription(r.tldr, r.title)),
+          content_loc: xmlText(r.videoUrl),
           duration: r.durationMs ? Math.round(r.durationMs / 1000) : undefined,
           publication_date: r.updatedAt,
           expiration_date: new Date(

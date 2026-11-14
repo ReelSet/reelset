@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { buildLlmsFullTxt, buildLlmsTxt, buildSitemap, groupTopics, indexedTopics } from './feeds'
+import { resolveSitemap } from 'next/dist/build/webpack/loaders/metadata/resolve-route-data'
+import {
+  buildLlmsFullTxt,
+  buildLlmsTxt,
+  buildSitemap,
+  groupTopics,
+  indexedTopics,
+  xmlText,
+} from './feeds'
 import { jsonLdHtml, reelJsonLd, siteJsonLd, topicJsonLd } from './json-ld'
 import { scriptParts } from './script'
 import { absoluteUrl, isoDuration, metaDescription, metaTitle, topicLabel } from './site'
@@ -191,6 +199,32 @@ describe('sitemap', () => {
       expiration_date: '2026-12-11T00:00:00.000Z',
     })
     expect(map.at(-1)?.videos).toBeUndefined()
+  })
+
+  it('escapes titles and descriptions so the served XML stays well-formed', () => {
+    const map = buildSitemap({
+      reels: [
+        summary(ID, {
+          title: 'Qwen 4 Max & 27B <beta> "wow"',
+          tldr: "Tom's M&Ms \u0007test",
+        }),
+      ],
+      topics: [],
+      retentionDays: 30,
+      now: new Date('2026-11-12T00:00:00Z'),
+    })
+    const video = map.find((m) => m.url.endsWith('e86d24f7'))?.videos?.[0]
+    expect(video?.title).toBe('Qwen 4 Max &amp; 27B &lt;beta&gt; &quot;wow&quot;')
+    expect(video?.description).toContain('Tom&apos;s M&amp;Ms test')
+
+    const xml = resolveSitemap(map)
+    const bareAmpersand = /&(?!(?:amp|lt|gt|quot|apos);)/
+    expect(xml).not.toMatch(bareAmpersand)
+    expect(xml).not.toMatch(/[\u0000-\u0008]/)
+  })
+
+  it('xmlText leaves plain text alone', () => {
+    expect(xmlText('https://reelset.app/r/a-b')).toBe('https://reelset.app/r/a-b')
   })
 })
 
