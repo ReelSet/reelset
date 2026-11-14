@@ -22,7 +22,8 @@ export type IgDeps = {
   store: IgStore
   client: IgContainerClient
   key: CryptoKey
-  creds: IgCredentials
+  /** IG_USERNAME / IG_PASSWORD secrets; credentials entered in the admin take precedence. */
+  envCreds: IgCredentials | null
   mediaBaseUrl: string
   log: Logger
   now?: () => Date
@@ -50,6 +51,27 @@ async function saveState(deps: IgDeps, session: IgSession, proxy: IgProxy): Prom
   await deps.store.saveSession(await encryptJson(deps.key, { session, proxyIndex: proxy.index }))
 }
 
+async function storedCreds(deps: IgDeps): Promise<IgCredentials | null> {
+  const blob = await deps.store.getCredentials()
+  if (!blob) return null
+  try {
+    const value = (await decryptJson(deps.key, blob)) as Partial<IgCredentials> | null
+    if (typeof value?.username !== 'string' || typeof value.password !== 'string') return null
+    return {
+      username: value.username,
+      password: value.password,
+      ...(typeof value.totpSecret === 'string' ? { totpSecret: value.totpSecret } : {}),
+    }
+  } catch (err) {
+    deps.log.error(errorFields(err), 'stored instagram credentials could not be decrypted')
+    return null
+  }
+}
+
+async function activeCreds(deps: IgDeps): Promise<IgCredentials | null> {
+  return (await storedCreds(deps)) ?? deps.envCreds
+}
+
 type AccountPatch = {
   state?: IgAccountState
   message: string | null
@@ -64,7 +86,7 @@ async function writeAccount(
 ): Promise<IgAccount> {
   const previous = await deps.store.getAccount()
   const account: IgAccount = {
-    username: patch.username ?? previous?.username ?? deps.creds.username,
+    username: patch.username ?? previous?.username ?? deps.envCreds?.username ?? '',
     state: patch.state ?? previous?.state ?? 'unknown',
     message: patch.message,
     checkedAt: (deps.now?.() ?? new Date()).toISOString(),
@@ -92,6 +114,10 @@ function switchNote(proxy: IgProxy): string | null {
 export async function checkAccount(deps: IgDeps): Promise<IgAccount> {
   const log = deps.log.child({ op: 'ig-status' })
   const state = await loadState(deps)
+  if (!state.session) {
+    const previous = await deps.store.getAccount()
+    if (previous?.state === 'disconnected') return previous
+  }
   try {
     const result = await deps.client.status(state)
     if (result.session) await saveState(deps, result.session, result.proxy)
@@ -113,12 +139,33 @@ export async function checkAccount(deps: IgDeps): Promise<IgAccount> {
   }
 }
 
-// One explicit login attempt (admin click); a missing 2FA code is not counted as a failure.
-export async function connectAccount(deps: IgDeps, code?: string): Promise<IgAccount> {
-  const log = deps.log.child({ op: 'ig-connect' })
-  const state = await loadState(deps)
+export type ConnectInput = { code?: string; creds?: IgCredentials }
+
+/**
+ * One explicit login attempt (admin click); a missing 2FA code is not counted as a failure.
+ * New credentials start from scratch: they replace the saved ones and the old session's device
+ * ids are dropped, so the login looks like a fresh device for that account.
+ */
+export async function connectAccount(deps: IgDeps, input: ConnectInput = {}): Promise<IgAccount> {
+  const log = deps.log.child({ op: 'ig-connect', newCreds: Boolean(input.creds) })
+  const saved = await loadState(deps)
+  let state = saved
+  if (input.creds) {
+    await deps.store.saveCredentials(await encryptJson(deps.key, input.creds))
+    state = { session: null, proxyIndex: saved.proxyIndex }
+    log.info('instagram credentials replaced from the admin')
+  }
+  const creds = input.creds ?? (await activeCreds(deps))
+  if (!creds) {
+    log.warn('instagram connect without any credentials')
+    return writeAccount(
+      deps,
+      { state: 'disconnected', message: 'No credentials saved. Enter a username and password.' },
+      (n) => n,
+    )
+  }
   try {
-    const result = await deps.client.login(state, deps.creds, code)
+    const result = await deps.client.login(state, creds, input.code)
     if (result.state === 'connected' && result.session) {
       await saveState(deps, result.session, result.proxy)
       log.info('instagram connected')
@@ -137,7 +184,12 @@ export async function connectAccount(deps: IgDeps, code?: string): Promise<IgAcc
     const counted = result.state !== 'needs_code'
     return writeAccount(
       deps,
-      { state: result.state, message: result.message, proxy: result.proxy },
+      {
+        state: result.state,
+        message: result.message,
+        proxy: result.proxy,
+        ...(input.creds ? { username: input.creds.username } : {}),
+      },
       (n) => (counted ? n + 1 : n),
     )
   } catch (err) {
@@ -145,6 +197,27 @@ export async function connectAccount(deps: IgDeps, code?: string): Promise<IgAcc
     if (err instanceof IgCallError && err.code === PROXY_DOWN) return recordProxyDown(deps, err)
     return writeAccount(deps, { state: 'unknown', message: UNREACHABLE_MESSAGE }, (n) => n)
   }
+}
+
+/**
+ * Forgets the account on our side: session, device ids and admin-entered credentials. Queued posts
+ * stay queued and wait until an account is connected again.
+ */
+export async function disconnectAccount(deps: IgDeps): Promise<IgAccount> {
+  const log = deps.log.child({ op: 'ig-disconnect' })
+  const previous = await deps.store.getAccount()
+  await deps.store.clearConnection()
+  const account: IgAccount = {
+    username: previous?.username ?? '',
+    state: 'disconnected',
+    message: null,
+    checkedAt: (deps.now?.() ?? new Date()).toISOString(),
+    loginFailures: 0,
+    proxy: previous?.proxy ?? null,
+  }
+  await deps.store.setAccount(account)
+  log.info({ previousState: previous?.state ?? null }, 'instagram account disconnected')
+  return account
 }
 
 export type QueueOutcome =

@@ -17,6 +17,7 @@ import type { Logger } from '../lib/logger'
 export const IG_ACCOUNT_KEY = 'ig_account'
 export const IG_SESSION_KEY = 'ig_session_enc'
 export const IG_CHECK_ERROR_KEY = 'ig_check_error'
+export const IG_CREDENTIALS_KEY = 'ig_credentials_enc'
 
 export type IgCheckError = { message: string; at: string }
 
@@ -212,6 +213,26 @@ export async function getEncryptedSession(db: Database): Promise<string | null> 
 
 export const setEncryptedSession = (db: Database, blob: string) =>
   putSetting(db, IG_SESSION_KEY, blob)
+
+export async function getEncryptedCredentials(db: Database): Promise<string | null> {
+  const row = await db
+    .selectFrom('app_setting')
+    .select('value')
+    .where('key', '=', IG_CREDENTIALS_KEY)
+    .executeTakeFirst()
+  return typeof row?.value === 'string' ? row.value : null
+}
+
+export const setEncryptedCredentials = (db: Database, blob: string) =>
+  putSetting(db, IG_CREDENTIALS_KEY, blob)
+
+/** Forgets the saved session (and its device ids) and any credentials entered in the admin. */
+export async function clearIgConnection(db: Database): Promise<void> {
+  await db
+    .deleteFrom('app_setting')
+    .where('key', 'in', [IG_SESSION_KEY, IG_CREDENTIALS_KEY, IG_CHECK_ERROR_KEY])
+    .execute()
+}
 
 export async function getIgCheckError(db: Database): Promise<IgCheckError | null> {
   const row = await db

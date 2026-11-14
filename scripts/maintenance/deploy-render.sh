@@ -14,7 +14,7 @@ for line in open('.env.local'):
         env[key.strip()] = value.strip().strip('\'"')
 names = ('IG_ADMIN_TOKEN', 'IG_SESSION_KEY', 'IG_USERNAME', 'IG_PASSWORD', 'IG_TOTP_SECRET', 'RENDER_BOX_TOKEN')
 payload = {k: env[k] for k in names if env.get(k)}
-missing = [k for k in names[:4] if k not in payload]
+missing = [k for k in ('IG_ADMIN_TOKEN', 'IG_SESSION_KEY') if k not in payload]
 if missing:
     sys.exit(f'missing in .env.local: {missing}')
 open(sys.argv[1], 'w').write(json.dumps(payload))

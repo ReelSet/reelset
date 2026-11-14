@@ -4,7 +4,13 @@ import { posterKeyFor, videoKeyFor } from '../keys'
 import { silentLog } from '../testing'
 import { IgCallError, type IgContainerClient } from './container-client'
 import { encryptJson, importSessionKey } from './crypto'
-import { checkAccount, connectAccount, runInstagramQueue, type IgDeps } from './service'
+import {
+  checkAccount,
+  connectAccount,
+  disconnectAccount,
+  runInstagramQueue,
+  type IgDeps,
+} from './service'
 import type { ClaimedPost, IgStore, LostPost } from './store'
 
 const KEY = await importSessionKey(btoa(String.fromCharCode(...new Uint8Array(32).fill(3))))
@@ -37,17 +43,28 @@ async function setup(
     session?: boolean
     post?: ClaimedPost | null
     lost?: LostPost | null
+    storedCreds?: { username: string; password: string; totpSecret?: string }
+    envCreds?: IgDeps['envCreds']
   } = {},
 ) {
   const calls: string[] = []
   let account = opts.account === undefined ? connected : opts.account
-  const session =
+  let session =
     opts.session === false
       ? null
       : await encryptJson(KEY, { session: { uuids: {} }, proxyIndex: null })
+  let creds = opts.storedCreds ? await encryptJson(KEY, opts.storedCreds) : null
   const store: IgStore = {
     getSession: async () => session,
     saveSession: vi.fn(async () => {}),
+    getCredentials: async () => creds,
+    saveCredentials: vi.fn(async (blob: string) => {
+      creds = blob
+    }),
+    clearConnection: vi.fn(async () => {
+      session = null
+      creds = null
+    }),
     getAccount: async () => account,
     setAccount: async (a) => {
       account = a
@@ -93,11 +110,19 @@ async function setup(
     store,
     client,
     key: KEY,
-    creds: { username: 'reelset', password: 'pw' },
+    envCreds: opts.envCreds === undefined ? { username: 'reelset', password: 'pw' } : opts.envCreds,
     mediaBaseUrl: 'https://media.reelset.app',
     log: silentLog,
   }
-  return { deps, store, client, calls, account: () => account }
+  return {
+    deps,
+    store,
+    client,
+    calls,
+    account: () => account,
+    creds: () => creds,
+    session: () => session,
+  }
 }
 
 describe('runInstagramQueue', () => {
@@ -248,10 +273,67 @@ describe('lost uploads', () => {
   })
 })
 
+describe('disconnect and fresh credentials', () => {
+  it('disconnect forgets the session and saved credentials and stops the queue', async () => {
+    const t = await setup({ storedCreds: { username: 'old', password: 'x' } })
+    const acc = await disconnectAccount(t.deps)
+    expect(acc).toMatchObject({ state: 'disconnected', username: 'reelset', loginFailures: 0 })
+    expect(t.store.clearConnection).toHaveBeenCalledOnce()
+    expect(t.session()).toBeNull()
+    expect(t.creds()).toBeNull()
+    expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'none', reason: 'not_connected' })
+    expect(t.store.claimPost).not.toHaveBeenCalled()
+  })
+
+  it('a status check while disconnected does not call the poster', async () => {
+    const t = await setup()
+    await disconnectAccount(t.deps)
+    expect((await checkAccount(t.deps)).state).toBe('disconnected')
+    expect(t.client.status).not.toHaveBeenCalled()
+  })
+
+  it('new credentials are saved encrypted and log in as a fresh device', async () => {
+    const t = await setup({ account: { ...connected, state: 'needs_login' } })
+    const fresh = { username: 'newacct', password: 'secret-pw' }
+    vi.mocked(t.client.login).mockResolvedValueOnce({
+      state: 'connected',
+      username: 'newacct',
+      message: null,
+      session: { a: 9 },
+      proxy: PROXY,
+    })
+    const acc = await connectAccount(t.deps, { creds: fresh })
+    expect(acc).toMatchObject({ state: 'connected', username: 'newacct' })
+    expect(t.client.login).toHaveBeenCalledWith(
+      { session: null, proxyIndex: null },
+      fresh,
+      undefined,
+    )
+    const blob = t.creds() ?? ''
+    expect(blob).not.toContain('secret-pw')
+    expect(blob).not.toContain('newacct')
+  })
+
+  it('a later connect (2FA code only) reuses the credentials entered in the admin', async () => {
+    const stored = { username: 'admin-entered', password: 'pw2' }
+    const t = await setup({ storedCreds: stored })
+    await connectAccount(t.deps, { code: '123456' })
+    expect(t.client.login).toHaveBeenCalledWith(expect.anything(), stored, '123456')
+  })
+
+  it('with no saved or env credentials it asks for them without calling the poster', async () => {
+    const t = await setup({ envCreds: null, session: false })
+    const acc = await connectAccount(t.deps)
+    expect(acc.state).toBe('disconnected')
+    expect(acc.message).toMatch(/username and password/)
+    expect(t.client.login).not.toHaveBeenCalled()
+  })
+})
+
 describe('connectAccount / checkAccount', () => {
   it('a successful login resets failures and stores the session', async () => {
     const t = await setup({ account: { ...connected, state: 'needs_login', loginFailures: 2 } })
-    const acc = await connectAccount(t.deps, '123456')
+    const acc = await connectAccount(t.deps, { code: '123456' })
     expect(acc).toMatchObject({ state: 'connected', loginFailures: 0 })
     expect(t.store.saveSession).toHaveBeenCalled()
   })
@@ -273,7 +355,7 @@ describe('connectAccount / checkAccount', () => {
       session: null,
       proxy: PROXY,
     })
-    expect((await connectAccount(t.deps, '111111')).loginFailures).toBe(2)
+    expect((await connectAccount(t.deps, { code: '111111' })).loginFailures).toBe(2)
   })
 
   it('blocks on a dead proxy: releases the job and shows the proxy down', async () => {

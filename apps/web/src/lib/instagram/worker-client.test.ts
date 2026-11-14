@@ -33,7 +33,7 @@ describe('worker client', () => {
         token: 'secret-token',
         fetch: fetchMock as unknown as typeof fetch,
       },
-      '123456',
+      { code: '123456', username: '', password: undefined },
     )
     expect(result).toEqual({ ok: true, value: account })
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]

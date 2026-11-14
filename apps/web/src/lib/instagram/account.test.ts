@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { IgAccount } from '@reelset/core'
-import { accountFlash, describeAccount, proxyLabel } from './account'
+import { accountFlash, describeAccount, parseConnectForm, proxyLabel } from './account'
 
 const base: IgAccount = {
   username: 'reelset',
@@ -78,5 +78,44 @@ describe('accountFlash', () => {
     })
     expect(failed.ok).toBe(false)
     expect(failed.message).toContain('Graph API')
+  })
+})
+
+describe('disconnected account', () => {
+  it('shows disconnected and hides the plain connect button', () => {
+    expect(describeAccount({ ...base, state: 'disconnected' }, true)).toMatchObject({
+      tone: 'muted',
+      headline: 'Disconnected',
+      canConnect: false,
+    })
+  })
+})
+
+describe('parseConnectForm', () => {
+  const form = (fields: Record<string, string>) => {
+    const fd = new FormData()
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v)
+    return parseConnectForm(fd)
+  }
+
+  it('accepts a code alone, for a reconnect with the saved credentials', () => {
+    expect(form({ code: '123 456' })).toEqual({ ok: true, value: { code: '123456' } })
+  })
+
+  it('accepts fresh credentials and normalizes the handle and setup key', () => {
+    expect(
+      form({ username: ' @reelset ', password: 'pw', totpSecret: 'abcd efgh ijkl mnop' }),
+    ).toEqual({
+      ok: true,
+      value: { username: 'reelset', password: 'pw', totpSecret: 'ABCDEFGHIJKLMNOP' },
+    })
+  })
+
+  it('rejects half credentials, bad codes and a setup key without credentials', () => {
+    expect(form({ username: 'reelset' }).ok).toBe(false)
+    expect(form({ password: 'pw' }).ok).toBe(false)
+    expect(form({ code: '12ab56' }).ok).toBe(false)
+    expect(form({ totpSecret: 'ABCDEFGHIJKLMNOP' }).ok).toBe(false)
+    expect(form({ username: 'a', password: 'b', totpSecret: 'not-base32!' }).ok).toBe(false)
   })
 })

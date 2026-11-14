@@ -2,10 +2,11 @@
 
 import { setIgCheckError } from '@reelset/core'
 import { z } from 'zod'
-import { accountFlash } from '@/lib/instagram/account'
+import { accountFlash, parseConnectForm } from '@/lib/instagram/account'
 import {
   checkInstagramAccount,
   connectInstagramAccount,
+  disconnectInstagramAccount,
   kickInstagramQueue,
   workerConfigFromEnv,
 } from '@/lib/instagram/worker-client'
@@ -75,17 +76,27 @@ export async function checkAccountAction(formData: FormData): Promise<void> {
   })
 }
 
-const codeSchema = z.string().regex(/^\d{6,8}$/)
-
 export async function connectAccountAction(formData: FormData): Promise<void> {
   await runAdminAction(formData, 'instagram-connect', async ({ log }) => {
     const worker = workerConfigFromEnv()
     if (!worker) return NO_WORKER
-    const raw = String(formData.get('code') ?? '').replace(/\s+/g, '')
-    const code = raw ? codeSchema.safeParse(raw) : null
-    if (code && !code.success) return { ok: false, message: 'The 2FA code is 6 digits' }
-    const result = await connectInstagramAccount(worker, code?.data)
+    const form = parseConnectForm(formData)
+    if (!form.ok) return { ok: false, message: form.message }
+    log.info({ newCreds: Boolean(form.value.username), code: Boolean(form.value.code) }, 'connect')
+    const result = await connectInstagramAccount(worker, form.value)
     await rememberCheck(result, log)
     return result.ok ? accountFlash(result.value) : { ok: false, message: result.message }
+  })
+}
+
+export async function disconnectAccountAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'instagram-disconnect', async ({ log }) => {
+    const worker = workerConfigFromEnv()
+    if (!worker) return NO_WORKER
+    const result = await disconnectInstagramAccount(worker)
+    await rememberCheck(result, log)
+    if (!result.ok) return { ok: false, message: result.message }
+    log.info('instagram account disconnected')
+    return { ok: true, message: 'Disconnected. Saved session and credentials are gone.' }
   })
 }
