@@ -61,6 +61,7 @@ export function candidatesQuery(params: {
     from item i
     left join profile p on p.id = ${profileId}::uuid
     where i.status = ${ItemStatus.rendered}::item_status
+      and i.visibility = 'public'
       and coalesce(i.rendered_at, i.created_at) <= ${asOf}::timestamptz
       and exists (
         select 1 from render r

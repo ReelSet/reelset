@@ -64,6 +64,9 @@ export function buildSitemap(input: {
     { url: absoluteUrl('/'), lastModified: latest, changeFrequency: 'hourly', priority: 1 },
     { url: absoluteUrl('/t'), lastModified: latest, changeFrequency: 'daily', priority: 0.6 },
     { url: absoluteUrl('/ask'), changeFrequency: 'weekly', priority: 0.5 },
+    { url: absoluteUrl('/create'), changeFrequency: 'monthly', priority: 0.5 },
+    { url: absoluteUrl('/mcp'), changeFrequency: 'monthly', priority: 0.4 },
+    { url: absoluteUrl('/pricing'), changeFrequency: 'monthly', priority: 0.4 },
   ]
   const topics = indexedTopics(input.topics).map((t) => ({
     url: absoluteUrl(`/t/${t.slug}`),

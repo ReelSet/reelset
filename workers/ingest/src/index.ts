@@ -1,6 +1,7 @@
-import { createDb, createLogger, errorFields, type Logger } from '@reelset/core'
+import { createDb, createLogger, errorFields, settleReelRequests, type Logger } from '@reelset/core'
 import { DEFAULT_EMBEDDING_MODEL, type Env, type IngestItemMessage } from './env'
 import { createFirecrawlFallback } from './firecrawl'
+import { processReelRequests } from './generate/process'
 import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { handleMessage } from './pipeline/consumer'
@@ -55,7 +56,31 @@ async function onIngestCron(env: Env, log: Logger): Promise<void> {
   })
 }
 
+async function runGenerate(env: Env, log: Logger): Promise<void> {
+  await withDb(env, log, async (db) => {
+    try {
+      await processReelRequests({
+        db,
+        log,
+        queue: env.INGEST_ITEMS,
+        githubToken: env.GITHUB_TOKEN,
+        scrape: env.FIRECRAWL_API_KEY
+          ? createFirecrawlFallback({ apiKey: env.FIRECRAWL_API_KEY, db, log })
+          : undefined,
+      })
+    } catch (err) {
+      log.error(errorFields(err), 'reel request processing failed')
+    }
+    try {
+      await settleReelRequests(db, log)
+    } catch (err) {
+      log.error(errorFields(err), 'reel request settling failed')
+    }
+  })
+}
+
 async function onReconcileCron(env: Env, log: Logger): Promise<void> {
+  await runGenerate(env, log)
   await withDb(env, log, async (db) => {
     const embedder = createEmbedder(
       env.GEMINI_API_KEY,
@@ -77,6 +102,13 @@ export default {
     if (!isAuthorized(request, env.SELFCHECK_TOKEN))
       return new Response('unauthorized', { status: 401 })
     const log = makeLogger(env).child({ route: url.pathname })
+    if (url.pathname === '/internal/generate/kick') {
+      if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
+      ctx.waitUntil(
+        runGenerate(env, log).catch((err) => log.error(errorFields(err), 'generate kick failed')),
+      )
+      return Response.json({ started: url.pathname }, { status: 202 })
+    }
     if (url.pathname === '/internal/selfcheck')
       return Response.json(await runSelfcheck(env.RENDER, log))
     const run =

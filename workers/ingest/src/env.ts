@@ -1,5 +1,5 @@
 export type IngestItemMessage = { itemId: string; attempt: number }
-export type RenderJobMessage = { itemId: string; attempt: number }
+export type RenderJobMessage = { itemId: string; attempt: number; priority?: boolean }
 
 export interface Env {
   HYPERDRIVE: Hyperdrive

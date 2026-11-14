@@ -212,3 +212,61 @@ export {
   type SkillInput,
   type SkillSelection,
 } from './repos/director.repo'
+export {
+  requestSteps,
+  type RequestStep,
+  type RequestStepKey,
+  type RequestStepState,
+  type RequestStepsInput,
+} from './domain/request-steps'
+export {
+  balanceFrom,
+  creditBalance,
+  creditMonth,
+  createChargedReelRequest,
+  creditResetsAt,
+  grantCredits,
+  refundRequest,
+  spendCredits,
+  type ChargedRequestInput,
+  type ChargedRequestResult,
+  type SpendInput as CreditSpendInput,
+  type SpendResult as CreditSpendResult,
+} from './repos/credits.repo'
+export {
+  INSUFFICIENT_SOURCE_MESSAGE,
+  REEL_REQUEST_OPEN,
+  RENDER_FAILED_MESSAGE,
+  claimPendingReelRequests,
+  countOpenReelRequests,
+  countReelRequestsSince,
+  createReelRequest,
+  getReelRequest,
+  listReelRequests,
+  setReelRequestResult,
+  settleReelRequests,
+  type CreateReelRequestInput,
+  type ReelRequestResult,
+  type ReelRequestRow,
+  type ReelRequestStatus,
+  type ReelRequestVia,
+  type SettleResult,
+} from './repos/reel-requests.repo'
+export {
+  createUpgradeRequest,
+  getOpenUpgradeRequest,
+  listUpgradeRequests,
+  resolveUpgradeRequest,
+  type UpgradeRequestRow,
+  type UpgradeRequestStatus,
+} from './repos/upgrade-requests.repo'
+export {
+  API_KEY_PREFIX,
+  createApiKey,
+  findApiKeyByToken,
+  generateApiKeyToken,
+  hashApiKeyToken,
+  listApiKeys,
+  revokeApiKey,
+  type ApiKeyInfo,
+} from './repos/api-keys.repo'

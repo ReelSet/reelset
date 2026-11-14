@@ -23,6 +23,9 @@ import {
   BUSY_MAX_DEFERRALS,
   BUSY_RETRY_DELAY_SECONDS,
   MAX_VIDEO_BYTES,
+  PRIORITY_BUSY_RETRY_DELAY_SECONDS,
+  PRIORITY_YIELD_DELAY_SECONDS,
+  PRIORITY_YIELD_MAX_AGE_MS,
   TEMPLATE_VERSION,
 } from './constants'
 import { RenderJobError, isBusyCode } from './errors'
@@ -57,6 +60,7 @@ export const jobMessageSchema = z.object({
   itemId: z.uuid(),
   attempt: z.number().int().nonnegative().optional(),
   deferrals: z.number().int().nonnegative().optional(),
+  priority: z.boolean().optional(),
 })
 export type JobMessage = z.infer<typeof jobMessageSchema>
 
@@ -110,7 +114,7 @@ export async function processRenderJob(
     }
     progress.status = item.status
     const checkIn = (parsed.data.deferrals ?? 0) > 0
-    return await runJob(deps, item, progress, deliveryAttempts, log, checkIn)
+    return await runJob(deps, item, progress, deliveryAttempts, log, checkIn, parsed.data)
   } catch (err) {
     if (err instanceof StaleTransitionError) {
       log.warn('stale transition, another delivery advanced the item; acking')
@@ -143,8 +147,8 @@ function busyDeferral(
   if (deferrals > BUSY_MAX_DEFERRALS) return null
   return {
     action: 'defer',
-    delaySeconds: BUSY_RETRY_DELAY_SECONDS,
-    message: { itemId: message.itemId, deferrals },
+    delaySeconds: message.priority ? PRIORITY_BUSY_RETRY_DELAY_SECONDS : BUSY_RETRY_DELAY_SECONDS,
+    message: { itemId: message.itemId, deferrals, ...(message.priority ? { priority: true } : {}) },
   }
 }
 
@@ -155,6 +159,7 @@ async function runJob(
   deliveryAttempts: number,
   log: Logger,
   checkIn = false,
+  message: JobMessage = { itemId: item.id },
 ): Promise<JobResult> {
   const early = decideRenderAction(item.status, null)
   if (early.kind === 'skip') {
@@ -185,6 +190,22 @@ async function runJob(
   if (action.kind === 'finish') {
     await finishItem(deps, item.id, progress, { resumed: true }, rlog)
     return { action: 'ack' }
+  }
+
+  // A render already running on the box is never interrupted; only a job about to start yields.
+  if (!message.priority && existing.status !== 'rendering') {
+    const since = new Date((deps.now?.() ?? Date.now()) - PRIORITY_YIELD_MAX_AGE_MS)
+    if (await deps.store.hasWaitingPriority(item.id, since)) {
+      rlog.info({ delaySeconds: PRIORITY_YIELD_DELAY_SECONDS }, 'yielding to a priority render')
+      return {
+        action: 'defer',
+        delaySeconds: PRIORITY_YIELD_DELAY_SECONDS,
+        message: {
+          itemId: item.id,
+          ...(message.deferrals ? { deferrals: message.deferrals } : {}),
+        },
+      }
+    }
   }
 
   await deps.store.markRendering(key, !checkIn)

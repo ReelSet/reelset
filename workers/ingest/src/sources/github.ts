@@ -249,3 +249,5 @@ export const githubAdapter: SourceAdapter = {
   rollingWindowMs: 7 * DAY_MS,
   fetch: fetchRepos,
 }
+
+export { headers as githubHeaders }

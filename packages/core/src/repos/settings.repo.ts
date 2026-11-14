@@ -126,6 +126,9 @@ export const SETTINGS = {
   likeCountThreshold: def('like_count_threshold', z.number().int().min(0), 1),
   showSaveCount: def('show_save_count', z.boolean(), false),
   saveCountThreshold: def('save_count_threshold', z.number().int().min(0), 5),
+  adminEmail: def('admin_email', z.string().email(), 'admin@reelset.app'),
+  monthlyFreeCredits: def('monthly_free_credits', z.number().int().min(0), 1000),
+  reelCreditCost: def('reel_credit_cost', z.number().int().min(1), 100),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),
 } as const
 

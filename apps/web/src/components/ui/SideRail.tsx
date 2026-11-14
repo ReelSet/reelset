@@ -27,6 +27,14 @@ export function SideRail({ authenticated = false, avatar }: Props) {
             </li>
           ))}
         </ul>
+        <nav aria-label="More" className="flex gap-4 text-xs text-faint">
+          <a href="/mcp" className="transition hover:text-fg">
+            MCP
+          </a>
+          <a href="/pricing" className="transition hover:text-fg">
+            Pricing
+          </a>
+        </nav>
         <SocialLinks />
       </div>
     </aside>

@@ -73,11 +73,26 @@ async function persistChunk(
   }
 
   const unique = dedupeBy(chunk, (r) => `${r.mention.source}\u0000${r.mention.externalId}`)
+  await upsertMentions(
+    trx,
+    unique.map(({ mention, target }) => ({
+      itemId: itemIdByKey.get(target.canonicalKey)!,
+      mention,
+    })),
+    counts,
+  )
+}
+
+export async function upsertMentions(
+  trx: Database,
+  rows: readonly { itemId: string; mention: NormalizedMention }[],
+  counts: Pick<PersistCounts, 'inserted' | 'updated'>,
+): Promise<void> {
   const mentionRows = await trx
     .insertInto('mention')
     .values(
-      unique.map(({ mention, target }) => ({
-        item_id: itemIdByKey.get(target.canonicalKey)!,
+      rows.map(({ itemId, mention }) => ({
+        item_id: itemId,
         source: mention.source,
         kind: mention.kind,
         external_id: mention.externalId,

@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { ApiKeys } from '@/components/profile/ApiKeys'
+import { CreditsCard } from '@/components/profile/CreditsCard'
 import { EditProfile } from '@/components/profile/EditProfile'
 import { ProfileLibrary } from '@/components/profile/ProfileLibrary'
 import { ProfileSources } from '@/components/profile/ProfileSources'
@@ -103,6 +105,29 @@ export default async function ProfilePage() {
       <Section title="Your reels" delay={180}>
         <ProfileLibrary liked={profile.liked} saved={profile.saved} />
       </Section>
+
+      <Section
+        title="Credits"
+        hint="Turn any link into a reel. Free credits refill on the 1st of every month."
+        delay={210}
+      >
+        <CreditsCard />
+      </Section>
+
+      <section
+        id="api-keys"
+        className="animate-fade-up mt-10 scroll-mt-6"
+        style={{ animationDelay: '225ms' }}
+      >
+        <h2 className="text-xs font-medium uppercase tracking-wider text-faint">API keys</h2>
+        <p className="mt-1 mb-3 text-sm text-muted">
+          Let your AI agent make reels through MCP.{' '}
+          <a href="/mcp" className="text-accent hover:underline">
+            Setup guide
+          </a>
+        </p>
+        <ApiKeys />
+      </section>
 
       <Section title="Ask" delay={240}>
         <a

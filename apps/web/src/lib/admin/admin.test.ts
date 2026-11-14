@@ -157,6 +157,19 @@ describe('settings form', () => {
     expect(formatSettingInput('boolean', true)).toBe('true')
   })
 
+  it('edits string settings as trimmed text validated by the core schema', () => {
+    expect(field('adminEmail').kind).toBe('string')
+    expect(parseSettingInput(field('adminEmail'), '  a@b.dev ')).toEqual({
+      ok: true,
+      value: 'a@b.dev',
+    })
+    expect(parseSettingInput(field('adminEmail'), 'not-an-email').ok).toBe(false)
+    expect(field('monthlyFreeCredits').kind).toBe('number')
+    expect(parseSettingInput(field('reelCreditCost'), '0').ok).toBe(false)
+    expect(parseSettingInput(field('monthlyFreeCredits'), '0')).toEqual({ ok: true, value: 0 })
+    expect(formatSettingInput('string', 'a@b.dev')).toBe('a@b.dev')
+  })
+
   it('validates enum values against the schema', () => {
     expect(parseSettingInput(field('scriptModel'), ' claude-opus-5-5 ')).toEqual({
       ok: true,

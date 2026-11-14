@@ -154,3 +154,41 @@ export const EyeIcon = ({ className }: P) => (
     <circle cx="12" cy="12" r="2.8" />
   </Svg>
 )
+
+export const PlusIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+)
+export const CheckIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="m5 12.5 4.5 4.5L19 7.5" />
+  </Svg>
+)
+export const CopyIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <rect x="8.5" y="8.5" width="11" height="11" rx="2.5" />
+    <path d="M15.5 8.5v-1A2.5 2.5 0 0 0 13 5H7.5A2.5 2.5 0 0 0 5 7.5V13a2.5 2.5 0 0 0 2.5 2.5h1" />
+  </Svg>
+)
+export const DownloadIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" />
+  </Svg>
+)
+export const KeyIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <circle cx="8" cy="15" r="3.5" />
+    <path d="m10.5 12.5 8-8m-3 3 2.5 2.5m-5-.5 2 2" />
+  </Svg>
+)
+export const LinkIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+  </Svg>
+)
+export const BoltIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M13 3 5 13.5h6L10 21l8-10.5h-6z" />
+  </Svg>
+)

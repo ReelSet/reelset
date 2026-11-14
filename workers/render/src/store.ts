@@ -65,6 +65,8 @@ export interface RenderStore {
   markDone(renderKey: string, done: RenderDone): Promise<void>
   markFailed(renderKey: string, error: string): Promise<void>
   markRetryPending(renderKey: string): Promise<void>
+  /** Whether another item with a queue-jump flag is waiting for its render. */
+  hasWaitingPriority(exceptItemId: string, since: Date): Promise<boolean>
 }
 
 export type StuckRender = { renderId: string; itemId: string }
@@ -217,6 +219,30 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         .where('render_key', '=', renderKey)
         .where('status', '=', 'rendering')
         .execute()
+    },
+
+    async hasWaitingPriority(exceptItemId, since) {
+      const row = await db
+        .selectFrom('item')
+        .select('item.id')
+        .where('item.priority_at', 'is not', null)
+        .where('item.priority_at', '>', since)
+        .where('item.status', 'in', ['embedded', 'voiced'])
+        .where('item.id', '!=', exceptItemId)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('render')
+                .select('render.id')
+                .whereRef('render.item_id', '=', 'item.id')
+                .where('render.status', '=', 'done'),
+            ),
+          ),
+        )
+        .limit(1)
+        .executeTakeFirst()
+      return row !== undefined
     },
 
     async markFailed(renderKey, error) {

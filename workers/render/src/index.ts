@@ -21,6 +21,7 @@ import type { Env } from './env'
 import { handleParsePaper } from './paper-route'
 import { IG_RUN_QUEUE, handleIgRoute, matchIgRoute, type IgRunMessage } from './instagram/routes'
 import { igConfigured, withIgDeps } from './instagram/wire'
+import { DOWNLOAD_PREFIX, handleDownload } from './download'
 import { runInstagramQueue } from './instagram/service'
 import { createAutoPostDeps, queueAutoInstagramPosts } from './instagram/auto'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
@@ -89,6 +90,9 @@ async function applyJobResult(
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname.startsWith(DOWNLOAD_PREFIX)) {
+      return handleDownload(request, env.MEDIA, makeLogger(env).child({ route: 'download' }))
+    }
     const igRoute = matchIgRoute(request.method, url.pathname)
     if (igRoute !== 'not_found') {
       const log = makeLogger(env).child({ route: `ig/${igRoute}` })
@@ -138,7 +142,17 @@ export default {
         store: createRenderStore(db, log),
         box: boxFor(env, log),
         media: env.MEDIA,
-        transition: (input: Parameters<typeof transitionItem>[1]) => transitionItem(db, input, log),
+        transition: async (input: Parameters<typeof transitionItem>[1]) => {
+          await transitionItem(db, input, log)
+          if (input.to === 'rendered' || input.to === 'failed') {
+            await db
+              .updateTable('item')
+              .set({ priority_at: null })
+              .where('id', '=', input.itemId)
+              .where('priority_at', 'is not', null)
+              .execute()
+          }
+        },
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
         ...tts,
         director: () => loadDirectorConfig(db, log),

@@ -25,6 +25,7 @@ const servedRender = sql`left join lateral (
 
 type ReelRow = {
   id: string
+  visibility: string
   title: string
   tldr: string | null
   topics: string[]
@@ -85,7 +86,7 @@ export async function loadReelPage(
     : sql`i.id between ${lo}::uuid and ${hi}::uuid`
   const { rows } = await sql<ReelRow>`
     select i.id, i.title, i.tldr, i.topics, i.kind::text as kind, i.canonical_url, i.published_at,
-      i.rendered_at, i.script, served.video_key, served.poster_key, served.video_duration_ms
+      i.rendered_at, i.script, i.visibility, served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
     where i.status = ${ItemStatus.rendered}::item_status and ${match}
     order by i.published_at desc
@@ -112,6 +113,7 @@ export async function loadReelPage(
   l.info({ itemId: row.id, hasVideo: row.video_key !== null }, 'reel page loaded')
   return {
     id: row.id,
+    visibility: row.visibility === 'private' ? 'private' : 'public',
     title: row.title,
     tldr: row.tldr,
     hook: parts.hook,
@@ -174,7 +176,7 @@ export async function listReelSummaries(
       coalesce(i.rendered_at, i.published_at) as updated_at,
       served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
-    where i.status = ${ItemStatus.rendered}::item_status ${topicFilter} ${sourceClause(opts.source)}
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public' ${topicFilter} ${sourceClause(opts.source)}
     order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
     limit ${opts.limit}
   `.execute(db)
@@ -183,7 +185,8 @@ export async function listReelSummaries(
 
 export async function countRenderedReels(db: Database): Promise<number> {
   const { rows } = await sql<{ count: number }>`
-    select count(*)::int as count from item i where i.status = ${ItemStatus.rendered}::item_status
+    select count(*)::int as count from item i
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
   `.execute(db)
   return rows[0]?.count ?? 0
 }
@@ -197,7 +200,7 @@ export async function listSourceCounts(
   const { rows } = await sql<{ source: string; count: number }>`
     select m.source::text as source, count(distinct i.id)::int as count
     from item i join mention m on m.item_id = i.id
-    where i.status = ${ItemStatus.rendered}::item_status ${topicFilter}
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public' ${topicFilter}
     group by m.source
   `.execute(db)
   return rows
@@ -210,7 +213,7 @@ export async function listReelTranscripts(db: Database, mediaBase: string, limit
       coalesce(i.rendered_at, i.published_at) as updated_at,
       served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
-    where i.status = ${ItemStatus.rendered}::item_status
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
     order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
     limit ${limit}
   `.execute(db)
@@ -229,7 +232,7 @@ export async function listTopicLabels(
   const { rows } = await sql<{ label: string; count: number }>`
     select t as label, count(*)::int as count
     from item i, unnest(i.topics) t
-    where i.status = ${ItemStatus.rendered}::item_status ${sourceClause(source)}
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public' ${sourceClause(source)}
     group by t
   `.execute(db)
   return rows

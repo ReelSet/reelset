@@ -305,6 +305,7 @@ export async function listAutoPostCandidates(
       select min(r.finished_at) as at from render r where r.item_id = i.id and r.status = 'done'
     ) first_done on true
     where i.status = 'rendered'
+      and i.visibility = 'public'
       and first_done.at > now() - make_interval(hours => ${lookbackHours})
       and not exists (
         select 1 from instagram_post p where p.item_id = i.id

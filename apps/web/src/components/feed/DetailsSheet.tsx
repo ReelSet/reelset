@@ -31,6 +31,7 @@ const CLOSE_BELOW = HALF * 0.6
 function fromItem(item: FeedItemDto): ReelPageData {
   return {
     id: item.id,
+    visibility: 'public',
     title: item.title,
     tldr: item.tldr,
     hook: null,

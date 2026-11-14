@@ -74,6 +74,14 @@ export class FakeStore implements RenderStore {
         done,
       })
   }
+  priorityWaiting = false
+  priorityChecks: string[] = []
+  prioritySince: Date[] = []
+  async hasWaitingPriority(exceptItemId: string, since?: Date) {
+    this.priorityChecks.push(exceptItemId)
+    if (since) this.prioritySince.push(since)
+    return this.priorityWaiting
+  }
   async markRetryPending(key: string) {
     this.calls.push('retry_pending')
     const row = this.renders.get(key)

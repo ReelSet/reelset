@@ -35,6 +35,7 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 - Vercel detects the npm workspaces lockfile at the repo root and runs `npm install` there, so `@reelset/core` resolves; `next.config.ts` has `transpilePackages: ['@reelset/core']`.
 - Build/output commands stay default (`next build`). `npm run build -w @reelset/web` passes locally.
 - Env vars: see the web list in `docs/contracts.md` (`DATABASE_URL` must be the transaction pooler URL; set `ADMIN_EMAILS` and `ADMIN_HOST`). Ask needs `CLAUDE_API_KEY` for answers and `GEMINI_API_KEY` for question embeddings; `GEMINI_MODEL` is not read by web.
+- Generate-a-reel and MCP (`/api/mcp`, Streamable HTTP, Bearer `rs_live_...` API keys): `RESEND_API_KEY` (credit-request emails to the `admin_email` setting, sent from `notifications@reelset.app`; missing key = warn log, no email), `INGEST_INTERNAL_URL` and `INGEST_INTERNAL_TOKEN` (the web app POSTs `/internal/generate/kick` on the ingest worker so a new request starts at once; best effort, the 5-minute cron is the fallback; the token equals the ingest worker's `SELFCHECK_TOKEN`).
 - PWA icons live in `apps/web/public` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) and are referenced by `src/app/manifest.ts`.
 
 ## Still to do

@@ -106,7 +106,7 @@ export function createAskDeps(log: Logger): AskDeps {
         from evidence_chunk ec
         join item i on i.id = ec.item_id
         join mention m on m.id = ec.mention_id
-        where ec.embedding is not null
+        where ec.embedding is not null and i.visibility = 'public'
         order by ec.embedding <=> ${vector}::vector
         limit ${ASK_TOP_K}`.execute(db)
       return result.rows.map((row): EvidenceChunk => ({

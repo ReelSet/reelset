@@ -28,6 +28,7 @@ export function servedReelsQuery(db: Database, itemIds: string[], minTemplate: n
       (join) => join.onTrue(),
     )
     .where('item.status', '=', ItemStatus.rendered)
+    .where('item.visibility', '=', 'public')
     .where('item.id', 'in', itemIds)
     .select((eb) => [
       'item.id',

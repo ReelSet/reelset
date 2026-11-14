@@ -19,6 +19,18 @@ const db = new Kysely({
   },
 }) as unknown as Database
 
+describe('candidatesQuery visibility', () => {
+  it('never offers private reels to the feed', () => {
+    const q = candidatesQuery({
+      profileId: null,
+      asOf: '2026-11-09T12:00:00.000Z',
+      poolSize: 10,
+      minTemplate: 0,
+    }).compile(db)
+    expect(q.sql).toContain("i.visibility = 'public'")
+  })
+})
+
 describe('candidatesQuery topic filter', () => {
   const base = { profileId: null, asOf: '2026-11-09T12:00:00.000Z', poolSize: 10, minTemplate: 5 }
 

@@ -98,6 +98,7 @@ function scriptedDb(rows: {
   inFlight?: number
   spent?: number
   settings?: Record<string, unknown>
+  priorityIds?: string[]
 }) {
   return createFakeDb((q: RecordedQuery) => {
     const s = q.sql
@@ -111,7 +112,7 @@ function scriptedDb(rows: {
       return [{ n: String(rows.inFlight ?? 0) }]
     if (s.includes('"queued_at" <')) return rows.stuck ?? []
     if (s.startsWith('select "id", "score" from "item"')) return rows.found ?? []
-    if (s.startsWith('select "id" from "item"')) {
+    if (s.startsWith('select "id", priority_at is not null as "priority" from "item"')) {
       if (q.params[0] === 'embedded') return rows.embedded ?? []
       if (q.params[0] === 'voiced') return rows.voiced ?? []
       return rows.summarized ?? []
@@ -120,7 +121,7 @@ function scriptedDb(rows: {
       const ids = q.params as string[]
       return ids
         .filter((p) => typeof p === 'string' && p.startsWith('item-'))
-        .map((id) => ({ id, attempts: 0 }))
+        .map((id) => ({ id, attempts: 0, priority: rows.priorityIds?.includes(id) ?? false }))
     }
     if (s.startsWith('update "item" set "queued_at" = $1, "attempts"'))
       return { rows: [], affected: 1 }
@@ -279,11 +280,55 @@ describe('reconcile', () => {
     })
     const q = queues()
     const result = await reconcile(fake.db, q, testLog, now)
-    const select = fake.find('select "id" from "item"').find((c) => c.params[0] === 'embedded')!
-    expect(select.params).toContain(2)
     expect(result.enqueuedEmbedded).toBe(2)
     expect(result.enqueuedVoiced).toBe(0)
-    expect(fake.find('select "id" from "item"').some((c) => c.params[0] === 'voiced')).toBe(false)
+  })
+
+  it('orders render candidates priority first, then by score', async () => {
+    const fake = scriptedDb({ embedded: [{ id: 'item-e' }] })
+    await reconcile(fake.db, queues(), testLog, now)
+    const select = fake.find('select "id", priority_at is not null as "priority" from "item"')
+    expect(select.length).toBeGreaterThan(0)
+    for (const q of select) {
+      expect(q.sql).toContain('order by priority_at is not null desc, "score" desc')
+    }
+  })
+
+  it('sends priority items past a full in-flight cap and flags them for the render worker', async () => {
+    const fake = scriptedDb({
+      embedded: [
+        { id: 'item-p', priority: true },
+        { id: 'item-n', priority: false },
+      ],
+      priorityIds: ['item-p'],
+      inFlight: 9,
+      settings: { render_max_in_flight: 6 },
+    })
+    const q = queues()
+    const result = await reconcile(fake.db, q, testLog, now)
+    expect(result.enqueuedEmbedded).toBe(1)
+    expect(q.render.sendBatch).toHaveBeenCalledWith([
+      { body: { itemId: 'item-p', attempt: 0, priority: true } },
+    ])
+  })
+
+  it('keeps normal items within the cap alongside priority ones', async () => {
+    const fake = scriptedDb({
+      embedded: [
+        { id: 'item-p', priority: true },
+        { id: 'item-n1', priority: false },
+        { id: 'item-n2', priority: false },
+      ],
+      priorityIds: ['item-p'],
+      inFlight: 5,
+      settings: { render_max_in_flight: 6 },
+    })
+    const q = queues()
+    await reconcile(fake.db, q, testLog, now)
+    const sent = (
+      q.render.sendBatch.mock.calls[0] as unknown as [{ body: { itemId: string } }[]]
+    )[0]
+    expect(sent.map((m) => m.body.itemId)).toEqual(['item-p', 'item-n1'])
   })
 
   it('holds back every render job when the in-flight cap is full', async () => {

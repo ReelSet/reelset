@@ -14,7 +14,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   try {
     const reel = await loadReelPage(getDb(), param, mediaBaseUrl(), log)
     if (!reel) return Response.json({ error: 'not_found' }, { status: 404 })
-    return Response.json(reel, { headers: { 'cache-control': 'public, max-age=60' } })
+    const cacheControl = reel.visibility === 'private' ? 'private, no-store' : 'public, max-age=60'
+    return Response.json(reel, { headers: { 'cache-control': cacheControl } })
   } catch (err) {
     log.error(errorFields(err), 'reel details failed')
     return Response.json({ error: 'internal' }, { status: 500 })

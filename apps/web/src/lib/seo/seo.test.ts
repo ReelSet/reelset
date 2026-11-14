@@ -17,6 +17,7 @@ const ID = 'e86d24f7-f018-4041-acee-4e0b3bf0534b'
 
 const reel: ReelPageData = {
   id: ID,
+  visibility: 'public',
   title: 'Claude solved two unsolved problems',
   tldr: 'A model closed two open problems in black-hole physics.',
   hook: 'Two open problems, closed.',
@@ -185,10 +186,13 @@ describe('sitemap', () => {
       now: new Date('2026-11-12T00:00:00Z'),
     })
     const urls = map.map((m) => m.url)
-    expect(urls.slice(0, 4)).toEqual([
+    expect(urls.slice(0, 7)).toEqual([
       'https://reelset.app/',
       'https://reelset.app/t',
       'https://reelset.app/ask',
+      'https://reelset.app/create',
+      'https://reelset.app/mcp',
+      'https://reelset.app/pricing',
       'https://reelset.app/t/ai',
     ])
     expect(urls).not.toContain('https://reelset.app/t/go')

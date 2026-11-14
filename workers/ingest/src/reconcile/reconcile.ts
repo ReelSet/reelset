@@ -7,7 +7,6 @@ import {
   getSetting,
   recordItemEvent,
   spendTodayUsd,
-  transitionItem,
   type Database,
   type ItemStatus,
   type Logger,
@@ -21,6 +20,7 @@ import {
   RENDER_RENDERING_LIVE_MS,
   STUCK_AFTER_MS,
 } from '../config'
+import { transitionClearingPriority } from '../generate/priority'
 import type { IngestItemMessage, RenderJobMessage } from '../env'
 import {
   admissionDecision,
@@ -56,7 +56,7 @@ export type ReconcileResult = {
   spendCapReached: boolean
 }
 
-type Claimed = { id: string; attempts: number }
+type Claimed = { id: string; attempts: number; priority: boolean }
 
 async function claim(db: Database, status: ItemStatus, ids: readonly string[]): Promise<Claimed[]> {
   if (ids.length === 0) return []
@@ -66,7 +66,7 @@ async function claim(db: Database, status: ItemStatus, ids: readonly string[]): 
     .where('id', 'in', ids)
     .where('status', '=', status)
     .where('queued_at', 'is', null)
-    .returning(['id', 'attempts'])
+    .returning(['id', 'attempts', sql<boolean>`priority_at is not null`.as('priority')])
     .execute()
   return rows
 }
@@ -78,14 +78,23 @@ async function release(db: Database, ids: readonly string[]): Promise<void> {
 
 async function sendClaimed(
   db: Database,
-  queue: BatchSender<{ itemId: string; attempt: number }>,
+  queue: BatchSender<{ itemId: string; attempt: number; priority?: boolean }>,
   claimed: readonly Claimed[],
   log: Logger,
+  flagPriority = false,
 ): Promise<number> {
   let sent = 0
   for (const batch of chunked(claimed, ENQUEUE_CHUNK)) {
     try {
-      await queue.sendBatch(batch.map((c) => ({ body: { itemId: c.id, attempt: c.attempts } })))
+      await queue.sendBatch(
+        batch.map((c) => ({
+          body: {
+            itemId: c.id,
+            attempt: c.attempts,
+            ...(flagPriority && c.priority ? { priority: true } : {}),
+          },
+        })),
+      )
       sent += batch.length
     } catch (err) {
       log.error({ count: batch.length, ...errorFields(err) }, 'queue send failed, releasing claim')
@@ -160,7 +169,7 @@ async function reconcileStuck(db: Database, now: Date, log: Logger) {
       }
     } else if (decision === 'fail') {
       try {
-        await transitionItem(
+        await transitionClearingPriority(
           db,
           {
             itemId: row.id,
@@ -183,26 +192,30 @@ async function reconcileStuck(db: Database, now: Date, log: Logger) {
 
 async function enqueueStage(
   db: Database,
-  queue: BatchSender<{ itemId: string; attempt: number }>,
+  queue: BatchSender<{ itemId: string; attempt: number; priority?: boolean }>,
   status: 'summarized' | 'embedded' | 'voiced',
   log: Logger,
   limit = RECONCILE_BATCH,
+  priorityIgnoresLimit = false,
 ): Promise<number> {
-  if (limit <= 0) return 0
+  if (limit <= 0 && !priorityIgnoresLimit) return 0
   const rows = await db
     .selectFrom('item')
-    .select('id')
+    .select(['id', sql<boolean>`priority_at is not null`.as('priority')])
     .where('status', '=', status)
     .where('queued_at', 'is', null)
+    .orderBy(sql`priority_at is not null`, 'desc')
     .orderBy('score', 'desc')
-    .limit(Math.min(limit, RECONCILE_BATCH))
+    .limit(RECONCILE_BATCH)
     .execute()
+  let room = Math.min(limit, RECONCILE_BATCH)
+  const picked = rows.filter((r) => (priorityIgnoresLimit && r.priority) || room-- > 0)
   const claimed = await claim(
     db,
     status,
-    rows.map((r) => r.id),
+    picked.map((r) => r.id),
   )
-  const sent = await sendClaimed(db, queue, claimed, log)
+  const sent = await sendClaimed(db, queue, claimed, log, priorityIgnoresLimit)
   if (sent > 0) log.info({ status, sent }, 'items enqueued')
   return sent
 }
@@ -439,11 +452,11 @@ export async function reconcile(
     budget = await renderBudget(db, now, l)
   })
   await step('embedded', async () => {
-    result.enqueuedEmbedded = await enqueueStage(db, queues.render, 'embedded', l, budget)
+    result.enqueuedEmbedded = await enqueueStage(db, queues.render, 'embedded', l, budget, true)
     budget -= result.enqueuedEmbedded
   })
   await step('voiced', async () => {
-    result.enqueuedVoiced = await enqueueStage(db, queues.render, 'voiced', l, budget)
+    result.enqueuedVoiced = await enqueueStage(db, queues.render, 'voiced', l, budget, true)
   })
   await step('summarized', async () => {
     if (result.paused) return

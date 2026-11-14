@@ -23,6 +23,16 @@ import type {
   InstagramPostStatus,
 } from './enums'
 
+export type ApiKey = {
+  id: Generated<string>
+  user_id: string
+  name: string
+  prefix: string
+  hash: string
+  last_used_at: Timestamp | null
+  revoked_at: Timestamp | null
+  created_at: Generated<Timestamp>
+}
 export type AppSetting = {
   key: string
   value: unknown
@@ -56,6 +66,24 @@ export type BoxSample = {
   load1: number | null
   mem_used_mb: number | null
   swap_used_mb: number | null
+}
+export type CreditLedger = {
+  id: Generated<string>
+  user_id: string
+  delta: number
+  reason: string
+  request_id: string | null
+  month: string
+  created_at: Generated<Timestamp>
+}
+export type CreditUpgradeRequest = {
+  id: Generated<string>
+  user_id: string
+  email: string
+  message: string | null
+  status: Generated<string>
+  credits_granted: number | null
+  created_at: Generated<Timestamp>
 }
 export type DirectorSkill = {
   id: Generated<string>
@@ -148,6 +176,9 @@ export type Item = {
   status_changed_at: Generated<Timestamp>
   rendered_at: Timestamp | null
   queued_at: Timestamp | null
+  visibility: Generated<string>
+  owner_id: string | null
+  priority_at: Timestamp | null
   created_at: Generated<Timestamp>
   updated_at: Generated<Timestamp>
 }
@@ -210,6 +241,19 @@ export type ProfileAvatar = {
   bytes: Buffer
   updated_at: Generated<Timestamp>
 }
+export type ReelRequest = {
+  id: Generated<string>
+  user_id: string
+  urls: string[]
+  status: Generated<string>
+  item_id: string | null
+  error: string | null
+  credits_charged: Generated<number>
+  refunded: Generated<boolean>
+  via: string
+  created_at: Generated<Timestamp>
+  updated_at: Generated<Timestamp>
+}
 export type Render = {
   id: Generated<string>
   item_id: string
@@ -255,9 +299,12 @@ export type SpendLedger = {
   created_at: Generated<Timestamp>
 }
 export type DB = {
+  api_key: ApiKey
   app_setting: AppSetting
   ask_query: AskQuery
   box_sample: BoxSample
+  credit_ledger: CreditLedger
+  credit_upgrade_request: CreditUpgradeRequest
   director_skill: DirectorSkill
   event: Event
   evidence_chunk: EvidenceChunk
@@ -271,6 +318,7 @@ export type DB = {
   mention: Mention
   profile: Profile
   profile_avatar: ProfileAvatar
+  reel_request: ReelRequest
   render: Render
   save: Save
   source_watermark: SourceWatermark

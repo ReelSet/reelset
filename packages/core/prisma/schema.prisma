@@ -185,9 +185,13 @@ model Item {
   statusChangedAt DateTime                   @default(now()) @map("status_changed_at") @db.Timestamptz(6)
   renderedAt      DateTime?                  @map("rendered_at") @db.Timestamptz(6)
   queuedAt        DateTime?                  @map("queued_at") @db.Timestamptz(6)
+  visibility      String                     @default("public")
+  ownerId         String?                    @map("owner_id") @db.Uuid
+  priorityAt      DateTime?                  @map("priority_at") @db.Timestamptz(6)
   createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
 
+  reelRequests ReelRequest[]
   mentions Mention[]
   chunks   EvidenceChunk[]
   events   ItemEvent[]
@@ -537,4 +541,62 @@ model DirectorSkill {
 
   @@index([enabled, sort, name], map: "director_skill_enabled_sort_idx")
   @@map("director_skill")
+}
+
+model ReelRequest {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  urls           String[]
+  status         String   @default("pending")
+  itemId         String?  @map("item_id") @db.Uuid
+  error          String?
+  creditsCharged Int      @default(0) @map("credits_charged")
+  refunded       Boolean  @default(false)
+  via            String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  item Item? @relation(fields: [itemId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)], map: "reel_request_user_created_idx")
+  @@map("reel_request")
+}
+
+model CreditLedger {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  delta     Int
+  reason    String
+  requestId String?  @map("request_id") @db.Uuid
+  month     String   @db.VarChar(7)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, month], map: "credit_ledger_user_month_idx")
+  @@map("credit_ledger")
+}
+
+model CreditUpgradeRequest {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  email          String
+  message        String?
+  status         String   @default("open")
+  creditsGranted Int?     @map("credits_granted")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("credit_upgrade_request")
+}
+
+model ApiKey {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  name       String
+  prefix     String
+  hash       String    @unique(map: "api_key_hash_key")
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "api_key_user_idx")
+  @@map("api_key")
 }

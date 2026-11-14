@@ -8,12 +8,15 @@ import {
   type SettingDef,
 } from '@reelset/core'
 
-export type SettingKind = 'number' | 'list' | 'enum' | 'boolean'
+export type SettingKind = 'number' | 'list' | 'enum' | 'boolean' | 'string'
 
 type SettingFieldBase = { name: keyof typeof SETTINGS; def: SettingDef<unknown>; hint: string }
 
 export type SettingField = SettingFieldBase &
-  ({ kind: 'number' | 'list' | 'boolean' } | { kind: 'enum'; options: readonly string[] })
+  (
+    | { kind: 'number' | 'list' | 'boolean' | 'string' }
+    | { kind: 'enum'; options: readonly string[] }
+  )
 
 function formatUsd(perMTok: number): string {
   return perMTok < 1 ? `$${perMTok.toFixed(2)}` : `$${perMTok}`
@@ -56,6 +59,10 @@ const HINTS: Record<string, string> = {
   like_count_threshold: 'Minimum likes before the count is shown (0 = always, shows 0)',
   show_save_count: 'Show the save count on reels once it reaches save_count_threshold',
   save_count_threshold: 'Minimum saves before the count is shown (0 = always)',
+  admin_email: 'Where credit requests and other admin notifications are emailed',
+  monthly_free_credits:
+    'Free credits every user gets each UTC month; unused credits do not roll over',
+  reel_credit_cost: 'Credits charged per generated reel',
   instagram_auto_post:
     'Queue every new reel for Instagram (up to daily_reel_cap per day); false = post by hand only',
 }
@@ -66,6 +73,7 @@ function settingField(name: keyof typeof SETTINGS): SettingField {
   const options = settingEnumOptions(def)
   if (options) return { ...base, kind: 'enum', options }
   if (typeof def.default === 'boolean') return { ...base, kind: 'boolean' }
+  if (typeof def.default === 'string') return { ...base, kind: 'string' }
   return { ...base, kind: Array.isArray(def.default) ? 'list' : 'number' }
 }
 
@@ -86,7 +94,7 @@ export function formatSettingInput(kind: SettingKind, value: unknown): string {
 export type ParsedSetting = { ok: true; value: unknown } | { ok: false; error: string }
 
 function candidateValue(kind: SettingKind, key: string, raw: string): unknown {
-  if (kind === 'enum') return raw.trim()
+  if (kind === 'enum' || kind === 'string') return raw.trim()
   if (kind === 'boolean') {
     const text = raw.trim()
     return text === 'true' ? true : text === 'false' ? false : text

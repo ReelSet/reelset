@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
-import { HashIcon, HomeIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
+import { HashIcon, HomeIcon, PlusIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
 import { buildLoginUrl } from '@/lib/auth/return-url'
 
 type NavAvatar = { url: string | null; initial: string }
@@ -19,6 +19,12 @@ function tabs(path: string, authenticated: boolean): Tab[] {
       match: (p) => p === '/t' || p.startsWith('/t/'),
     },
     { href: '/ask', label: 'Ask', icon: SparkleIcon, match: (p) => p.startsWith('/ask') },
+    {
+      href: '/create',
+      label: 'Create',
+      icon: PlusIcon,
+      match: (p) => p.startsWith('/create') || p === '/mcp' || p === '/pricing',
+    },
     {
       href: authenticated ? '/profile' : buildLoginUrl(path),
       label: authenticated ? 'Profile' : 'Sign in',
@@ -114,7 +120,7 @@ export function BottomTabs({ authenticated = false, translucent = false, avatar 
   return (
     <nav
       aria-label="Main"
-      className={`fixed inset-x-0 bottom-0 z-40 grid h-[calc(3.5rem+env(safe-area-inset-bottom))] grid-cols-4 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden ${
+      className={`fixed inset-x-0 bottom-0 z-40 grid h-[calc(3.5rem+env(safe-area-inset-bottom))] grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden ${
         translucent ? 'border-white/10 bg-black/45 backdrop-blur-md' : 'border-line bg-bg/95'
       }`}
     >

@@ -17,6 +17,7 @@ import { createIntentQueue } from '@/lib/intent-queue'
 import { MAX_FOLLOWED_TOPICS } from '@/lib/topics'
 import { reelHref, scopeQuery, type FeedScope } from '@/lib/reel-url'
 import { metaTitle } from '@/lib/seo/site'
+import { CreatePromo } from './CreatePromo'
 import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
 import { ChevronIcon } from '@/components/ui/icons'
@@ -530,6 +531,7 @@ export function FeedClient({
             {about && items[active].id === aboutItemId ? about : <ReelAbout item={items[active]} />}
           </div>
         )}
+        <CreatePromo />
         {canNavigate && (
           <div className="flex shrink-0 flex-col gap-2">
             <NavButton

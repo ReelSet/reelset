@@ -13,7 +13,7 @@ export async function loadAskSuggestions(db: Database, log?: Logger): Promise<st
       sql<{ label: string; count: number }>`
         select t as label, count(*)::int as count
         from item i, unnest(i.topics) t
-        where i.status = ${ItemStatus.rendered}::item_status
+        where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
           and coalesce(i.rendered_at, i.published_at) > now() - make_interval(days => ${WINDOW_DAYS})
         group by t
         order by count(*) desc
@@ -21,7 +21,7 @@ export async function loadAskSuggestions(db: Database, log?: Logger): Promise<st
       sql<{ title: string }>`
         select i.title
         from item i
-        where i.status = ${ItemStatus.rendered}::item_status
+        where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
         order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
         limit 12`.execute(db),
     ])

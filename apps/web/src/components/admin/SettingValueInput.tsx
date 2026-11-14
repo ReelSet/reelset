@@ -6,7 +6,7 @@ const MIN_LIST_ROWS = 2
 
 const BOOLEAN_OPTIONS = ['true', 'false'] as const
 
-/** The `value` form control for one setting: select for enums and booleans, textarea for lists, else a number. */
+/** The `value` form control for one setting: select for enums and booleans, textarea for lists, text for strings, else a number. */
 export function SettingValueInput({ field, text }: { field: SettingField; text: string }) {
   if (field.kind === 'enum' || field.kind === 'boolean') {
     const options = field.kind === 'enum' ? field.options : BOOLEAN_OPTIONS
@@ -34,6 +34,17 @@ export function SettingValueInput({ field, text }: { field: SettingField; text: 
         defaultValue={text}
         rows={rows}
         className={`${input} w-96 font-mono text-xs`}
+      />
+    )
+  }
+  if (field.kind === 'string') {
+    return (
+      <input
+        name="value"
+        aria-label={field.def.key}
+        defaultValue={text}
+        type="text"
+        className={`${input} w-96`}
       />
     )
   }

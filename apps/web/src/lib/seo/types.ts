@@ -13,6 +13,7 @@ export type ReelMention = {
 /** Everything a public reel page shows; video and poster are null once retention removed them. */
 export type ReelPageData = {
   id: string
+  visibility: 'public' | 'private'
   title: string
   tldr: string | null
   hook: string | null

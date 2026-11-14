@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs'
 import { StaleTransitionError, renderKey } from '@reelset/core'
 import { describe, expect, it } from 'vitest'
 import { processRenderJob, type ConsumerDeps } from './consumer'
-import { BUSY_MAX_DEFERRALS, BUSY_RETRY_DELAY_SECONDS, TEMPLATE_VERSION } from './constants'
+import {
+  BUSY_MAX_DEFERRALS,
+  BUSY_RETRY_DELAY_SECONDS,
+  PRIORITY_BUSY_RETRY_DELAY_SECONDS,
+  PRIORITY_YIELD_DELAY_SECONDS,
+  PRIORITY_YIELD_MAX_AGE_MS,
+  TEMPLATE_VERSION,
+} from './constants'
 import {
   FakeContainer,
   FakeMedia,
@@ -278,6 +285,83 @@ describe('processRenderJob', () => {
     expect(path(busy)).toEqual(['POST /render'])
     expect(store.calls).toEqual(['rendering', 'retry_pending'])
     expect([...store.renders.values()].map((r) => r.status)).toEqual(['queued'])
+  })
+
+  describe('priority', () => {
+    it('yields a normal job to a waiting priority item without touching the box or retries', async () => {
+      const box = new FakeContainer()
+      const { deps, store } = setup({ container: box })
+      store.priorityWaiting = true
+
+      const result = await processRenderJob(deps, body, 2)
+
+      expect(result).toEqual({
+        action: 'defer',
+        delaySeconds: PRIORITY_YIELD_DELAY_SECONDS,
+        message: { itemId: ITEM_ID },
+      })
+      expect(PRIORITY_YIELD_DELAY_SECONDS).toBe(20)
+      expect(PRIORITY_YIELD_MAX_AGE_MS).toBe(90 * 60_000)
+      const since = store.prioritySince[0]!
+      expect(Date.now() - since.getTime()).toBeGreaterThan(89 * 60_000)
+      expect(Date.now() - since.getTime()).toBeLessThan(91 * 60_000)
+      expect(box.requests).toHaveLength(0)
+      expect(store.priorityChecks).toEqual([ITEM_ID])
+      expect(store.calls).not.toContain('rendering')
+      expect(store.attemptsCounted).toBe(0)
+    })
+
+    it('does not count a yield toward the busy deferral cap', async () => {
+      const { deps, store } = setup()
+      store.priorityWaiting = true
+      const result = await processRenderJob(deps, { ...body, deferrals: BUSY_MAX_DEFERRALS }, 1)
+      expect(result).toEqual({
+        action: 'defer',
+        delaySeconds: PRIORITY_YIELD_DELAY_SECONDS,
+        message: { itemId: ITEM_ID, deferrals: BUSY_MAX_DEFERRALS },
+      })
+    })
+
+    it('renders a normal job when no priority item is waiting', async () => {
+      const { deps, store } = setup()
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(store.calls).toContain('done')
+    })
+
+    it('never yields a priority job, and does not even look', async () => {
+      const { deps, store } = setup()
+      store.priorityWaiting = true
+      expect(await processRenderJob(deps, { ...body, priority: true }, 1)).toEqual({
+        action: 'ack',
+      })
+      expect(store.priorityChecks).toHaveLength(0)
+      expect(store.calls).toContain('done')
+    })
+
+    it('never yields a render the box is already running', async () => {
+      const { deps, store } = setup()
+      store.priorityWaiting = true
+      store.renders.set(await keyFor(), {
+        id: 'r-1',
+        status: 'rendering',
+        videoKey: null,
+        posterKey: null,
+      })
+      expect(await processRenderJob(deps, { ...body, deferrals: 2 }, 1)).toEqual({ action: 'ack' })
+      expect(store.priorityChecks).toHaveLength(0)
+    })
+
+    it('defers a busy priority job after 10 s and keeps its flag', async () => {
+      const busy = new FakeContainer({ renderStatus: 429, renderBody: { error: 'busy' } })
+      const { deps } = setup({ container: busy })
+      const result = await processRenderJob(deps, { ...body, priority: true }, 1)
+      expect(result).toEqual({
+        action: 'defer',
+        delaySeconds: PRIORITY_BUSY_RETRY_DELAY_SECONDS,
+        message: { itemId: ITEM_ID, deferrals: 1, priority: true },
+      })
+      expect(PRIORITY_BUSY_RETRY_DELAY_SECONDS).toBe(10)
+    })
   })
 
   it('keeps a render the box is still doing as rendering, not queued', async () => {

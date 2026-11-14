@@ -55,6 +55,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         : undefined,
     },
     twitter: { card: 'summary_large_image', title, description },
+    ...(reel.visibility === 'private' ? { robots: { index: false, follow: false } } : {}),
   }
 }
 

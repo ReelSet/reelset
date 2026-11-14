@@ -11,7 +11,6 @@ import {
   getPipelinePause,
   paperEvidenceTexts,
   parseItemImages,
-  transitionItem,
   type ClaudeModel,
   type Database,
   type ItemImage,
@@ -20,6 +19,7 @@ import {
   type ParsedPaper,
 } from '@reelset/core'
 import { EMBED_BATCH_SIZE } from '../config'
+import { transitionClearingPriority } from '../generate/priority'
 import type { RenderJobMessage } from '../env'
 import { approxTokens, embeddingCostUsd, type Embedder } from './gemini'
 import { parseModelOutput, type LlmClient, type LlmImage } from './output'
@@ -86,6 +86,7 @@ type ItemRow = {
   tldr: string | null
   topics: string[]
   queued_at: Date | null
+  priority_at?: Date | null
   images: unknown
   demo?: unknown
 }
@@ -107,6 +108,7 @@ async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefin
       'tldr',
       'topics',
       'queued_at',
+      'priority_at',
       'images',
       'demo',
     ])
@@ -320,7 +322,7 @@ async function summarize(
         { videoId, reason: result.reason },
         'transcript unavailable, marking insufficient_source',
       )
-      await transitionItem(
+      await transitionClearingPriority(
         db,
         {
           itemId: item.id,
@@ -371,7 +373,7 @@ async function summarize(
   )
   if (!hasEnoughEvidence(rows)) {
     log.warn({ chunks: rows.length }, 'not enough source text, marking insufficient_source')
-    await transitionItem(
+    await transitionClearingPriority(
       db,
       {
         itemId: item.id,
@@ -520,7 +522,7 @@ async function summarize(
   }
 
   if (!accepted) {
-    await transitionItem(
+    await transitionClearingPriority(
       db,
       {
         itemId: item.id,
@@ -557,7 +559,7 @@ async function summarize(
       .where('id', '=', item.id)
       .where('status', '=', 'found')
       .execute()
-    await transitionItem(
+    await transitionClearingPriority(
       trx,
       {
         itemId: item.id,
@@ -610,7 +612,7 @@ async function embedAndAdvance(
   await setItemEmbedding(db, item.id, itemVector, log)
 
   await db.transaction().execute(async (trx) => {
-    await transitionItem(
+    await transitionClearingPriority(
       trx,
       {
         itemId: item.id,
@@ -658,7 +660,11 @@ async function enqueueRender(
     log.info('embedded item already queued for render, nothing to do')
     return 'embedded'
   }
-  await deps.renderQueue.send({ itemId: item.id, attempt: 0 })
+  await deps.renderQueue.send({
+    itemId: item.id,
+    attempt: 0,
+    ...(item.priority_at ? { priority: true } : {}),
+  })
   await deps.db
     .updateTable('item')
     .set({ queued_at: sql`now()` })
@@ -680,7 +686,7 @@ export async function failItemAfterRetries(
   if (!item) return
   if (item.status !== 'found' && item.status !== 'summarized' && item.status !== 'embedded') return
   try {
-    await transitionItem(
+    await transitionClearingPriority(
       deps.db,
       {
         itemId,
