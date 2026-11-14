@@ -152,7 +152,7 @@ function CredentialsForm({ returnTo }: { returnTo: string }) {
           required
           autoCapitalize="none"
           spellCheck={false}
-          autoComplete="off"
+          autoComplete="username"
           placeholder="Instagram username"
           aria-label="Instagram username"
           className={input}
@@ -161,18 +161,9 @@ function CredentialsForm({ returnTo }: { returnTo: string }) {
           name="password"
           type="password"
           required
-          autoComplete="new-password"
+          autoComplete="current-password"
           placeholder="Password"
           aria-label="Instagram password"
-          className={input}
-        />
-        <input
-          name="totpSecret"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="Authenticator setup key (optional)"
-          aria-label="Authenticator setup key, optional"
           className={input}
         />
         <input
@@ -180,11 +171,36 @@ function CredentialsForm({ returnTo }: { returnTo: string }) {
           inputMode="numeric"
           autoComplete="one-time-code"
           pattern="[0-9 ]{6,9}"
-          placeholder="2FA code (optional)"
-          aria-label="2FA code, optional"
-          className={`${input} tabular-nums`}
+          placeholder="6-digit code from your authenticator (if 2FA is on)"
+          aria-label="6-digit 2FA code from your authenticator app, if two-factor is on"
+          className={`${input} tabular-nums sm:col-span-2`}
         />
       </div>
+      <details className="text-xs text-faint">
+        <summary className="cursor-pointer select-none transition hover:text-fg">
+          Advanced: let reelset make 2FA codes itself
+        </summary>
+        <div className="mt-2 flex flex-col gap-1.5">
+          <p>
+            Paste the setup key (the long letters-and-numbers secret shown when you added
+            reelset_app to your authenticator), not a 6-digit code. Then later reconnects need no
+            code from you.
+          </p>
+          <input
+            name="totpSecret"
+            type="text"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+            spellCheck={false}
+            autoCapitalize="characters"
+            placeholder="e.g. JBSW Y3DP EHPK 3PXP"
+            aria-label="Authenticator setup key, optional"
+            className={`${input} font-mono`}
+          />
+        </div>
+      </details>
       <div className="flex flex-wrap items-center gap-2">
         <SubmitButton className={buttonPrimary} pendingLabel="Connecting">
           Connect with these credentials

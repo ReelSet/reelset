@@ -111,6 +111,22 @@ describe('parseConnectForm', () => {
     })
   })
 
+  it('treats a 6-digit code in the setup-key box as the 2FA code', () => {
+    expect(form({ username: 'a', password: 'pw', totpSecret: '123 456' })).toEqual({
+      ok: true,
+      value: { username: 'a', password: 'pw', code: '123456' },
+    })
+  })
+
+  it('ignores a password autofilled into the setup-key box', () => {
+    expect(
+      form({ username: 'a', password: 'hunter2!', totpSecret: 'hunter2!', code: '654321' }),
+    ).toEqual({
+      ok: true,
+      value: { username: 'a', password: 'hunter2!', code: '654321' },
+    })
+  })
+
   it('rejects half credentials, bad codes and a setup key without credentials', () => {
     expect(form({ username: 'reelset' }).ok).toBe(false)
     expect(form({ password: 'pw' }).ok).toBe(false)

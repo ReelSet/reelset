@@ -81,7 +81,11 @@ export async function connectAccountAction(formData: FormData): Promise<void> {
     const worker = workerConfigFromEnv()
     if (!worker) return NO_WORKER
     const form = parseConnectForm(formData)
-    if (!form.ok) return { ok: false, message: form.message }
+    if (!form.ok) {
+      const rejected = { ok: false, message: form.message } as const
+      await rememberCheck(rejected, log)
+      return rejected
+    }
     log.info({ newCreds: Boolean(form.value.username), code: Boolean(form.value.code) }, 'connect')
     const result = await connectInstagramAccount(worker, form.value)
     await rememberCheck(result, log)

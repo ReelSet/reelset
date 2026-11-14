@@ -33,11 +33,20 @@ const field = (formData: FormData, name: string) => {
 
 /** Reads the connect form: an optional 2FA code, plus optional fresh credentials. */
 export function parseConnectForm(formData: FormData): ConnectForm {
-  const code = field(formData, 'code').replace(/\s+/g, '')
+  let code = field(formData, 'code').replace(/\s+/g, '')
   const username = field(formData, 'username').trim().replace(/^@/, '')
   const password = field(formData, 'password')
-  const totpSecret = field(formData, 'totpSecret').replace(/\s+/g, '').toUpperCase()
-  if (code && !/^\d{6,8}$/.test(code)) return { ok: false, message: 'The 2FA code is 6 digits' }
+  const rawSecret = field(formData, 'totpSecret')
+  let totpSecret = rawSecret.replace(/\s+/g, '').toUpperCase()
+  // A 6-digit code typed into the setup-key box is the 2FA code; a password manager can also
+  // autofill the password there. Neither is a setup key.
+  if (/^\d{6,8}$/.test(totpSecret)) {
+    code ||= totpSecret
+    totpSecret = ''
+  }
+  if (rawSecret && rawSecret === password) totpSecret = ''
+  if (code && !/^\d{6,8}$/.test(code))
+    return { ok: false, message: 'The 2FA code is the 6-digit number from your authenticator app' }
   if (Boolean(username) !== Boolean(password))
     return { ok: false, message: 'Enter both the username and the password' }
   if (username.length > 64 || password.length > 256)
