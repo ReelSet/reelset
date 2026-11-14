@@ -308,6 +308,7 @@ function setup(req: ReelRequestRow, world: World = {}) {
     if (s.includes('exists (') && s.includes('"has_done_render"'))
       return [{ has_done_render: world.upsertedHasDoneRender ?? false }]
     if (s.startsWith('update "item" set "queued_at" = now()')) return [{ attempts: 0 }]
+    if (s.startsWith('update "item" set "status"')) return [{ id: 'item-7' }]
     if (s.startsWith('update "reel_request" set "status"')) return { rows: [], affected: 1 }
     return undefined
   })
@@ -401,6 +402,19 @@ describe('processReelRequests', () => {
     useFetch(...githubRoutes)
     expect(await processReelRequests(deps)).toMatchObject({ done: 1 })
     expect(fake.find('"refunded" =')).toHaveLength(1)
+  })
+
+  it('renders again when a rendered item has no video left, instead of answering done', async () => {
+    const req = request(['https://github.com/acme/widget'])
+    const { fake, deps } = setup(req, {
+      inserted: { id: 'item-7', status: 'rendered', queued_at: null, created: false },
+      upsertedHasDoneRender: false,
+    })
+    useFetch(...githubRoutes)
+    expect(await processReelRequests(deps)).toMatchObject({ processing: 1, done: 0 })
+    expect(fake.find('"refunded" =')).toHaveLength(0)
+    expect(fake.find('"priority_at" = now()').length).toBeGreaterThan(0)
+    expect(requestResults(fake)[0]).toMatchObject({ status: 'processing' })
   })
 
   it('attaches to an item already in progress without queueing it again', async () => {

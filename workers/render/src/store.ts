@@ -303,6 +303,8 @@ export function createMaintenanceStore(db: Database, log: Logger): MaintenanceSt
           eb.or([eb('render.video_key', 'is not', null), eb('render.poster_key', 'is not', null)]),
         )
         .where('item.published_at', '<', cutoff)
+        // Requested reels are about sources of any age; their videos belong to the requester.
+        .where('item.owner_id', 'is', null)
         .limit(limit)
         .execute()
       return rows.map((r) => ({ id: r.id, videoKey: r.video_key, posterKey: r.poster_key }))

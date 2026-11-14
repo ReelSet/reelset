@@ -8,6 +8,7 @@ import {
   recordItemEvent,
   refundRequest,
   setReelRequestResult,
+  transitionItem,
   type Database,
   type Logger,
   type ReelRequestRow,
@@ -50,7 +51,8 @@ type ItemState = {
 }
 
 const DONE_RENDER = sql<boolean>`exists (
-  select 1 from render where render.item_id = item.id and render.status = 'done'
+  select 1 from render
+  where render.item_id = item.id and render.status = 'done' and render.video_key is not null
 )`
 
 async function failRequest(
@@ -141,6 +143,35 @@ async function upsertItem(
       },
     }
   })
+}
+
+/** A rendered item whose video is gone (retention cleanup) is made again, at priority. */
+async function reRender(
+  deps: GenerateDeps,
+  req: ReelRequestRow,
+  itemId: string,
+  log: Logger,
+): Promise<'processing'> {
+  const { db } = deps
+  await transitionItem(
+    db,
+    {
+      itemId,
+      from: 'rendered',
+      to: 'found',
+      meta: { manual: true, requestId: req.id, reason: 'video_missing' },
+    },
+    log,
+  )
+  await db
+    .updateTable('item')
+    .set({ queued_at: null, attempts: 0, priority_at: sql`now()` })
+    .where('id', '=', itemId)
+    .execute()
+  await kickItem(deps, itemId, req.id, log)
+  await setReelRequestResult(db, req.id, { status: 'processing', itemId }, ['resolving'])
+  log.info('rendered item had no video left, rendering it again for the request')
+  return 'processing'
 }
 
 async function kickItem(
@@ -249,8 +280,7 @@ async function handleRequest(
       await doneInstantly(db, req, state.id, il)
       return 'done'
     }
-    await failRequest(db, req, RENDER_FAILED_MESSAGE, state.id, il)
-    return 'failed'
+    return reRender(deps, req, state.id, il)
   }
   if (state.status === 'insufficient_source') {
     await failRequest(db, req, INSUFFICIENT_SOURCE_MESSAGE, state.id, il)
