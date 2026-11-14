@@ -69,6 +69,11 @@ export const PlayIcon = ({ className }: P) => (
     <path d="M8 5.5v13l10.5-6.5z" />
   </svg>
 )
+export const PlaysIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M7 5.8a1 1 0 0 1 1.5-.86l10.2 6.2a1 1 0 0 1 0 1.72l-10.2 6.2A1 1 0 0 1 7 18.2z" />
+  </Svg>
+)
 export const ChevronIcon = ({ className, dir = 'down' }: P & { dir?: 'up' | 'down' }) => (
   <Svg className={className}>
     <path d={dir === 'down' ? 'm6 9 6 6 6-6' : 'm6 15 6-6 6 6'} />

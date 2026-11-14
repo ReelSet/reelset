@@ -16,6 +16,7 @@ import {
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
+import { ViewCount } from './ViewCount'
 import { followableTopic } from '@/lib/feed-tabs'
 import { reelPath } from '@/lib/reel-url'
 
@@ -62,7 +63,6 @@ export function ReelCard(props: Props) {
     const shown = visibleCount(n, rule)
     return shown === null ? null : formatCount(shown)
   }
-  const views = formatted(item.viewCount, countRules.views)
   const likes = formatted(item.likeCount, countRules.likes)
   const saves = formatted(item.saveCount, countRules.saves)
   const sectionRef = useRef<HTMLElement>(null)
@@ -391,7 +391,7 @@ export function ReelCard(props: Props) {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end pb-[calc(var(--bar,0px)+0.75rem)] pl-3.5 pr-16 pt-10 short:pb-[calc(var(--bar,0px)+0.5rem)] short:pt-4">
         <div
           aria-hidden
-          className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"
+          className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent"
         />
         <div
           aria-hidden
@@ -407,7 +407,7 @@ export function ReelCard(props: Props) {
                 track({ name: 'item_open', itemId: item.id, meta: { source: 'original' } })
               }
               aria-label={`Open original on ${host(item.canonicalUrl)}`}
-              className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full bg-white/15 px-2.5 text-[12px] text-white/90 backdrop-blur-md transition active:scale-95"
+              className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full bg-black/35 px-2.5 text-[12px] text-white/90 backdrop-blur-md transition active:scale-95"
             >
               <SourceDot source={sources[0] ?? 'news'} />
               <span className="shrink-0 font-medium">{sourceMeta(sources[0] ?? 'news').label}</span>
@@ -422,16 +422,13 @@ export function ReelCard(props: Props) {
                 type="button"
                 aria-pressed={isFollowing}
                 onClick={() => onFollow(follow.slug)}
-                className={`inline-flex min-h-7 items-center rounded-full px-3 text-[12px] font-medium transition active:scale-95 ${isFollowing ? 'bg-white/15 text-white/70' : 'border border-white/40 text-white'}`}
+                className={`inline-flex min-h-7 items-center rounded-full px-3 text-[12px] font-medium transition active:scale-95 ${isFollowing ? 'bg-black/35 text-white/80 backdrop-blur-md' : 'border border-white/50 bg-black/20 text-white backdrop-blur-md'}`}
               >
                 {isFollowing ? 'Following' : `Follow ${follow.label}`}
               </button>
             )}
-            {views !== null && (
-              <span className="text-[12px] text-white/60 tabular-nums">{views} views</span>
-            )}
           </div>
-          <h2 className="pointer-events-auto text-[15px] font-semibold leading-snug text-white [overflow-wrap:anywhere]">
+          <h2 className="pointer-events-auto text-[15px] font-semibold leading-snug text-white [overflow-wrap:anywhere] [text-shadow:0_1px_3px_rgba(0,0,0,.45)]">
             <button
               type="button"
               aria-expanded={mobile ? undefined : expanded}
@@ -463,6 +460,11 @@ export function ReelCard(props: Props) {
                   </p>
                 )}
                 <div className="mt-2 flex items-center gap-3 text-[13px]">
+                  <ViewCount
+                    count={item.viewCount}
+                    rule={countRules.views}
+                    className="text-white/75"
+                  />
                   <a
                     href={item.canonicalUrl}
                     target="_blank"
@@ -489,7 +491,7 @@ export function ReelCard(props: Props) {
         </div>
       </div>
 
-      <div className="absolute bottom-[calc(var(--bar,0px)+1rem)] right-3 z-30 flex w-11 flex-col items-center gap-2 short:bottom-[calc(var(--bar,0px)+0.75rem)] short:gap-0.5 cropped:bottom-[calc(var(--bar,0px)+0.5rem)] cropped:gap-0 cropped:[&>button]:min-h-10">
+      <div className="absolute bottom-[calc(var(--bar,0px)+1rem)] right-3 z-30 flex w-11 flex-col items-center gap-2 short:bottom-[calc(var(--bar,0px)+0.75rem)] short:gap-1 cropped:bottom-[calc(var(--bar,0px)+0.5rem)] cropped:gap-1 cropped:[&>button]:min-h-10">
         <RailButton
           label={item.liked ? 'Unlike' : 'Like'}
           pressed={item.liked}

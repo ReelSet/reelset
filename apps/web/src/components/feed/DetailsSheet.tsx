@@ -9,8 +9,10 @@ import {
 } from '@/components/seo/reel-sections'
 import { CloseIcon } from '@/components/ui/icons'
 import type { FeedItemDto } from '@/lib/api-types'
+import type { CountRule } from '@/lib/counts'
 import type { ReelPageData } from '@/lib/seo/types'
 import { useReelDetails } from './useReelDetails'
+import { ViewCount } from './ViewCount'
 
 type TabKey = 'tldr' | 'facts' | 'sources' | 'transcript'
 
@@ -54,7 +56,15 @@ function fromItem(item: FeedItemDto): ReelPageData {
 }
 
 /** Mobile details sheet: half height with the video playing above, drag the handle to resize. */
-export function DetailsSheet({ item, onClose }: { item: FeedItemDto; onClose: () => void }) {
+export function DetailsSheet({
+  item,
+  viewRule,
+  onClose,
+}: {
+  item: FeedItemDto
+  viewRule: CountRule
+  onClose: () => void
+}) {
   const loaded = useReelDetails(item.id)
   const reel = loaded ?? fromItem(item)
   const [tab, setTab] = useState<TabKey>('tldr')
@@ -121,6 +131,7 @@ export function DetailsSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
           <div className="mx-auto h-1 w-9 rounded-full bg-white/20" />
           <div className="mt-3 flex items-center gap-3">
             <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{item.title}</p>
+            <ViewCount count={item.viewCount} rule={viewRule} className="text-[12px] text-faint" />
             <button
               type="button"
               onClick={onClose}

@@ -504,7 +504,11 @@ export function FeedClient({
           />
         )}
         {detailsOpen && items[active] && (
-          <DetailsSheet item={items[active]} onClose={() => setDetailsOpen(false)} />
+          <DetailsSheet
+            item={items[active]}
+            viewRule={countRules.views}
+            onClose={() => setDetailsOpen(false)}
+          />
         )}
         {showHint && !sourcesFor && !menuFor && !detailsOpen && <SwipeHint onDone={dismissHint} />}
         {pickerOpen && (
