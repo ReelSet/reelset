@@ -27,6 +27,8 @@ export type FirecrawlOptions = {
   db: Database
   log: Logger
   fetchImpl?: typeof fetch
+  /** Requested reels are paid with credits and skip the daily scrape cap. */
+  ignoreCap?: boolean
 }
 
 /**
@@ -39,8 +41,10 @@ export function createFirecrawlFallback(opts: FirecrawlOptions): ScrapeFallback 
     scrape: async (url, reason) => {
       const log = opts.log.child({ mod: 'firecrawl', url: url.slice(0, 200), reason })
       try {
-        const cap = await getSetting(db, SETTINGS.scrapeDailySpendCapUsd, log)
-        const spent = await spendTodayUsd(db, ['scrape'])
+        const cap = opts.ignoreCap
+          ? Number.POSITIVE_INFINITY
+          : await getSetting(db, SETTINGS.scrapeDailySpendCapUsd, log)
+        const spent = opts.ignoreCap ? 0 : await spendTodayUsd(db, ['scrape'])
         if (spent + FIRECRAWL_COST_USD > cap) {
           log.warn({ spent, cap }, 'firecrawl daily cap reached, fallback skipped')
           return null

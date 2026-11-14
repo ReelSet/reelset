@@ -491,6 +491,14 @@ describe('processReelRequests', () => {
     expect(queue.send).not.toHaveBeenCalled()
   })
 
+  it('ignores the daily spend cap: requested reels are paid with credits', async () => {
+    const req = request(['https://github.com/acme/widget'])
+    const { deps } = setup(req, { settings: { pipeline_daily_spend_cap_usd: 0.01 } })
+    const result = await processReelRequests(deps)
+    expect(result.gated).toBeNull()
+    expect(result.claimed).toBe(1)
+  })
+
   it('puts a request back to pending when the queue send fails, and releases the item', async () => {
     const req = request(['https://github.com/acme/widget'])
     const { fake, queue, deps } = setup(req)

@@ -2,21 +2,17 @@ import { sql } from 'kysely'
 import {
   INSUFFICIENT_SOURCE_MESSAGE,
   RENDER_FAILED_MESSAGE,
-  SETTINGS,
   claimPendingReelRequests,
   errorFields,
   getPipelinePause,
-  getSetting,
   recordItemEvent,
   refundRequest,
   setReelRequestResult,
-  spendTodayUsd,
   type Database,
   type Logger,
   type ReelRequestRow,
 } from '@reelset/core'
 import { resolveItemTarget, type ItemTarget } from '../canonical'
-import { SPEND_CATEGORIES_FOR_CAP } from '../config'
 import type { IngestItemMessage } from '../env'
 import { rescoreItems, upsertMentions } from '../ingest/persist'
 import type { NormalizedMention, ScrapeFallback } from '../types'
@@ -43,7 +39,7 @@ export type GenerateResult = {
   processing: number
   failed: number
   retried: number
-  gated: 'paused' | 'spend_cap' | null
+  gated: 'paused' | null
 }
 
 type ItemState = {
@@ -271,12 +267,9 @@ async function handleRequest(
   return 'processing'
 }
 
+// Requested reels are paid for with credits, so only a manual pause holds them, never spend caps.
 async function gate(db: Database, log: Logger): Promise<GenerateResult['gated']> {
-  const pause = await getPipelinePause(db, log)
-  if (pause) return 'paused'
-  const cap = await getSetting(db, SETTINGS.pipelineDailySpendCapUsd, log)
-  const spent = await spendTodayUsd(db, SPEND_CATEGORIES_FOR_CAP)
-  return spent >= cap ? 'spend_cap' : null
+  return (await getPipelinePause(db, log)) ? 'paused' : null
 }
 
 export async function processReelRequests(deps: GenerateDeps): Promise<GenerateResult> {

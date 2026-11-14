@@ -65,7 +65,7 @@ async function runGenerate(env: Env, log: Logger): Promise<void> {
         queue: env.INGEST_ITEMS,
         githubToken: env.GITHUB_TOKEN,
         scrape: env.FIRECRAWL_API_KEY
-          ? createFirecrawlFallback({ apiKey: env.FIRECRAWL_API_KEY, db, log })
+          ? createFirecrawlFallback({ apiKey: env.FIRECRAWL_API_KEY, db, log, ignoreCap: true })
           : undefined,
       })
     } catch (err) {
