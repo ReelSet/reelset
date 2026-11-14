@@ -1,7 +1,9 @@
 import {
   claimNextDelete,
+  clearIgConnection,
   claimNextPost,
   failStuckPosts,
+  getEncryptedCredentials,
   getEncryptedSession,
   getIgAccount,
   listLostPosts,
@@ -13,6 +15,7 @@ import {
   markPosted,
   releasePostToQueue,
   restoreAfterDeleteFailure,
+  setEncryptedCredentials,
   setEncryptedSession,
   setIgAccount,
   type ClaimedPost,
@@ -27,6 +30,10 @@ export type { ClaimedPost, LostPost }
 export type IgStore = {
   getSession(): Promise<string | null>
   saveSession(blob: string): Promise<void>
+  getCredentials(): Promise<string | null>
+  saveCredentials(blob: string): Promise<void>
+  /** Drops the session, its device ids and admin-entered credentials. */
+  clearConnection(): Promise<void>
   getAccount(): Promise<IgAccount | null>
   setAccount(account: IgAccount): Promise<void>
   claimPost(): Promise<ClaimedPost | null>
@@ -47,6 +54,9 @@ export function createIgStore(db: Database, log: Logger): IgStore {
   return {
     getSession: () => getEncryptedSession(db),
     saveSession: (blob) => setEncryptedSession(db, blob),
+    getCredentials: () => getEncryptedCredentials(db),
+    saveCredentials: (blob) => setEncryptedCredentials(db, blob),
+    clearConnection: () => clearIgConnection(db),
     getAccount: () => getIgAccount(db),
     setAccount: (account) => setIgAccount(db, account),
     claimPost: () => claimNextPost(db, log),

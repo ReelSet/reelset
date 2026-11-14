@@ -7,8 +7,9 @@ import { importSessionKey } from './crypto'
 import type { IgDeps } from './service'
 import { createIgStore } from './store'
 
+// Credentials may come from these secrets or be entered in the admin, so only the key is required.
 export function igConfigured(env: Env): boolean {
-  return Boolean(env.IG_USERNAME && env.IG_PASSWORD && env.IG_SESSION_KEY)
+  return Boolean(env.IG_SESSION_KEY)
 }
 
 export async function buildIgDeps(
@@ -17,14 +18,15 @@ export async function buildIgDeps(
   container: ContainerFetcher,
   log: Logger,
 ): Promise<IgDeps> {
-  if (!env.IG_USERNAME || !env.IG_PASSWORD || !env.IG_SESSION_KEY) {
-    throw new Error('instagram secrets are not configured')
-  }
+  if (!env.IG_SESSION_KEY) throw new Error('IG_SESSION_KEY is not configured')
   return {
     store: createIgStore(db, log),
     client: createIgContainerClient(container, log),
     key: await importSessionKey(env.IG_SESSION_KEY),
-    creds: { username: env.IG_USERNAME, password: env.IG_PASSWORD, totpSecret: env.IG_TOTP_SECRET },
+    envCreds:
+      env.IG_USERNAME && env.IG_PASSWORD
+        ? { username: env.IG_USERNAME, password: env.IG_PASSWORD, totpSecret: env.IG_TOTP_SECRET }
+        : null,
     mediaBaseUrl: (env.MEDIA_PUBLIC_BASE_URL ?? DEFAULT_MEDIA_BASE_URL).replace(/\/$/, ''),
     log,
   }

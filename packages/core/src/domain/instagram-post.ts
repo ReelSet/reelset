@@ -51,6 +51,7 @@ export const igAccountStateSchema = z.enum([
   'needs_code',
   'challenge',
   'unknown',
+  'disconnected',
 ])
 export type IgAccountState = z.infer<typeof igAccountStateSchema>
 

@@ -46,14 +46,24 @@ async function call<T>(
 export const checkInstagramAccount = (config: WorkerConfig) =>
   call<IgAccount>(config, 'status', {}, WORKER_TIMEOUT_MS.status, igAccountSchema)
 
-export const connectInstagramAccount = (config: WorkerConfig, code?: string) =>
+export type ConnectRequest = {
+  code?: string
+  username?: string
+  password?: string
+  totpSecret?: string
+}
+
+export const connectInstagramAccount = (config: WorkerConfig, request: ConnectRequest = {}) =>
   call<IgAccount>(
     config,
     'connect',
-    code ? { code } : {},
+    Object.fromEntries(Object.entries(request).filter(([, v]) => v)),
     WORKER_TIMEOUT_MS.connect,
     igAccountSchema,
   )
+
+export const disconnectInstagramAccount = (config: WorkerConfig) =>
+  call<IgAccount>(config, 'disconnect', {}, WORKER_TIMEOUT_MS.status, igAccountSchema)
 
 export const kickInstagramQueue = (config: WorkerConfig) =>
   call(config, 'run', {}, WORKER_TIMEOUT_MS.run, z.object({ accepted: z.boolean() }))
