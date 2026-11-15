@@ -1,4 +1,5 @@
 import { ArrowUpRightIcon } from '@/components/ui/icons'
+import { LocalTime } from '@/components/ui/LocalTime'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { topicPath, topicSlug } from '@/lib/reel-url'
 import { hostOf, topicLabel } from '@/lib/seo/site'
@@ -9,15 +10,6 @@ type Props = { reel: ReelPageData; idPrefix?: string }
 const heading = 'text-[11px] font-medium uppercase tracking-[0.12em] text-faint'
 const link = 'underline decoration-white/20 underline-offset-2 transition hover:text-fg'
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
 export function ReelHeader({ reel, as: Title = 'h1' }: { reel: ReelPageData; as?: 'h1' | 'h2' }) {
   const lead = reel.mentions[0]?.source
   return (
@@ -26,7 +18,7 @@ export function ReelHeader({ reel, as: Title = 'h1' }: { reel: ReelPageData; as?
         {lead && <SourceDot source={lead} />}
         {lead ? sourceMeta(lead).label : 'Reel'}
         <span aria-hidden>·</span>
-        <time dateTime={reel.publishedAt}>{formatDate(reel.publishedAt)}</time>
+        <LocalTime value={reel.publishedAt} />
       </p>
       <Title className="mt-2 text-lg font-semibold leading-snug tracking-tight text-fg [overflow-wrap:anywhere]">
         {reel.title}

@@ -1,6 +1,7 @@
 import Link from 'next/link'
+import { isLostLookupPending } from '@reelset/core'
 import { Ago } from '@/components/admin/pipeline/Elapsed'
-import { cancelPostAction, deletePostAction } from '@/app/admin/instagram/actions'
+import { cancelPostAction, deletePostAction, retryPostAction } from '@/app/admin/instagram/actions'
 import { postBadge } from '@/lib/instagram/status'
 import { ConfirmForm } from './ConfirmForm'
 import { ArrowUpRightIcon } from '@/components/ui/icons'
@@ -15,6 +16,7 @@ export type QueueRow = {
   created_at: Date | string
   posted_at: Date | string | null
   delete_requested_at: Date | string | null
+  started_at?: Date | string | null
   etaAt?: Date | null
 }
 
@@ -37,6 +39,9 @@ export function QueueList({
   return (
     <ul className="overflow-hidden rounded-md border border-line bg-surface">
       {rows.map((row) => {
+        const lookupPending =
+          row.status === 'failed' &&
+          isLostLookupPending(row.error, row.started_at ? new Date(row.started_at) : null, now)
         const badge = postBadge(row.status, row.delete_requested_at !== null)
         return (
           <li
@@ -89,6 +94,24 @@ export function QueueList({
                   pendingLabel="Cancelling"
                 >
                   <p className="text-[13px] text-muted">{row.title} will not be posted.</p>
+                </ConfirmForm>
+              ) : null}
+              {lookupPending ? (
+                <span className="text-xs text-muted">Checking Instagram…</span>
+              ) : null}
+              {row.status === 'failed' && !lookupPending ? (
+                <ConfirmForm
+                  action={retryPostAction}
+                  fields={{ postId: row.id, returnTo }}
+                  triggerLabel="Retry"
+                  title="Retry this post?"
+                  confirmLabel="Queue again"
+                  pendingLabel="Queuing"
+                >
+                  <p className="text-[13px] text-muted">
+                    &ldquo;{row.title}&rdquo; goes back in the queue and posts within about 5
+                    minutes. Instagram may be reviewing the account, so retry one at a time.
+                  </p>
                 </ConfirmForm>
               ) : null}
               {row.status === 'posted' && !row.delete_requested_at ? (

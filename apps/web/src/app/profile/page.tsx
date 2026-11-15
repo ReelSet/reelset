@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { ApiKeys } from '@/components/profile/ApiKeys'
 import { CreditsCard } from '@/components/profile/CreditsCard'
+import { TimeZoneProvider } from '@/components/ui/TimeZoneContext'
+import { formatInZone } from '@/lib/time/zone'
+import { viewerTimeZone } from '@/server/timezone'
 import { EditProfile } from '@/components/profile/EditProfile'
 import { ProfileLibrary } from '@/components/profile/ProfileLibrary'
 import { ProfileSources } from '@/components/profile/ProfileSources'
@@ -44,14 +47,9 @@ export default async function ProfilePage() {
   const viewer = await getViewer()
   if (!viewer) redirect(buildLoginUrl('/profile'))
   const { user, identity } = viewer
+  const tz = await viewerTimeZone()
   const profile = await profileSummary(getDb(), user.id, mediaBaseUrl())
-  const since = profile.memberSince
-    ? new Date(profile.memberSince).toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'UTC',
-      })
-    : null
+  const since = profile.memberSince ? formatInZone(profile.memberSince, tz, 'month-year') : null
 
   return (
     <div className="mx-auto w-full max-w-2xl px-5 pb-20">
@@ -111,7 +109,9 @@ export default async function ProfilePage() {
         hint="Turn any link into a reel. Free credits refill on the 1st of every month."
         delay={210}
       >
-        <CreditsCard />
+        <TimeZoneProvider value={tz}>
+          <CreditsCard />
+        </TimeZoneProvider>
       </Section>
 
       <section

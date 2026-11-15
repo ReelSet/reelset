@@ -1,8 +1,7 @@
-export function fmtDate(value: Date | string | null | undefined): string {
-  if (!value) return '-'
-  const d = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(d.getTime())) return '-'
-  return d.toISOString().slice(0, 19).replace('T', ' ')
+import { formatInZone } from '@/lib/time/zone'
+
+export function fmtDate(value: Date | string | null | undefined, tz: string): string {
+  return formatInZone(value, tz, 'datetime-seconds')
 }
 
 export function fmtMs(ms: number | null | undefined): string {

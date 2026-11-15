@@ -10,6 +10,9 @@ export const INSTAGRAM_POSTING_STUCK_MINUTES = 10
 // A lost post (worker died mid-upload) is looked up on Instagram for this long before giving up.
 export const INSTAGRAM_LOST_RECHECK_DAYS = 3
 export const INSTAGRAM_LOST_ERROR = 'No result recorded; checking Instagram for the reel'
+// Written by failStuckPosts before the Instagram lookup existed.
+export const LEGACY_INSTAGRAM_LOST_ERROR =
+  'No result recorded; check Instagram before queueing it again'
 export const INSTAGRAM_NOT_FOUND_ERROR =
   'Upload result was lost and the reel is not on Instagram; safe to queue it again'
 
@@ -22,9 +25,20 @@ const TRANSITIONS: Record<InstagramPostStatus, readonly InstagramPostStatus[]> =
   posting: [S.posted, S.failed, S.queued],
   posted: [S.deleting],
   deleting: [S.deleted, S.posted],
-  // A lost upload that turns out to be live on Instagram.
-  failed: [S.deleted, S.posted],
+  // A failed post is retried by an admin, or found live by the lost-upload lookup.
+  failed: [S.queued, S.deleted, S.posted],
   deleted: [],
+}
+
+/** True while a failed post may still turn up live on Instagram, so queueing it again could double-post. */
+export function isLostLookupPending(
+  error: string | null,
+  startedAt: Date | null,
+  now: Date,
+): boolean {
+  if (error !== INSTAGRAM_LOST_ERROR && error !== LEGACY_INSTAGRAM_LOST_ERROR) return false
+  if (!startedAt) return false
+  return startedAt.getTime() > now.getTime() - INSTAGRAM_LOST_RECHECK_DAYS * 86_400_000
 }
 
 export class InvalidInstagramTransitionError extends Error {

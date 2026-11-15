@@ -25,6 +25,8 @@ import {
 } from '@/components/admin/ui'
 import { retryTaskAction } from '@/app/admin/actions'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { zoneHint } from '@/lib/time/zone'
 import {
   RUN_SORT_KEYS,
   TASK_SORT_KEYS,
@@ -40,7 +42,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 const RUN_DEFAULT: SortState<RunSortKey> = { key: 'started', dir: 'desc' }
 const RUN_COLUMNS: SortColumn<RunSortKey>[] = [
-  { key: 'started', label: 'Started (UTC)' },
+  { key: 'started', label: 'Started' },
   { key: 'mode', label: 'Mode', firstDir: 'asc' },
   { key: 'status', label: 'Status', firstDir: 'asc' },
   { key: 'duration', label: 'Duration' },
@@ -63,6 +65,7 @@ const TASK_COLUMNS: SortColumn<TaskSortKey>[] = [
 
 export default async function IngestPage({ searchParams }: Props) {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const sp = await searchParams
   const db = getDb()
   const page = parsePage(sp.page, 20)
@@ -104,7 +107,7 @@ export default async function IngestPage({ searchParams }: Props) {
 
   return (
     <div>
-      <PageTitle title="Ingest runs" />
+      <PageTitle title="Ingest runs" hint={zoneHint(tz)} />
       <Flash value={sp.flash} />
       <Section title="Ingest runs">
         {runs.rows.length === 0 ? (
@@ -127,7 +130,7 @@ export default async function IngestPage({ searchParams }: Props) {
                       <Link
                         href={pageHref('/admin/ingest', { ...runPageParams, run: r.id }, page.page)}
                       >
-                        {fmtDate(r.started_at)}
+                        {fmtDate(r.started_at, tz)}
                       </Link>
                     </td>
                     <td className={td}>{r.mode}</td>

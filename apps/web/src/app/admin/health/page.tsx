@@ -1,6 +1,8 @@
 import { fmtDate, fmtPct, truncate } from '@/lib/admin/format'
 import { PageTitle, Empty, Section, Table, td, th } from '@/components/admin/ui'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { zoneHint } from '@/lib/time/zone'
 import {
   renderFailureLastHour,
   sourceHealth,
@@ -13,6 +15,7 @@ import { getDb } from '@/server/db'
 
 export default async function HealthPage() {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const db = getDb()
   const [health, youtube, transcripts, renders, tts] = await Promise.all([
     sourceHealth(db),
@@ -24,7 +27,7 @@ export default async function HealthPage() {
 
   return (
     <div>
-      <PageTitle title="Source health" />
+      <PageTitle title="Source health" hint={zoneHint(tz)} />
       <Section title="Signals">
         <Table>
           <thead>
@@ -39,10 +42,10 @@ export default async function HealthPage() {
             <tr>
               <td className={td}>
                 {youtube.status
-                  ? `${youtube.status}, ${fmtDate(youtube.at)}, fetched ${youtube.fetched}`
+                  ? `${youtube.status}, ${fmtDate(youtube.at, tz)}, fetched ${youtube.fetched}`
                   : 'no youtube task yet'}
                 <div className="text-xs text-faint">
-                  youtube_search_failing alert last sent: {fmtDate(youtube.alertLastSentAt)}
+                  youtube_search_failing alert last sent: {fmtDate(youtube.alertLastSentAt, tz)}
                 </div>
                 {youtube.error ? (
                   <div className="text-xs text-danger">{truncate(youtube.error, 160)}</div>
@@ -71,7 +74,7 @@ export default async function HealthPage() {
             <thead>
               <tr>
                 <th className={th}>Source</th>
-                <th className={th}>Last ok task (UTC)</th>
+                <th className={th}>Last ok task</th>
                 <th className={th}>Last failed task</th>
                 <th className={th}>Tasks</th>
                 <th className={th}>Last error</th>
@@ -81,8 +84,8 @@ export default async function HealthPage() {
               {health.sources.map((s) => (
                 <tr key={s.source}>
                   <td className={td}>{s.source}</td>
-                  <td className={td}>{fmtDate(s.lastOkAt)}</td>
-                  <td className={td}>{fmtDate(s.lastFailedAt)}</td>
+                  <td className={td}>{fmtDate(s.lastOkAt, tz)}</td>
+                  <td className={td}>{fmtDate(s.lastFailedAt, tz)}</td>
                   <td className={td}>{s.tasks24h}</td>
                   <td className={`${td} text-danger`}>{truncate(s.lastError, 200)}</td>
                 </tr>
@@ -114,10 +117,10 @@ export default async function HealthPage() {
                   <td className={td}>{w.source}</td>
                   <td className={td}>{truncate(w.scope, 40)}</td>
                   <td className={td}>{w.lane}</td>
-                  <td className={td}>{fmtDate(w.newest_at)}</td>
-                  <td className={td}>{fmtDate(w.oldest_at)}</td>
+                  <td className={td}>{fmtDate(w.newest_at, tz)}</td>
+                  <td className={td}>{fmtDate(w.oldest_at, tz)}</td>
                   <td className={td}>{w.backfill_complete ? 'yes' : 'no'}</td>
-                  <td className={td}>{fmtDate(w.updated_at)}</td>
+                  <td className={td}>{fmtDate(w.updated_at, tz)}</td>
                 </tr>
               ))}
             </tbody>

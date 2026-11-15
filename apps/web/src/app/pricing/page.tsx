@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { Faq, Hero, Accent, SectionTitle, SiteFooter } from '@/components/marketing/blocks'
 import { PricingCards } from '@/components/marketing/PricingCards'
+import { formatInZone, nextUtcMonthStart } from '@/lib/time/zone'
 import { getOptionalUser } from '@/server/auth'
+import { viewerTimeZone } from '@/server/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,14 +17,14 @@ export const metadata: Metadata = {
   openGraph: { title: 'Pricing | Reelset', description: DESCRIPTION, url: '/pricing' },
 }
 
-const FAQ = [
+const faqItems = (tz: string) => [
   {
     q: 'What is a credit?',
     a: 'Credits pay for reels you make from your own links. One reel costs 100 credits, so the free 1,000 covers about 10 reels a month. Watching the feed is always free.',
   },
   {
     q: 'When do credits reset?',
-    a: 'On the 1st of every month at 00:00 UTC you get a fresh 1,000. Unused credits do not roll over.',
+    a: `On the 1st of every month at 00:00 UTC (${formatInZone(nextUtcMonthStart(), tz, 'time')} your time) you get a fresh 1,000. Unused credits do not roll over.`,
   },
   {
     q: 'Can I get more credits?',
@@ -44,6 +46,7 @@ const FAQ = [
 
 export default async function PricingPage() {
   const user = await getOptionalUser().catch(() => null)
+  const tz = await viewerTimeZone()
   return (
     <main className="pb-10">
       <Hero
@@ -58,7 +61,7 @@ export default async function PricingPage() {
       <PricingCards signedIn={Boolean(user)} />
       <section className="mx-auto w-full max-w-2xl px-5 py-14">
         <SectionTitle kicker="FAQ" title="Good questions" />
-        <Faq items={FAQ} />
+        <Faq items={faqItems(tz)} />
       </section>
       <SiteFooter />
     </main>

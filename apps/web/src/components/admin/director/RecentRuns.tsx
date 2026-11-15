@@ -10,7 +10,7 @@ function Outcome({ run }: { run: DirectorRun }) {
   return <span className="text-warn">fallback{fallbackReason ? ` (${fallbackReason})` : ''}</span>
 }
 
-function Row({ run }: { run: DirectorRun }) {
+function Row({ run, tz }: { run: DirectorRun; tz: string }) {
   const d = run.director
   const cost = directorRunCostUsd(d)
   const tokens = d.inputTokens + d.cacheReadTokens + d.cacheWriteTokens
@@ -19,7 +19,7 @@ function Row({ run }: { run: DirectorRun }) {
       <td className={td}>
         <Link href={`/admin?item=${run.itemId}`}>{truncate(run.title, 50)}</Link>
       </td>
-      <td className={`${td} whitespace-nowrap`}>{fmtDate(run.at)}</td>
+      <td className={`${td} whitespace-nowrap`}>{fmtDate(run.at, tz)}</td>
       <td className={td}>
         <Outcome run={run} />
       </td>
@@ -39,14 +39,14 @@ function Row({ run }: { run: DirectorRun }) {
   )
 }
 
-export function RecentRuns({ runs }: { runs: DirectorRun[] }) {
+export function RecentRuns({ runs, tz }: { runs: DirectorRun[]; tz: string }) {
   if (runs.length === 0) return <Empty>No renders have reported a director run yet</Empty>
   return (
     <Table>
       <thead>
         <tr>
           <th className={th}>Item</th>
-          <th className={th}>When (UTC)</th>
+          <th className={th}>When</th>
           <th className={th}>Result</th>
           <th className={th}>Scenes</th>
           <th className={th}>Scene errors</th>
@@ -58,7 +58,7 @@ export function RecentRuns({ runs }: { runs: DirectorRun[] }) {
       </thead>
       <tbody>
         {runs.map((run) => (
-          <Row key={run.renderId} run={run} />
+          <Row key={run.renderId} run={run} tz={tz} />
         ))}
       </tbody>
     </Table>

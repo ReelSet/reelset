@@ -3,6 +3,8 @@ import { fmtPct, fmtUsd } from '@/lib/admin/format'
 import { capUsage, splitSpend } from '@/lib/admin/spend'
 import { PageTitle, Section, Stat, Table, td, th } from '@/components/admin/ui'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { utcDayResetHint } from '@/lib/time/zone'
 import { spendLedger } from '@/server/admin/queries'
 import { getDb } from '@/server/db'
 import { routeLog } from '@/server/logger'
@@ -19,6 +21,7 @@ const color = (c: string) => COLORS[c] ?? '#a1a1aa'
 
 export default async function SpendPage() {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const db = getDb()
   const log = routeLog('admin/spend')
   const [days, pipelineCap, askCap] = await Promise.all([
@@ -34,7 +37,7 @@ export default async function SpendPage() {
 
   return (
     <div>
-      <PageTitle title="Spend" hint="Daily cost by category, UTC." />
+      <PageTitle title="Spend" hint={`Daily cost by category. ${utcDayResetHint(tz)}`} />
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Pipeline today" value={fmtUsd(todaySplit.pipelineUsd)} />
         <Stat label="Pipeline cap" value={fmtUsd(pipelineCap)} />

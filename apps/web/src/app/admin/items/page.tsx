@@ -24,6 +24,8 @@ import {
 } from '@/components/admin/ui'
 import { SourceDot } from '@/components/ui/sources'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { zoneHint } from '@/lib/time/zone'
 import { ITEM_SORT_KEYS, listItems, type ItemSortKey } from '@/server/admin/queries'
 import { getDb } from '@/server/db'
 
@@ -42,12 +44,13 @@ const COLUMNS: SortColumn<ItemSortKey>[] = [
   { key: 'views', label: 'Views' },
   { key: 'likes', label: 'Likes' },
   { key: 'attempts', label: 'Attempts' },
-  { key: 'changed', label: 'Changed (UTC)' },
+  { key: 'changed', label: 'Changed' },
 ]
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 
 export default async function ItemsPage({ searchParams }: Props) {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const sp = await searchParams
   const page = parsePage(sp.page, 30)
   const source = SOURCES.find((s) => s === first(sp.source)) ?? null
@@ -76,7 +79,7 @@ export default async function ItemsPage({ searchParams }: Props) {
     <div>
       <PageTitle
         title="Items"
-        hint="Every item the pipeline has seen. Select one to open its timeline."
+        hint={`Every item the pipeline has seen. Select one to open its timeline. ${zoneHint(tz)}`}
       />
       <div className="mb-5 flex flex-col gap-3">
         <form method="get" action="/admin/items" className="flex gap-2">
@@ -156,7 +159,7 @@ export default async function ItemsPage({ searchParams }: Props) {
                   <td className={`${td} tabular-nums`}>{Number(i.like_count)}</td>
                   <td className={`${td} tabular-nums`}>{i.attempts}</td>
                   <td className={`${td} whitespace-nowrap text-muted`}>
-                    {fmtDate(i.status_changed_at)}
+                    {fmtDate(i.status_changed_at, tz)}
                   </td>
                 </tr>
               ))}

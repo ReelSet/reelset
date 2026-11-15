@@ -12,7 +12,12 @@ import {
 } from '@/lib/instagram/worker-client'
 import { getDb } from '@/server/db'
 import { runAdminAction } from '@/server/admin/run'
-import { cancelQueuedPost, queueInstagramPost, requestPostDelete } from '@/server/admin/instagram'
+import {
+  cancelQueuedPost,
+  queueInstagramPost,
+  requestPostDelete,
+  retryFailedPost,
+} from '@/server/admin/instagram'
 
 const postIdSchema = z.guid()
 const NO_WORKER = {
@@ -32,6 +37,17 @@ export async function queuePostAction(formData: FormData): Promise<void> {
       },
       log,
     )
+    const worker = workerConfigFromEnv()
+    if (result.ok && worker) await kickInstagramQueue(worker)
+    return result
+  })
+}
+
+export async function retryPostAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'instagram-retry', async ({ log }) => {
+    const id = postIdSchema.safeParse(formData.get('postId'))
+    if (!id.success) return { ok: false, message: 'Invalid post id' }
+    const result = await retryFailedPost(getDb(), { postId: id.data }, log)
     const worker = workerConfigFromEnv()
     if (result.ok && worker) await kickInstagramQueue(worker)
     return result

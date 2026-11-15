@@ -1,4 +1,5 @@
 import { CheckIcon, CloseIcon } from '@/components/ui/icons'
+import { useTimeZone } from '@/components/ui/TimeZoneContext'
 import type { GenerateStep, ReelRequestDto } from '@/lib/generate/types'
 import { clock } from './format'
 
@@ -70,11 +71,12 @@ export function CompactStepper({ request }: { request: ReelRequestDto }) {
 export function BigStepper({ request }: { request: ReelRequestDto }) {
   const { steps } = request
   const wait = waitingText(request)
+  const tz = useTimeZone()
   return (
     <ol className="relative" aria-label="Progress">
       {steps.map((s, i) => {
         const last = i === steps.length - 1
-        const at = clock(s.at)
+        const at = clock(s.at, tz)
         return (
           <li key={s.key} className="relative flex gap-4 pb-7 last:pb-0">
             {!last && (

@@ -14,6 +14,8 @@ import {
 } from '@/lib/admin/capacity'
 import { Empty, PageTitle, Section, Stat, Table, td, th } from '@/components/admin/ui'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { formatInZone, utcDayResetHint } from '@/lib/time/zone'
 import { CAPACITY_DAYS, capacitySnapshot, type HourlyCpu } from '@/server/admin/capacity-queries'
 import { getDb } from '@/server/db'
 import { routeLog } from '@/server/logger'
@@ -202,10 +204,12 @@ function CpuChart({
   boxes,
   hours,
   hourly,
+  tz,
 }: {
   boxes: string[]
   hours: string[]
   hourly: HourlyCpu[]
+  tz: string
 }) {
   if (hourly.length === 0) return <Empty>No box samples yet</Empty>
   const byKey = new Map(hourly.map((r) => [`${r.box}|${r.hour.toISOString()}`, r.cpu]))
@@ -225,9 +229,9 @@ function CpuChart({
         }))}
       />
       <div className="mt-2 flex justify-between text-[11px] text-faint">
-        <span>{hours[0]?.slice(5, 16).replace('T', ' ')} UTC</span>
+        <span>{formatInZone(hours[0], tz)}</span>
         <span>CPU %</span>
-        <span>{hours[hours.length - 1]?.slice(5, 16).replace('T', ' ')} UTC</span>
+        <span>{formatInZone(hours[hours.length - 1], tz)}</span>
       </div>
     </div>
   )
@@ -235,6 +239,7 @@ function CpuChart({
 
 export default async function CapacityPage() {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const db = getDb()
   const log = routeLog('admin/capacity')
   const snap = await capacitySnapshot(db, log)
@@ -269,7 +274,7 @@ export default async function CapacityPage() {
     <div>
       <PageTitle
         title="Capacity"
-        hint="Render throughput of the boxes against the daily cap, UTC. Capacity is what the online boxes could have rendered at the day's average render time."
+        hint={`Render throughput of the boxes against the daily cap. Capacity is what the online boxes could have rendered at the day's average render time. ${utcDayResetHint(tz, now)}`}
       />
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat
@@ -342,7 +347,7 @@ export default async function CapacityPage() {
             )
           })}
         </div>
-        <CpuChart boxes={boxes} hours={hours} hourly={snap.hourlyCpu} />
+        <CpuChart boxes={boxes} hours={hours} hourly={snap.hourlyCpu} tz={tz} />
       </Section>
 
       <Section title="Boxes">
@@ -428,7 +433,7 @@ export default async function CapacityPage() {
             ))}
           </tbody>
         </Table>
-        <p className="mt-2 text-xs text-faint">Today is {dayKey(now)}, counted up to now.</p>
+        <p className="mt-2 text-xs text-faint">Today is {dayKey(now)} (UTC), counted up to now.</p>
       </Section>
     </div>
   )

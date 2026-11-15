@@ -6,6 +6,10 @@ import {
   queuedPostEtas,
   canTransitionPost,
   gapRemainingMs,
+  isLostLookupPending,
+  INSTAGRAM_LOST_ERROR,
+  INSTAGRAM_NOT_FOUND_ERROR,
+  INSTAGRAM_LOST_RECHECK_DAYS,
 } from './instagram-post'
 
 describe('instagram post state machine', () => {
@@ -16,8 +20,8 @@ describe('instagram post state machine', () => {
     expect(canTransitionPost(S.deleting, S.deleted)).toBe(true)
   })
 
-  it('never re-queues a failed post and never skips posting', () => {
-    expect(canTransitionPost(S.failed, S.queued)).toBe(false)
+  it('lets an admin re-queue a failed post but never skips posting', () => {
+    expect(canTransitionPost(S.failed, S.queued)).toBe(true)
     expect(canTransitionPost(S.queued, S.posted)).toBe(false)
     expect(canTransitionPost(S.posted, S.queued)).toBe(false)
     expect(canTransitionPost(S.deleted, S.queued)).toBe(false)
@@ -60,5 +64,30 @@ describe('queuedPostEtas', () => {
       new Date('2026-11-11T04:10:00Z'),
       new Date('2026-11-11T04:20:00Z'),
     ])
+  })
+})
+
+describe('isLostLookupPending', () => {
+  const now = new Date('2026-11-15T12:00:00Z')
+  const ago = (days: number) => new Date(now.getTime() - days * 86_400_000)
+
+  it('is pending inside the recheck window', () => {
+    expect(isLostLookupPending(INSTAGRAM_LOST_ERROR, ago(1), now)).toBe(true)
+  })
+
+  it('is retryable once the window has passed', () => {
+    expect(
+      isLostLookupPending(INSTAGRAM_LOST_ERROR, ago(INSTAGRAM_LOST_RECHECK_DAYS + 0.1), now),
+    ).toBe(false)
+  })
+
+  it('is retryable when the lookup found nothing, held rows and unknown errors', () => {
+    expect(isLostLookupPending(INSTAGRAM_NOT_FOUND_ERROR, ago(0), now)).toBe(false)
+    expect(isLostLookupPending('Held: auto-post was turned off', ago(0), now)).toBe(false)
+    expect(isLostLookupPending(null, null, now)).toBe(false)
+  })
+
+  it('never looks up a lost row without a start time', () => {
+    expect(isLostLookupPending(INSTAGRAM_LOST_ERROR, null, now)).toBe(false)
   })
 })

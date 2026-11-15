@@ -28,6 +28,8 @@ import {
 } from '@/components/admin/ui'
 import { retryRenderAction } from '@/app/admin/actions'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { zoneHint } from '@/lib/time/zone'
 import { RENDER_SORT_KEYS, renderRows, type RenderSortKey } from '@/server/admin/queries'
 import { getDb } from '@/server/db'
 
@@ -36,7 +38,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 const STATUSES = Object.values(RenderStatus)
 const DEFAULT_SORT: SortState<RenderSortKey> = { key: 'created', dir: 'desc' }
 const COLUMNS: SortColumn<RenderSortKey>[] = [
-  { key: 'created', label: 'Created (UTC)' },
+  { key: 'created', label: 'Created' },
   { key: 'title', label: 'Item', firstDir: 'asc' },
   { key: 'item_status', label: 'Item status', firstDir: 'asc' },
   { key: 'status', label: 'Render', firstDir: 'asc' },
@@ -48,6 +50,7 @@ const COLUMNS: SortColumn<RenderSortKey>[] = [
 
 export default async function RendersPage({ searchParams }: Props) {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const sp = await searchParams
   const page = parsePage(sp.page, 20)
   const rawStatus = Array.isArray(sp.status) ? sp.status[0] : sp.status
@@ -68,7 +71,7 @@ export default async function RendersPage({ searchParams }: Props) {
 
   return (
     <div>
-      <PageTitle title="Renders" />
+      <PageTitle title="Renders" hint={zoneHint(tz)} />
       <Flash value={sp.flash} />
       <Section title="Renders">
         <div className="mb-3">
@@ -113,7 +116,7 @@ export default async function RendersPage({ searchParams }: Props) {
                   const url = base ? mediaUrl(base, r.video_key) : null
                   return (
                     <tr key={r.id}>
-                      <td className={td}>{fmtDate(r.created_at)}</td>
+                      <td className={td}>{fmtDate(r.created_at, tz)}</td>
                       <td className={td}>
                         <Link href={`/admin?item=${r.item_id}`}>{truncate(r.title, 60)}</Link>
                       </td>

@@ -264,8 +264,9 @@ describe('health', () => {
 
 describe('format', () => {
   it('formats values', () => {
-    expect(fmtDate(new Date('2026-11-09T01:02:03.456Z'))).toBe('2026-11-09 01:02:03')
-    expect(fmtDate(null)).toBe('-')
+    expect(fmtDate(new Date('2026-11-09T01:02:03.456Z'), 'UTC')).toBe('9 Nov, 01:02:03')
+    expect(fmtDate(new Date('2026-11-09T01:02:03.456Z'), 'Asia/Kolkata')).toBe('9 Nov, 06:32:03')
+    expect(fmtDate(null, 'UTC')).toBe('-')
     expect(fmtMs(850)).toBe('850 ms')
     expect(fmtMs(1500)).toBe('1.5 s')
     expect(fmtMs(125_000)).toBe('2m 5s')

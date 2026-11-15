@@ -3,11 +3,13 @@
 import { useId, useRef, useState } from 'react'
 import { ArrowRightIcon, CloseIcon, SparkleIcon } from '@/components/ui/icons'
 import { SourceDot } from '@/components/ui/sources'
+import { useTimeZone } from '@/components/ui/TimeZoneContext'
 import { MAX_URLS_PER_REQUEST } from '@/lib/generate/types'
 import type { CreditsDto, ReelRequestDto } from '@/lib/generate/types'
 import { ApiFailure, generate } from './api'
 import { detectSource, displayUrl, normalizeUrl } from './detect'
 import { CreditsPill } from './CreditsPill'
+import { resetsLabel } from './format'
 import { RequestCredits } from './RequestCredits'
 
 type Props = {
@@ -23,6 +25,7 @@ export function Composer({ credits, onCreated }: Props) {
   const [pending, setPending] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
   const id = useId()
+  const tz = useTimeZone()
 
   const outOfCredits = credits ? !credits.unlimited && credits.balance < credits.cost : false
 
@@ -206,8 +209,8 @@ export function Composer({ credits, onCreated }: Props) {
           >
             <p className="font-medium text-warn">You are out of credits for this month.</p>
             <p className="mt-1 text-muted">
-              Free credits come back on the 1st (UTC). Need more sooner? Tell us what you are
-              making.
+              Free credits come back on {credits ? resetsLabel(credits.resetsAt, tz) : 'the 1st'}.
+              Need more sooner? Tell us what you are making.
             </p>
             <div className="mt-3">
               <RequestCredits variant="solid" label="Request more credits" />

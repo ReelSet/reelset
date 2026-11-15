@@ -21,6 +21,8 @@ import {
   th,
 } from '@/components/admin/ui'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { zoneHint } from '@/lib/time/zone'
 import { ASK_SORT_KEYS, askLog, type AskSortKey } from '@/server/admin/queries'
 import { getDb } from '@/server/db'
 
@@ -29,7 +31,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 const OUTCOMES = Object.values(AskOutcome)
 const DEFAULT_SORT: SortState<AskSortKey> = { key: 'when', dir: 'desc' }
 const COLUMNS: SortColumn<AskSortKey>[] = [
-  { key: 'when', label: 'When (UTC)' },
+  { key: 'when', label: 'When' },
   { key: 'outcome', label: 'Outcome', firstDir: 'asc' },
   { key: 'latency', label: 'Latency' },
   { key: 'question', label: 'Question', firstDir: 'asc' },
@@ -39,6 +41,7 @@ const COLUMNS: SortColumn<AskSortKey>[] = [
 
 export default async function AskLogPage({ searchParams }: Props) {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const sp = await searchParams
   const page = parsePage(sp.page, 25)
   const rawOutcome = Array.isArray(sp.outcome) ? sp.outcome[0] : sp.outcome
@@ -57,7 +60,10 @@ export default async function AskLogPage({ searchParams }: Props) {
 
   return (
     <div>
-      <PageTitle title="Ask log" hint="Questions asked through /ask and how they resolved." />
+      <PageTitle
+        title="Ask log"
+        hint={`Questions asked through /ask and how they resolved. ${zoneHint(tz)}`}
+      />
       <Section title="Recent questions">
         <div className="mb-3">
           <Chips
@@ -97,7 +103,7 @@ export default async function AskLogPage({ searchParams }: Props) {
               <tbody>
                 {log.rows.map((q) => (
                   <tr key={q.id}>
-                    <td className={td}>{fmtDate(q.created_at)}</td>
+                    <td className={td}>{fmtDate(q.created_at, tz)}</td>
                     <td className={td}>
                       <Status value={q.outcome} />
                     </td>

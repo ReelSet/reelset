@@ -8,7 +8,9 @@ import {
   INSTAGRAM_LOST_RECHECK_DAYS,
   INSTAGRAM_NOT_FOUND_ERROR,
   INSTAGRAM_POSTING_STUCK_MINUTES,
+  LEGACY_INSTAGRAM_LOST_ERROR as LEGACY_LOST_ERROR,
   assertPostTransition,
+  isLostLookupPending,
   igAccountSchema,
   type IgAccount,
 } from '../domain/instagram-post'
@@ -154,9 +156,6 @@ export async function listRecentMediaPks(db: Database): Promise<string[]> {
   return rows.map((r) => r.media_pk).filter((pk): pk is string => !!pk)
 }
 
-// Written by failStuckPosts before the Instagram lookup existed.
-const LEGACY_LOST_ERROR = 'No result recorded; check Instagram before queueing it again'
-
 export const markLostFound = (
   db: Database,
   id: string,
@@ -178,6 +177,69 @@ export async function markLostNotFound(db: Database, id: string): Promise<boolea
     .where('error', 'in', [INSTAGRAM_LOST_ERROR, LEGACY_LOST_ERROR])
     .executeTakeFirst()
   return Number(res.numUpdatedRows) === 1
+}
+
+export type RetryPostResult =
+  | { changed: true }
+  | {
+      changed: false
+      reason: 'not_found' | 'not_failed' | 'still_checking' | 'already_live_or_queued'
+    }
+
+const LIVE_STATUSES = [S.queued, S.posting, S.posted, S.deleting]
+const UNIQUE_VIOLATION_CODE = '23505'
+
+async function whyNotRetryable(db: Database, id: string): Promise<RetryPostResult> {
+  const row = await db
+    .selectFrom('instagram_post')
+    .select(['item_id', 'status', 'error', 'started_at'])
+    .where('id', '=', id)
+    .executeTakeFirst()
+  if (!row) return { changed: false, reason: 'not_found' }
+  if (row.status !== S.failed) return { changed: false, reason: 'not_failed' }
+  const startedAt = row.started_at ? new Date(row.started_at as Date) : null
+  if (isLostLookupPending(row.error, startedAt, new Date())) {
+    return { changed: false, reason: 'still_checking' }
+  }
+  const live = await db
+    .selectFrom('instagram_post')
+    .select('id')
+    .where('item_id', '=', row.item_id)
+    .where('id', '!=', id)
+    .where('status', 'in', LIVE_STATUSES)
+    .executeTakeFirst()
+  return { changed: false, reason: live ? 'already_live_or_queued' : 'not_failed' }
+}
+
+/** Re-queues a failed post in one statement; refuses while a lost upload is being looked up or the item has a live post. */
+export async function retryInstagramPost(db: Database, id: string): Promise<RetryPostResult> {
+  assertPostTransition(S.failed, S.queued)
+  try {
+    const res = await db
+      .updateTable('instagram_post')
+      .set({ status: S.queued, error: null, started_at: null, updated_at: sql`now()` })
+      .where('id', '=', id)
+      .where('status', '=', S.failed)
+      .where(
+        sql<boolean>`not coalesce(
+          error in (${INSTAGRAM_LOST_ERROR}, ${LEGACY_LOST_ERROR})
+            and started_at > now() - make_interval(days => ${INSTAGRAM_LOST_RECHECK_DAYS}),
+          false
+        )`,
+      )
+      .where(
+        sql<boolean>`not exists (
+          select 1 from instagram_post o where o.item_id = instagram_post.item_id
+            and o.id <> instagram_post.id and o.status in ('queued', 'posting', 'posted', 'deleting')
+        )`,
+      )
+      .executeTakeFirst()
+    if (Number(res.numUpdatedRows) === 1) return { changed: true }
+  } catch (err) {
+    if ((err as { code?: string }).code !== UNIQUE_VIOLATION_CODE) throw err
+    return { changed: false, reason: 'already_live_or_queued' }
+  }
+  return whyNotRetryable(db, id)
 }
 
 export async function getIgAccount(db: Database): Promise<IgAccount | null> {

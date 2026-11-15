@@ -8,6 +8,8 @@ import {
   getIgAccount,
   getIgCheckError,
   parseCaptionCredits,
+  retryInstagramPost,
+  type RetryPostResult,
   type Database,
   type Logger,
 } from '@reelset/core'
@@ -239,5 +241,29 @@ export async function requestPostDelete(
   return {
     ok: true,
     message: 'Delete queued. It is removed from Instagram within about 5 minutes.',
+  }
+}
+
+const RETRY_REFUSALS: Record<Extract<RetryPostResult, { changed: false }>['reason'], string> = {
+  not_found: 'This post no longer exists',
+  not_failed: 'Only a post that did not go out can be retried',
+  still_checking: 'Still checking Instagram for this reel. Retry once the check finishes.',
+  already_live_or_queued: 'This reel is already queued or posted',
+}
+
+export async function retryFailedPost(
+  db: Database,
+  input: { postId: string },
+  log: Logger,
+): Promise<CommandResult> {
+  const result = await retryInstagramPost(db, input.postId)
+  if (!result.changed) {
+    log.warn({ postId: input.postId, reason: result.reason }, 'instagram retry refused')
+    return { ok: false, message: RETRY_REFUSALS[result.reason] }
+  }
+  log.info({ postId: input.postId }, 'failed instagram post queued again')
+  return {
+    ok: true,
+    message: 'Queued again. It posts within about 5 minutes, at least 10 minutes after the last.',
   }
 }

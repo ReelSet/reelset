@@ -7,6 +7,8 @@ import { SkillsTable } from '@/components/admin/director/SkillsTable'
 import { Flash, PageTitle, Section, Stat } from '@/components/admin/ui'
 import { directorSettingFields, fmtKb, fmtTokens, promptBudget } from '@/lib/admin/director'
 import { assertAdmin } from '@/server/admin/guard'
+import { viewerTimeZone } from '@/server/timezone'
+import { zoneHint } from '@/lib/time/zone'
 import { directorSettingValues, recentDirectorRuns, skillList } from '@/server/admin/director'
 import { getDb } from '@/server/db'
 import { routeLog } from '@/server/logger'
@@ -19,6 +21,7 @@ const asText = (value: unknown): string => String(value ?? '')
 
 export default async function DirectorPage({ searchParams }: Props) {
   await assertAdmin()
+  const tz = await viewerTimeZone()
   const sp = await searchParams
   const db = getDb()
   const log = routeLog('admin/director')
@@ -97,8 +100,11 @@ export default async function DirectorPage({ searchParams }: Props) {
         />
       </Section>
 
-      <Section title="Recent director runs">
-        <RecentRuns runs={runs} />
+      <Section
+        title="Recent director runs"
+        aside={<span className="text-xs text-faint">{zoneHint(tz)}</span>}
+      >
+        <RecentRuns runs={runs} tz={tz} />
       </Section>
     </div>
   )

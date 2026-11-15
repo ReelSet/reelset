@@ -5,12 +5,14 @@ import { getCredits } from '@/components/generate/api'
 import { resetsLabel } from '@/components/generate/format'
 import { RequestCredits } from '@/components/generate/RequestCredits'
 import { BoltIcon } from '@/components/ui/icons'
+import { useTimeZone } from '@/components/ui/TimeZoneContext'
 import { Skeleton } from '@/components/ui/Skeleton'
 import type { CreditsDto } from '@/lib/generate/types'
 
 export function CreditsCard() {
   const [c, setC] = useState<CreditsDto | null>(null)
   const [failed, setFailed] = useState(false)
+  const tz = useTimeZone()
   useEffect(() => {
     getCredits()
       .then(setC)
@@ -60,7 +62,7 @@ export function CreditsCard() {
       <p className="mt-2 text-xs text-faint">
         {c.unlimited
           ? 'Admin account, no limits.'
-          : `A reel costs ${c.cost} credits. Resets ${resetsLabel(c.resetsAt)} (UTC), unused credits do not roll over.`}
+          : `A reel costs ${c.cost} credits. Resets ${resetsLabel(c.resetsAt, tz)} your time, unused credits do not roll over.`}
       </p>
       {!c.unlimited && (
         <div className="mt-4 flex flex-wrap items-start gap-3">

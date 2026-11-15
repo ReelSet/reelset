@@ -1,3 +1,5 @@
+import { formatInZone } from '@/lib/time/zone'
+
 export function timeAgo(iso: string, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000))
   if (s < 60) return 'just now'
@@ -8,17 +10,12 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return `${Math.round(h / 24)}d ago`
 }
 
-export function clock(iso: string | null): string | null {
-  if (!iso) return null
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+export function clock(iso: string | null, tz: string): string | null {
+  return iso ? formatInZone(iso, tz, 'time') : null
 }
 
-export function resetsLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
+export function resetsLabel(iso: string, tz: string): string {
+  return formatInZone(iso, tz, 'datetime')
 }
 
 export function friendlyError(error: string | null): string {

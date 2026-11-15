@@ -11,7 +11,13 @@ import {
 } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { dummyDb } from '@/test/dummy-db'
-import { composerReel, postQueue, queueInstagramPost, servedRenderQuery } from './instagram'
+import {
+  composerReel,
+  postQueue,
+  queueInstagramPost,
+  retryFailedPost,
+  servedRenderQuery,
+} from './instagram'
 
 const log = createLogger({ app: 'test', level: 'silent' })
 const ITEM_ID = '0b5d2f3e-6a1c-4e0b-9a55-1c2d3e4f5a6b'
@@ -26,7 +32,8 @@ function scriptedDb(rows: Rows) {
   const connection: DatabaseConnection = {
     async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
       queries.push(query)
-      return { rows: rows(query) as R[] }
+      const out = rows(query)
+      return { rows: out as R[], numAffectedRows: BigInt(out.length) }
     },
     streamQuery: () => {
       throw new Error('not used')
@@ -98,5 +105,34 @@ describe('queueInstagramPost', () => {
   it('refuses when the item has no finished render', async () => {
     const t = servedDb(null)
     expect(await queueInstagramPost(t.db, input, log)).toMatchObject({ ok: false })
+  })
+})
+
+describe('retryFailedPost', () => {
+  const POST_ID = '7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
+
+  it('queues a failed post again and says so', async () => {
+    const t = scriptedDb((q) => (q.sql.startsWith('update') ? [{ id: POST_ID }] : []))
+    expect(await retryFailedPost(t.db, { postId: POST_ID }, log)).toMatchObject({ ok: true })
+  })
+
+  it('explains a refusal instead of failing', async () => {
+    const t = scriptedDb((q) =>
+      q.sql.startsWith('update')
+        ? []
+        : [{ item_id: ITEM_ID, status: 'queued', error: null, started_at: null }],
+    )
+    expect(await retryFailedPost(t.db, { postId: POST_ID }, log)).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/Only a post that did not go out/),
+    })
+  })
+
+  it('reports a missing post', async () => {
+    const t = scriptedDb(() => [])
+    expect(await retryFailedPost(t.db, { postId: POST_ID }, log)).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/no longer exists/),
+    })
   })
 })
