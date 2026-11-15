@@ -120,6 +120,6 @@ describe('admin redirect paths', () => {
   it('allows nested admin pages with an id query', () => {
     const path = '/admin/director/edit?id=0b5d2f3e-6a1c-4e0b-9a55-1c2d3e4f5a6b'
     expect(safeAdminPath(path)).toBe(path)
-    expect(safeAdminPath('/admin/director/../x')).toBe('/admin')
+    expect(safeAdminPath('/admin/director/../x')).toBe('/admin/pipeline')
   })
 })

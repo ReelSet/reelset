@@ -7,6 +7,7 @@ export const CHART_COLORS = {
   ok: '#5fdc9a',
   warn: '#f5b84b',
   orange: '#ff7a29',
+  danger: '#ff6b6b',
   faint: '#71717a',
   grid: 'rgba(255, 255, 255, 0.06)',
   cursor: 'rgba(255, 255, 255, 0.28)',

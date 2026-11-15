@@ -1,13 +1,14 @@
 import Link from 'next/link'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import type { Attention } from '@/server/admin/stats'
 
 type Row = { key: keyof Attention; label: string; href: string }
 
 const ROWS: Row[] = [
-  { key: 'failedItems', label: 'failed items (24h)', href: '/admin' },
-  { key: 'failedInstagramPosts', label: 'failed Instagram posts', href: '/admin/instagram' },
-  { key: 'openUpgradeRequests', label: 'credit upgrade requests', href: '/admin/generate' },
-  { key: 'openReelRequests', label: 'open reel requests', href: '/admin/generate' },
+  { key: 'failedItems', label: 'failed items (24h)', href: ADMIN_ROUTES.pipeline },
+  { key: 'failedInstagramPosts', label: 'failed Instagram posts', href: ADMIN_ROUTES.instagram },
+  { key: 'openUpgradeRequests', label: 'credit upgrade requests', href: ADMIN_ROUTES.generate },
+  { key: 'openReelRequests', label: 'open reel requests', href: ADMIN_ROUTES.generate },
 ]
 
 /** Only the queues that need a human, each linking to where they are handled; quiet when empty. */

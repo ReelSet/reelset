@@ -17,12 +17,12 @@ export default function AdminError({
     <ErrorState
       className="py-20"
       title="This admin page failed to load"
-      body="A query failed or timed out. Retry, or check the Source health page."
+      body="A query failed or timed out. Retry, or check Pipeline, Sources."
       onRetry={reset}
       digest={error.digest}
     >
       <a href="/admin" className={quietBtn}>
-        Pipeline
+        Overview
       </a>
     </ErrorState>
   )

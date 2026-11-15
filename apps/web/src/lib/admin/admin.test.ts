@@ -61,14 +61,14 @@ describe('retry helpers', () => {
     expect(safeAdminPath('/admin/renders?status=failed&page=2')).toBe(
       '/admin/renders?status=failed&page=2',
     )
-    expect(safeAdminPath('https://evil.test')).toBe('/admin')
-    expect(safeAdminPath('//evil.test')).toBe('/admin')
-    expect(safeAdminPath('/admin/../x')).toBe('/admin')
-    expect(safeAdminPath(undefined)).toBe('/admin')
+    expect(safeAdminPath('https://evil.test')).toBe('/admin/pipeline')
+    expect(safeAdminPath('//evil.test')).toBe('/admin/pipeline')
+    expect(safeAdminPath('/admin/../x')).toBe('/admin/pipeline')
+    expect(safeAdminPath(undefined)).toBe('/admin/pipeline')
   })
 
   it('round-trips flash messages', () => {
-    const url = withFlash('/admin?item=abc', 'error', 'item moved: not failed')
+    const url = withFlash('/admin/pipeline?item=abc', 'error', 'item moved: not failed')
     const flash = new URL(url, 'http://x').searchParams.get('flash')
     expect(new URL(url, 'http://x').searchParams.get('item')).toBe('abc')
     expect(parseFlash(flash ?? undefined)).toEqual({

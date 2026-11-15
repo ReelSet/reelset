@@ -5,7 +5,7 @@ import { SubmitButton } from '@/components/admin/SubmitButton'
 import {
   Empty,
   Flash,
-  PageTitle,
+  PageHeader,
   Pager,
   Section,
   Status,
@@ -16,6 +16,7 @@ import {
   td,
   th,
 } from '@/components/admin/ui'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { relativeTime, type Step } from '@/lib/admin/pipeline'
 import { assertAdmin } from '@/server/admin/guard'
@@ -34,7 +35,7 @@ export const metadata = { title: 'Generate' }
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
 
-const PATH = '/admin/generate'
+const PATH = ADMIN_ROUTES.generate
 const PAGE_SIZE = 30
 const OPEN = ['pending', 'resolving', 'processing']
 
@@ -65,13 +66,11 @@ export default async function GeneratePage({ searchParams }: Props) {
   return (
     <div>
       <Flash value={sp.flash} />
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <PageTitle
-          title="Generate"
-          hint="Reels made from user links. Requested reels stay private until you publish them."
-        />
-        <AutoRefresh renderedAt={now.toISOString()} />
-      </div>
+      <PageHeader
+        title="Generate"
+        description="Reels made from user links. Requested reels stay private until you publish them."
+        actions={<AutoRefresh renderedAt={now.toISOString()} />}
+      />
 
       <Section title="Generate a reel (no credits charged)">
         <form action={generateAction} className="flex flex-col gap-2 sm:flex-row sm:items-start">
@@ -175,7 +174,7 @@ export default async function GeneratePage({ searchParams }: Props) {
                         ) : null}
                         {reel && dto.status === 'done' ? (
                           <Link
-                            href={`/admin/instagram?item=${reel.itemId}#compose`}
+                            href={`${ADMIN_ROUTES.instagram}?item=${reel.itemId}#compose`}
                             className={button}
                           >
                             Queue to Instagram

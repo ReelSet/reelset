@@ -1,5 +1,6 @@
 import { ItemStatus } from '@reelset/core'
 import { z } from 'zod'
+import { ADMIN_ROUTES } from './nav'
 
 export const RETRY_STAGES = [ItemStatus.found, ItemStatus.summarized, ItemStatus.embedded] as const
 
@@ -24,13 +25,13 @@ export function suggestRetryStage(lastOkStage: string | null | undefined): Retry
 
 // Redirect targets come from a hidden form field, so only same-site admin paths are accepted.
 export function safeAdminPath(raw: unknown): string {
-  if (typeof raw !== 'string') return '/admin'
-  if (!/^\/admin(\/[a-z-]+)*(\?[A-Za-z0-9=&%._-]*)?$/.test(raw)) return '/admin'
+  if (typeof raw !== 'string') return ADMIN_ROUTES.pipeline
+  if (!/^\/admin(\/[a-z-]+)*(\?[A-Za-z0-9=&%._-]*)?$/.test(raw)) return ADMIN_ROUTES.pipeline
   return raw
 }
 
 export function withFlash(path: string, kind: 'ok' | 'error', message: string): string {
-  const [base = '/admin', query = ''] = path.split('?')
+  const [base = ADMIN_ROUTES.pipeline, query = ''] = path.split('?')
   const params = new URLSearchParams(query)
   params.set('flash', `${kind}:${message.slice(0, 160)}`)
   return `${base}?${params.toString()}`

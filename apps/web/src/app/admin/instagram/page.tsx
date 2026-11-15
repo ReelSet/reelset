@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { queuedPostEtas } from '@reelset/core'
 import { z } from 'zod'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { mediaUrl } from '@/lib/media'
 import { workerConfigFromEnv } from '@/lib/instagram/worker-client'
-import { Empty, Flash, Pager, Section } from '@/components/admin/ui'
+import { Empty, Flash, PageHeader, Pager, Section } from '@/components/admin/ui'
 import { AutoRefresh } from '@/components/admin/pipeline/AutoRefresh'
 import { AccountCard } from '@/components/admin/instagram/AccountCard'
 import { Composer } from '@/components/admin/instagram/Composer'
@@ -31,7 +32,7 @@ export const maxDuration = 300
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
 
-const PATH = '/admin/instagram'
+const PATH = ADMIN_ROUTES.instagram
 
 export default async function InstagramPage({ searchParams }: Props) {
   await assertAdmin()
@@ -70,15 +71,11 @@ export default async function InstagramPage({ searchParams }: Props) {
   return (
     <div>
       <Flash value={sp.flash} />
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Instagram</h1>
-          <p className="mt-1 text-[13px] text-faint">
-            Pick a finished reel, check the caption, queue it. Posts go out one at a time.
-          </p>
-        </div>
-        <AutoRefresh renderedAt={now.toISOString()} />
-      </div>
+      <PageHeader
+        title="Instagram"
+        description="Pick a finished reel, check the caption, queue it. Posts go out one at a time."
+        actions={<AutoRefresh renderedAt={now.toISOString()} />}
+      />
 
       <AccountCard
         account={account}
@@ -150,7 +147,7 @@ export default async function InstagramPage({ searchParams }: Props) {
             rows={queue}
             now={now}
             returnTo={returnTo}
-            hrefFor={(id) => `/admin?item=${id}`}
+            hrefFor={(id) => `${ADMIN_ROUTES.pipeline}?item=${id}`}
           />
         )}
       </Section>

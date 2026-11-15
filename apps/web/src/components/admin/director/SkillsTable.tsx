@@ -6,10 +6,11 @@ import {
 } from '@/app/admin/actions'
 import { SubmitButton } from '@/components/admin/SubmitButton'
 import { Empty, Table, button, td, th } from '@/components/admin/ui'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { fmtKb } from '@/lib/admin/director'
 import type { SkillListRow } from '@/server/admin/director'
 
-const RETURN_TO = '/admin/director'
+const RETURN_TO = ADMIN_ROUTES.director
 
 function IdForm({
   id,
@@ -72,7 +73,7 @@ function SkillRow({ skill, index, last }: { skill: SkillListRow; index: number; 
       </td>
       <td className={td}>
         <span className="inline-flex gap-1">
-          <Link href={`/admin/director/edit?id=${skill.id}`} className={button}>
+          <Link href={`${ADMIN_ROUTES.director}/edit?id=${skill.id}`} className={button}>
             Edit
           </Link>
           <IdForm id={skill.id} action={deleteDirectorSkillAction}>

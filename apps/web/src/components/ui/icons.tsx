@@ -192,3 +192,26 @@ export const BoltIcon = ({ className }: P) => (
     <path d="M13 3 5 13.5h6L10 21l8-10.5h-6z" />
   </Svg>
 )
+export const GridIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <rect x="4" y="4" width="7" height="7" rx="1.5" />
+    <rect x="13" y="4" width="7" height="7" rx="1.5" />
+    <rect x="4" y="13" width="7" height="7" rx="1.5" />
+    <rect x="13" y="13" width="7" height="7" rx="1.5" />
+  </Svg>
+)
+export const PipelineIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <circle cx="6" cy="6" r="2.5" />
+    <circle cx="18" cy="12" r="2.5" />
+    <circle cx="6" cy="18" r="2.5" />
+    <path d="M8.5 6H12a3 3 0 0 1 3 3v.5M8.5 18H12a3 3 0 0 0 3-3v-.5" />
+  </Svg>
+)
+export const SlidersIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <path d="M4 7h9m4 0h3M4 17h3m4 0h9" />
+    <circle cx="15" cy="7" r="2" />
+    <circle cx="9" cy="17" r="2" />
+  </Svg>
+)

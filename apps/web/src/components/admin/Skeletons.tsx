@@ -46,15 +46,17 @@ export function AdminPageSkeleton({
   rows = 8,
   cols = 5,
   filters = false,
+  title = true,
 }: {
   stats?: number
   rows?: number
   cols?: number
   filters?: boolean
+  title?: boolean
 }) {
   return (
     <div aria-busy aria-label="Loading">
-      <TitleSkeleton />
+      {title && <TitleSkeleton />}
       {stats > 0 && <StatsSkeleton count={stats} />}
       {filters && (
         <div className="mb-5 flex flex-col gap-3" aria-hidden>

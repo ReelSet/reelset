@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Empty, Table, td, th } from '@/components/admin/ui'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { fmtDate, fmtMs, fmtUsd, truncate } from '@/lib/admin/format'
 import { directorRunCostUsd, fmtTokens } from '@/lib/admin/director'
 import type { DirectorRun } from '@/server/admin/director'
@@ -17,7 +18,7 @@ function Row({ run, tz }: { run: DirectorRun; tz: string }) {
   return (
     <tr>
       <td className={td}>
-        <Link href={`/admin?item=${run.itemId}`}>{truncate(run.title, 50)}</Link>
+        <Link href={`${ADMIN_ROUTES.pipeline}?item=${run.itemId}`}>{truncate(run.title, 50)}</Link>
       </td>
       <td className={`${td} whitespace-nowrap`}>{fmtDate(run.at, tz)}</td>
       <td className={td}>

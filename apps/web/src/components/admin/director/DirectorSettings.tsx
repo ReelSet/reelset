@@ -1,6 +1,7 @@
 import { resetDirectorSettingAction, saveDirectorSettingAction } from '@/app/admin/actions'
 import { SubmitButton } from '@/components/admin/SubmitButton'
 import { button, buttonPrimary, input } from '@/components/admin/ui'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import type { DirectorSettingField } from '@/lib/admin/director'
 
 const BOOLEANS = ['true', 'false'] as const
@@ -63,7 +64,7 @@ export function DirectorSettingForm({
       className="rounded-md border border-line bg-surface p-4"
     >
       <input type="hidden" name="name" value={field.name} />
-      <input type="hidden" name="returnTo" value="/admin/director" />
+      <input type="hidden" name="returnTo" value={ADMIN_ROUTES.director} />
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <label className="text-[13px] font-medium">{field.label}</label>
         <span className="font-mono text-[11px] text-faint">

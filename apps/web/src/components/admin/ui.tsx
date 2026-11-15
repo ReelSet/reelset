@@ -45,12 +45,60 @@ export function Section({
   )
 }
 
-export function PageTitle({ title, hint }: { title: string; hint?: string }) {
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string
+  description: string
+  actions?: React.ReactNode
+}) {
   return (
-    <div className="mb-6">
-      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-      {hint && <p className="mt-1 text-[13px] text-faint">{hint}</p>}
+    <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-1 text-[13px] text-faint">{description}</p>
+      </div>
+      {actions}
+    </header>
+  )
+}
+
+/** One quiet line under the tabs: a hint on the left, optional actions on the right. */
+export function Toolbar({ hint, actions }: { hint?: React.ReactNode; actions?: React.ReactNode }) {
+  if (!hint && !actions) return null
+  return (
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      {hint ? <p className="min-w-0 text-xs text-faint">{hint}</p> : <span />}
+      {actions}
     </div>
+  )
+}
+
+/** Closed-by-default disclosure for secondary detail. */
+export function Disclosure({
+  title,
+  summary,
+  children,
+}: {
+  title: string
+  summary?: string
+  children: React.ReactNode
+}) {
+  return (
+    <details className="group mb-9 rounded-md border border-line bg-surface">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] text-muted transition hover:text-fg [&::-webkit-details-marker]:hidden">
+        <span className="font-medium">{title}</span>
+        <span className="flex items-center gap-2 text-xs text-faint">
+          {summary}
+          <span aria-hidden className="transition group-open:rotate-90">
+            ›
+          </span>
+        </span>
+      </summary>
+      <div className="border-t border-line p-4">{children}</div>
+    </details>
   )
 }
 
