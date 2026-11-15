@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
   adminReturnPath,
+  drawerHash,
   drawerParam,
+  readDrawerHash,
   parseDrawerId,
   readDrawerRef,
   withDrawerRef,
@@ -65,5 +67,20 @@ describe('adminReturnPath', () => {
     expect(adminReturnPath('/pipeline', '?item=a')).toBe('/admin/pipeline?item=a')
     expect(adminReturnPath('/', '')).toBe('/admin')
     expect(adminReturnPath('/admin/users', '?user=a')).toBe('/admin/users?user=a')
+  })
+})
+
+describe('drawer hash', () => {
+  it('round-trips a ref through the hash', () => {
+    expect(drawerHash({ kind: 'item', id: ID })).toBe(`#item=${ID}`)
+    expect(readDrawerHash(`#item=${ID}`)).toEqual({ kind: 'item', id: ID })
+    expect(readDrawerHash(`#user=${ID}`)).toEqual({ kind: 'user', id: ID })
+    expect(drawerHash(null)).toBe('')
+  })
+
+  it('ignores anything that is not a drawer ref', () => {
+    expect(readDrawerHash('')).toBeNull()
+    expect(readDrawerHash('#recent')).toBeNull()
+    expect(readDrawerHash('#item=nope')).toBeNull()
   })
 })

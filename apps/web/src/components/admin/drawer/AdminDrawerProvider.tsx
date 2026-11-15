@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DRAWER_EXIT_MS, DRAWER_LIVE_REFRESH_MS } from '@/lib/admin/drawer-config'
 import {
   adminReturnPath,
+  drawerHash,
   isSameRef,
+  readDrawerHash,
   readDrawerRef,
   withDrawerRef,
   type DrawerRef,
@@ -17,13 +19,19 @@ import { itemStore, storeFor, userStore } from './stores'
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-function currentRef(): DrawerRef | null {
+function legacyRef(): DrawerRef | null {
   return readDrawerRef(window.location.search, window.location.pathname)
 }
 
+// Hash first; ?item= / ?user= only for old deep links and new-tab opens of a row link.
+function currentRef(): DrawerRef | null {
+  return readDrawerHash(window.location.hash) ?? legacyRef()
+}
+
 function urlWith(ref: DrawerRef | null): string {
-  const { pathname, search, hash } = window.location
-  return `${pathname}${withDrawerRef(search, pathname, ref)}${hash}`
+  const { pathname, search } = window.location
+  const query = legacyRef() ? withDrawerRef(search, pathname, null) : search
+  return `${pathname}${query}${drawerHash(ref)}`
 }
 
 function invalidateStores() {
@@ -78,6 +86,12 @@ export function AdminDrawerProvider({ children }: { children: React.ReactNode })
   const syncFromUrl = useCallback(() => {
     const ref = currentRef()
     if (isSameRef(ref, shown.current)) return
+    // A server action inside the drawer redirects back with ?flash= and no hash: keep it open.
+    if (!ref && shown.current && new URLSearchParams(window.location.search).has('flash')) {
+      window.history.replaceState(null, '', urlWith(shown.current))
+      ownedHref.current = null
+      return
+    }
     if (ref) reveal({ kind: ref.kind, id: ref.id } as DrawerTarget)
     else conceal()
   }, [reveal, conceal])

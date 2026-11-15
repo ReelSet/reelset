@@ -34,6 +34,23 @@ export function withDrawerRef(search: string, pathname: string, ref: DrawerRef |
   return query ? `?${query}` : ''
 }
 
+// The drawer lives in the URL hash (#item=<id>, #user=<id>): the hash never reaches the server, so
+// opening a drawer leaves the page's search params, and so its RSC segment key, untouched. A
+// search-param drawer made every AutoRefresh router.refresh() re-render the page as a new segment,
+// which reset the scroll and left the top loader running on the rewritten admin host.
+export function readDrawerHash(hash: string): DrawerRef | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ''))
+  for (const kind of DRAWER_KINDS) {
+    const id = parseDrawerId(params.get(kind))
+    if (id) return { kind, id }
+  }
+  return null
+}
+
+export function drawerHash(ref: DrawerRef | null): string {
+  return ref ? `#${ref.kind}=${ref.id}` : ''
+}
+
 // Server actions only redirect to /admin/... paths, but admin.reelset.app shows them without the prefix.
 export function adminReturnPath(pathname: string, search: string): string {
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return `${pathname}${search}`

@@ -33,8 +33,10 @@ function DrawerLink({ target, href, className, children }: Props) {
   const onClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (!drawer || event.defaultPrevented || !isPlainLeftClick(event)) return
     event.preventDefault()
-    // nextjs-toploader listens on document and would start its bar for this same-site anchor.
+    // nextjs-toploader's click listener sits on document, the same node as React's root listener, so
+    // only stopImmediatePropagation keeps it from starting a bar that no navigation would finish.
     event.stopPropagation()
+    event.nativeEvent.stopImmediatePropagation()
     cancelPrefetch()
     drawer.open(target, event.currentTarget)
   }
