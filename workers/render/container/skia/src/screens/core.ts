@@ -422,7 +422,7 @@ export const EndCard: Screen = {
     }
     const q = eb(pr(t, 0.7, 0.4), 1.8)
     if (q > 0) {
-      const label = 'Follow @reelset.app'
+      const label = 'Follow @reelset_app'
       const w = measure(label, 'bold', 40) + 80
       c.save()
       c.translate(z.x + w / 2, y + 45)

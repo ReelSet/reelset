@@ -4,17 +4,17 @@ What developers are building, in 60-second reels.
 
 Reelset ingests interesting developer projects, turns them into short vertical reels, and serves them in a reader app.
 
-Try it at [reelset.app](https://reelset.app) · follow on [Instagram](https://www.instagram.com/reelset.app/)
+Try it at [reelset.app](https://reelset.app) · follow on [Instagram](https://www.instagram.com/reelset_app/)
 
 <p align="center">
-  <a href="https://reelset.app"><img src="docs/screenshots/desktop.webp" alt="Reelset feed on desktop: a Reddit thread turned into a reel showing 505 upvotes and 135 comments" width="100%"></a>
+  <a href="https://reelset.app/r/nvidia-announces-ceo-transition-9b79e977"><img src="docs/screenshots/desktop.webp" alt="Reelset on desktop: a Hacker News story turned into a reel, 'Jensen Huang resigns', with the TL;DR and sources beside it" width="100%"></a>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/reel-planner.webp" alt="Reel of a YouTube coding-model review with its view count" width="24%">
-  <img src="docs/screenshots/reel-youtube.webp" alt="Reel of a YouTube video about weight-space programming with its view count" width="24%">
-  <img src="docs/screenshots/reel-ollama.webp" alt="Reel about running a free local AI model with Ollama" width="24%">
-  <img src="docs/screenshots/ask.webp" alt="Ask page: ask what developers are building, answers cite the feed" width="24%">
+  <a href="https://reelset.app/r/222cda38"><img src="docs/screenshots/reel-reddit.webp" alt="Reel of an r/ClaudeAI post: Fable 5.2 painting in MS Paint" width="24%"></a>
+  <a href="https://reelset.app/r/3693b6b4"><img src="docs/screenshots/reel-youtube.webp" alt="Reel of a YouTube video: one prompt got Claude Code to build a cinematic website" width="24%"></a>
+  <a href="https://reelset.app/r/89c3a1dd"><img src="docs/screenshots/reel-news.webp" alt="Reel of a GitHub blog post: Git patched six vulnerabilities" width="24%"></a>
+  <a href="https://reelset.app/create"><img src="docs/screenshots/create.webp" alt="Create page: turn any link into a reel, 1,000 free credits every month" width="24%"></a>
 </p>
 
 ## Sources
@@ -36,15 +36,15 @@ turned into a TLDR and a reel script before rendering.
 
 ## Layout
 
-| Path                                   | What it is                                                          |
-| -------------------------------------- | ------------------------------------------------------------------- |
-| `apps/web`                             | Next.js app (reader + admin), deployed on Vercel                    |
-| `workers/ingest`                       | Cloudflare Worker that discovers and ingests projects               |
+| Path                                   | What it is                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| `apps/web`                             | Next.js app (reader + admin), deployed on Vercel                         |
+| `workers/ingest`                       | Cloudflare Worker that discovers and ingests projects                    |
 | `workers/render`                       | Cloudflare Worker + container that renders reels (Skia renderer, Python) |
-| `packages/core`                        | Shared database schema, migrations and types                        |
-| `scripts/smoke`, `scripts/maintenance` | Smoke tests and maintenance scripts                                 |
-| `supabase`                             | Supabase config and auth email templates                            |
-| `docs`                                 | Infra notes and contracts                                           |
+| `packages/core`                        | Shared database schema, migrations and types                             |
+| `scripts/smoke`, `scripts/maintenance` | Smoke tests and maintenance scripts                                      |
+| `supabase`                             | Supabase config and auth email templates                                 |
+| `docs`                                 | Infra notes and contracts                                                |
 
 ## Local development
 

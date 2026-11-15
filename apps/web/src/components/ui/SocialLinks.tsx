@@ -11,7 +11,7 @@ const LINKS = [
   {
     href: INSTAGRAM_URL,
     label: 'Instagram',
-    title: 'Follow @reelset.app on Instagram',
+    title: 'Follow @reelset_app on Instagram',
     Icon: InstagramIcon,
   },
 ]
