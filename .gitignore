@@ -48,3 +48,8 @@ out/
 CLAUDE.local.md
 scripts/smoke/.settings-backup.json
 .gstack/
+
+# scratch scripts
+.tmp-*
+*.tmp
+nohup.out

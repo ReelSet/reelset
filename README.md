@@ -17,6 +17,52 @@ Try it at [reelset.app](https://reelset.app) · follow on [Instagram](https://ww
   <a href="https://reelset.app/create"><img src="docs/screenshots/create.webp" alt="Create page: turn any link into a reel, 1,000 free credits every month" width="24%"></a>
 </p>
 
+## Make your own reels
+
+Paste any link (a GitHub repo, an HN or Reddit thread, a YouTube video, an article or an arXiv
+paper) at [reelset.app/create](https://reelset.app/create) and get a vertical reel with voice-over
+and captions in a few minutes. Up to 5 links can go into one reel.
+
+- **Free credits:** every account gets 1,000 credits a month, and one reel costs 100 (10 reels a
+  month). Need more? Request an upgrade from your profile.
+- **Already made?** If a link already has a reel, you get it instantly and are not charged.
+- **Private by default:** your reels live on an unlisted link you can share or download as MP4.
+  They join the public feed only after review.
+
+### MCP server
+
+Let your coding agent make reels for you. Reelset runs a remote
+[MCP](https://modelcontextprotocol.io) server at `https://reelset.app/api/mcp` (Streamable HTTP).
+Create an API key at [reelset.app/profile](https://reelset.app/profile#api-keys); setup snippets
+for each client are at [reelset.app/mcp](https://reelset.app/mcp).
+
+```bash
+# Claude Code
+claude mcp add --transport http reelset https://reelset.app/api/mcp \
+  --header "Authorization: Bearer rs_live_..."
+```
+
+```json
+// Cursor (~/.cursor/mcp.json)
+{
+  "mcpServers": {
+    "reelset": {
+      "url": "https://reelset.app/api/mcp",
+      "headers": { "Authorization": "Bearer rs_live_..." }
+    }
+  }
+}
+```
+
+| Tool              | What it does                                                                 |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `generate_reel`   | Turn 1 to 5 public links into one reel; returns a `request_id` (100 credits) |
+| `get_reel_status` | Check a request: each step, then the reel link and MP4 download when done    |
+| `list_my_reels`   | Your recent reels and their status                                           |
+| `get_credits`     | Credits left this month and when they reset                                  |
+
+Then ask your agent something like _"make a reel of github.com/ollama/ollama"_.
+
 ## Sources
 
 Reelset pulls from six sources. The lists below are the defaults; admins can change them at
@@ -38,7 +84,7 @@ turned into a TLDR and a reel script before rendering.
 
 | Path                                   | What it is                                                               |
 | -------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/web`                             | Next.js app (reader + admin), deployed on Vercel                         |
+| `apps/web`                             | Next.js app (reader, create, MCP server at `/api/mcp`, admin) on Vercel  |
 | `workers/ingest`                       | Cloudflare Worker that discovers and ingests projects                    |
 | `workers/render`                       | Cloudflare Worker + container that renders reels (Skia renderer, Python) |
 | `packages/core`                        | Shared database schema, migrations and types                             |
