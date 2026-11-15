@@ -45,4 +45,27 @@ describe('settleReelRequests sweeps', () => {
     expect((await settleReelRequests(db, log, now)).refunded).toBe(0)
     expect(stmts.filter((s) => s.startsWith('insert into "credit_ledger"'))).toHaveLength(1)
   })
+
+  it('leaves a request open while its item is source only: the worker sends it back to become a reel', async () => {
+    const updates: unknown[][] = []
+    const { db } = fakeDb((sql, params) => {
+      if (sql.includes('from "reel_request" as "r"')) {
+        return [{ id: 'r-1', item_id: 'i-1', item_status: 'source_only', has_done_render: false }]
+      }
+      if (sql.startsWith('update "reel_request" set "status"')) {
+        updates.push([...params])
+        return [{ id: 'r-1' }]
+      }
+      if (sql.startsWith('update "reel_request" set "refunded"')) {
+        return [{ user_id: 'u1', credits_charged: 100 }]
+      }
+      return []
+    })
+    expect(await settleReelRequests(db, log, now)).toMatchObject({
+      done: 0,
+      failed: 0,
+      refunded: 0,
+    })
+    expect(updates).toEqual([])
+  })
 })

@@ -112,6 +112,30 @@ export type EvidenceChunk = {
   text: string
   created_at: Generated<Timestamp>
 }
+export type GateDecision = {
+  id: Generated<string>
+  item_id: string
+  verdict: string
+  score: number | null
+  threshold: number
+  signals: Generated<unknown>
+  reasons: Generated<string[]>
+  rationale: Generated<string>
+  decided_by: string
+  rule: string | null
+  mode: string
+  applied: Generated<boolean>
+  model: string | null
+  prompt_version: string
+  config_hash: string
+  cost_usd: Generated<number>
+  label: string | null
+  label_reason: string | null
+  label_note: string | null
+  labeled_by: string | null
+  labeled_at: Timestamp | null
+  created_at: Generated<Timestamp>
+}
 export type IngestRun = {
   id: Generated<string>
   mode: Generated<IngestMode>
@@ -315,6 +339,7 @@ export type DB = {
   director_skill: DirectorSkill
   event: Event
   evidence_chunk: EvidenceChunk
+  gate_decision: GateDecision
   ingest_run: IngestRun
   ingest_task: IngestTask
   instagram_post: InstagramPost

@@ -2,6 +2,7 @@ import {
   CLAUDE_MODELS,
   CLAUDE_PRICING,
   DEFAULT_CLAUDE_MODEL,
+  GATE_SETTING_KEY_PREFIX,
   SETTINGS,
   settingEnumOptions,
   type ClaudeModel,
@@ -80,11 +81,14 @@ function settingField(name: keyof typeof SETTINGS): SettingField {
 }
 
 const DIRECTOR_KEY_PREFIX = 'director_'
+const OWN_PAGE_KEY_PREFIXES = [DIRECTOR_KEY_PREFIX, GATE_SETTING_KEY_PREFIX]
 
-// Director settings have their own page (long text, skills); the generic form cannot edit strings.
+// Director and gate settings have their own pages (long text, objects); the generic form cannot edit those.
 export function settingFields(): SettingField[] {
   return (Object.keys(SETTINGS) as (keyof typeof SETTINGS)[])
-    .filter((name) => !SETTINGS[name].key.startsWith(DIRECTOR_KEY_PREFIX))
+    .filter(
+      (name) => !OWN_PAGE_KEY_PREFIXES.some((prefix) => SETTINGS[name].key.startsWith(prefix)),
+    )
     .map(settingField)
 }
 

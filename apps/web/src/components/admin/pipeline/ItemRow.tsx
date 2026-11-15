@@ -1,4 +1,5 @@
 import { ItemLink } from '@/components/admin/drawer/DrawerLink'
+import { statusLabel } from '@/components/admin/primitives'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { activeStepKey, etaHint, stepperFor, type StageMedians } from '@/lib/admin/pipeline'
 import { Ago, Elapsed } from './Elapsed'
@@ -121,6 +122,7 @@ const STATUS_BADGE: Record<string, string> = {
   rendered: 'text-ok',
   failed: 'text-danger',
   insufficient_source: 'text-warn',
+  source_only: 'text-info',
 }
 
 export function RecentRow({
@@ -176,7 +178,7 @@ export function RecentRow({
             ? 'skipped'
             : item.status === 'summarized'
               ? 'scripted'
-              : item.status}
+              : statusLabel(item.status)}
         </span>
         <span className="text-faint">
           <Ago at={iso(item.status_changed_at)} />

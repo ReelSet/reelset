@@ -20,7 +20,13 @@ const COMPLETED_STEPS: Record<string, number> = {
 
 const RESUME_STEP: Record<string, number> = { summarized: 2, embedded: 3, voiced: 3 }
 
+// The gate settled the item before a script was written: nothing is running and nothing failed.
+function settledAtFound(): Step[] {
+  return STEP_DEFS.map((def, i) => ({ ...def, state: i === 0 ? 'done' : 'pending' }))
+}
+
 export function stepperFor(status: string, lastOkStage?: string | null): Step[] {
+  if (status === 'source_only') return settledAtFound()
   const failed = status === 'failed' || status === 'insufficient_source'
   const completed = failed
     ? (COMPLETED_STEPS[lastOkStage ?? 'found'] ?? 1)

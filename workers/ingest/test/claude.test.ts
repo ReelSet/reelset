@@ -71,6 +71,24 @@ describe('createClaudeClient request building', () => {
     expect(calls[0]!.output_config).toEqual({ effort: 'high' })
   })
 
+  it('gate-style options: a small output ceiling and no SDK retries, so one failure is one call', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return json({ type: 'error', error: { type: 'overloaded_error', message: 'busy' } }, 529)
+    }) as unknown as typeof fetch
+    const llm = createClaudeClient('k', 'claude-haiku-5-5', testLog, {
+      fetch: fetchImpl,
+      maxOutputTokens: 2000,
+      maxRetries: 0,
+    })
+    const failure = await llm.generate({ system: 's', user: 'u' }).catch((err: unknown) => err)
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).not.toBeInstanceOf(QuotaExhaustedError)
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]!.max_tokens).toBe(2000)
+  })
+
   it('puts attached images before the text as base64 blocks, skipping unsupported types', async () => {
     const { llm, calls } = client(() => json(message()))
     await llm.generate({

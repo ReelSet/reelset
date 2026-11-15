@@ -41,6 +41,7 @@ enum ItemStatus {
   rendered
   insufficient_source
   failed
+  source_only
 
   @@map("item_status")
 }
@@ -198,6 +199,7 @@ model Item {
   updatedAt       DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   reelRequests ReelRequest[]
+  gateDecisions GateDecision[]
   mentions Mention[]
   chunks   EvidenceChunk[]
   events   ItemEvent[]
@@ -606,4 +608,36 @@ model ApiKey {
 
   @@index([userId], map: "api_key_user_idx")
   @@map("api_key")
+}
+
+// The review-queue and labelled partial indexes and the check constraints live only in migration SQL.
+model GateDecision {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId        String    @map("item_id") @db.Uuid
+  verdict       String
+  score         Float?    @db.Real
+  threshold     Float     @db.Real
+  signals       Json      @default("{}")
+  reasons       String[]  @default([])
+  rationale     String    @default("")
+  decidedBy     String    @map("decided_by")
+  rule          String?
+  mode          String
+  applied       Boolean   @default(false)
+  model         String?
+  promptVersion String    @map("prompt_version")
+  configHash    String    @map("config_hash")
+  costUsd       Float     @default(0) @map("cost_usd") @db.Real
+  label         String?
+  labelReason   String?   @map("label_reason")
+  labelNote     String?   @map("label_note")
+  labeledBy     String?   @map("labeled_by") @db.Uuid
+  labeledAt     DateTime? @map("labeled_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt(sort: Desc)], map: "gate_decision_item_created_idx")
+  @@index([verdict, createdAt(sort: Desc)], map: "gate_decision_verdict_created_idx")
+  @@map("gate_decision")
 }

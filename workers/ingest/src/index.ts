@@ -1,9 +1,11 @@
 import { createDb, createLogger, errorFields, settleReelRequests, type Logger } from '@reelset/core'
+import { GATE_CALL_TIMEOUT_MS, GATE_MAX_OUTPUT_TOKENS, GATE_SDK_RETRIES } from './config'
 import { DEFAULT_EMBEDDING_MODEL, type Env, type IngestItemMessage } from './env'
 import { createFirecrawlFallback } from './firecrawl'
 import { processReelRequests } from './generate/process'
 import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
+import { createClaudeClient } from './pipeline/claude'
 import { handleMessage } from './pipeline/consumer'
 import { createEmbedder } from './pipeline/gemini'
 import { LLM_PROVIDER, createLlm, loadLlmModels } from './pipeline/llm'
@@ -175,6 +177,15 @@ export default {
           cache: createDbVetCache(db),
         },
         promptImage: downloadForVet,
+        gate: {
+          judge: (model, effort) =>
+            createClaudeClient(env.CLAUDE_API_KEY ?? '', model, log, {
+              effort,
+              maxOutputTokens: GATE_MAX_OUTPUT_TOKENS,
+              timeoutMs: GATE_CALL_TIMEOUT_MS,
+              maxRetries: GATE_SDK_RETRIES,
+            }),
+        },
       }
       log.info({ size: batch.messages.length }, 'ingest-items batch start')
       for (const message of batch.messages) await handleMessage(deps, message)

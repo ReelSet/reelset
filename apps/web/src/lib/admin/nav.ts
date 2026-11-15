@@ -7,12 +7,14 @@ export const ADMIN_ROUTES = {
   ask: '/admin/ask',
   pipeline: '/admin/pipeline',
   items: '/admin/items',
+  gate: '/admin/gate',
   renders: '/admin/renders',
   ingest: '/admin/ingest',
   generate: '/admin/generate',
   instagram: '/admin/instagram',
   settings: '/admin/settings',
   director: '/admin/director',
+  gateSettings: '/admin/gate-settings',
 } as const
 
 export type AdminIcon = 'overview' | 'pipeline' | 'generate' | 'instagram' | 'settings'
@@ -41,6 +43,7 @@ export const OVERVIEW_TABS: readonly AdminTab[] = [
 export const PIPELINE_TABS: readonly AdminTab[] = [
   { href: ADMIN_ROUTES.pipeline, label: 'Live' },
   { href: ADMIN_ROUTES.items, label: 'Items' },
+  { href: ADMIN_ROUTES.gate, label: 'Gate' },
   { href: ADMIN_ROUTES.renders, label: 'Renders' },
   { href: ADMIN_ROUTES.ingest, label: 'Sources' },
 ]
@@ -48,6 +51,7 @@ export const PIPELINE_TABS: readonly AdminTab[] = [
 export const SETTINGS_TABS: readonly AdminTab[] = [
   { href: ADMIN_ROUTES.settings, label: 'General' },
   { href: ADMIN_ROUTES.director, label: 'Director' },
+  { href: ADMIN_ROUTES.gateSettings, label: 'Gate' },
 ]
 
 export const NAV_GROUPS: readonly NavGroup[] = [

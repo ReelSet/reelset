@@ -1,6 +1,9 @@
 import type { ItemStatus } from '@reelset/core'
 import { MAX_STUCK_ATTEMPTS, STUCK_AFTER_MS } from '../config'
 
+/** Admitted items that will never become a reel, so they give their daily-cap slot back. */
+export const CAP_EXEMPT_STATUSES: ItemStatus[] = ['failed', 'insufficient_source', 'source_only']
+
 export type AdmissionInput = {
   score: number
   minScore: number

@@ -7,8 +7,10 @@ import { buildTimeline, relativeTime, stepperFor } from '@/lib/admin/pipeline'
 import type { ItemDrawerData, ItemPreview } from '@/lib/admin/drawer-types'
 import { Block, DrawerError, KV } from '@/components/admin/drawer/blocks'
 import type { DetailError } from '@/components/admin/drawer/detail-store'
+import { GateDrawerBlock } from '@/components/admin/gate/GateDrawerBlock'
 import { HideControls } from '@/components/admin/moderation/HideControls'
 import { VisibilityBadge } from '@/components/admin/moderation/VisibilityBadge'
+import { statusLabel as plainStatusLabel } from '@/components/admin/primitives'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { ArrowUpRightIcon } from '@/components/ui/icons'
 import { useTimeZone } from '@/components/ui/TimeZoneContext'
@@ -26,7 +28,8 @@ type Props = {
   onRetry: () => void
 }
 
-const statusLabel = (status: string) => (status === 'summarized' ? 'scripted' : status)
+const statusLabel = (status: string) =>
+  status === 'summarized' ? 'scripted' : plainStatusLabel(status)
 
 function Header({ preview, data }: Pick<Props, 'preview' | 'data'>) {
   const item = data?.item
@@ -197,6 +200,9 @@ function Body({ data, returnTo }: { data: ItemDrawerData; returnTo: string }) {
           src={video.url}
           className="mx-auto aspect-[9/16] max-h-[56vh] rounded-md border border-line bg-black"
         />
+      ) : null}
+      {data.gate ? (
+        <GateDrawerBlock gate={data.gate} itemStatus={item.status} returnTo={returnTo} tz={tz} />
       ) : null}
       <Block title="Timeline">
         <Gantt timeline={buildTimeline(data.events)} />

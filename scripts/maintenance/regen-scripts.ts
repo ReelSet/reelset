@@ -1,6 +1,10 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { sql } from 'kysely'
 import { claudeCostUsd, contentHash, createDb, createLogger, recordSpend } from '@reelset/core'
-import { parseModelOutput } from '../../workers/ingest/src/pipeline/output'
+import { parseModelOutput, type StyleReport } from '../../workers/ingest/src/pipeline/output'
+import { STYLE_LIMITS } from '../../workers/ingest/src/pipeline/plain'
+import type { GeneratedContent } from '../../workers/ingest/src/pipeline/safety'
 import { LLM_PROVIDER, createLlm, loadLlmModels } from '../../workers/ingest/src/pipeline/llm'
 import { NARRATION_LIMITS } from '../../workers/ingest/src/pipeline/process'
 import { buildSourceBrief } from '../../workers/ingest/src/pipeline/brief'
@@ -14,7 +18,8 @@ import {
 import { allowedImageSet, validateGenerated } from '../../workers/ingest/src/pipeline/safety'
 import { narrationWordCount } from '../../workers/ingest/src/pipeline/shots'
 
-// Usage: regen-scripts.ts [--apply] [--limit N] [--concurrency N] [--ids id1,id2]
+// Usage: regen-scripts.ts [--apply] [--limit N] [--concurrency N] [--ids id1,id2] [--out dir]
+// --out writes <dir>/<id>.json with the old and new script and the style report for review.
 // Regenerates reel scripts (headline + shots) with the current PROMPT_VERSION for items in the feed.
 // Status is untouched, so the old reel stays live; the render cron re-renders on the new content hash.
 // Dry run unless --apply (still calls the LLM, writes nothing).
@@ -28,6 +33,8 @@ const limit = Number(arg('--limit') ?? 100)
 const concurrency = Number(arg('--concurrency') ?? 3)
 const onlyIds = arg('--ids')?.split(',').filter(Boolean)
 const ATTEMPTS = 3
+const outDir = arg('--out')
+if (outDir) mkdirSync(outDir, { recursive: true })
 
 const log = createLogger({ app: 'regen-scripts', level: 'warn' })
 const { db, close } = createDb({ connectionString: process.env.DIRECT_URL!, log, max: 2 })
@@ -44,6 +51,8 @@ type Row = {
   kind: string
   canonical_url: string
   canonical_key: string
+  script: unknown
+  prompt_version: string | null
 }
 
 async function regen(item: Row): Promise<'ok' | 'failed'> {
@@ -106,19 +115,38 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
   ]
 
   let rejection: string | undefined
+  let previous: string | undefined
+  let best: { value: GeneratedContent; style: StyleReport } | null = null
+  let calls = 0
+  const raws: string[] = []
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-    const res = await llm.generate({
-      system: SYSTEM_PROMPT,
-      user: buildUserPrompt({
-        title: item.title,
-        kind: item.kind,
-        canonicalUrl: item.canonical_url,
-        chunks: promptChunks,
-        imageUrls,
-        brief: brief.text,
-        rejection,
-      }),
-    })
+    calls = attempt
+    let res: Awaited<ReturnType<typeof llm.generate>>
+    try {
+      res = await llm.generate({
+        system: SYSTEM_PROMPT,
+        user: buildUserPrompt({
+          title: item.title,
+          kind: item.kind,
+          canonicalUrl: item.canonical_url,
+          chunks: promptChunks,
+          imageUrls,
+          brief: brief.text,
+          rejection,
+          previous,
+        }),
+      })
+    } catch (err) {
+      rejection = undefined
+      previous = undefined
+      console.log(item.id.slice(0, 8), `attempt ${attempt} call failed:`, String(err).slice(0, 160))
+      continue
+    }
+    raws.push(res.text)
+    console.log(
+      item.id.slice(0, 8),
+      `attempt ${attempt} tokens in=${res.usage.inputTokens} out=${res.usage.outputTokens}`,
+    )
     if (apply) {
       await recordSpend(
         db,
@@ -131,9 +159,11 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
         log,
       )
     }
-    const parsed = parseModelOutput(res.text, promptIds, sourceText, NARRATION_LIMITS)
+    const parsed = parseModelOutput(res.text, promptIds, sourceText, NARRATION_LIMITS, STYLE_LIMITS)
     if (!parsed.ok) {
       rejection = parsed.reason
+      previous = undefined
+      console.log(item.id.slice(0, 8), `attempt ${attempt} rejected:`, rejection.slice(0, 200))
       continue
     }
     const verdict = validateGenerated({
@@ -144,26 +174,65 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
     })
     if (!verdict.ok) {
       rejection = verdict.reasons.join('; ')
+      previous = undefined
+      console.log(item.id.slice(0, 8), `attempt ${attempt} rejected:`, rejection.slice(0, 200))
       continue
     }
-    const hash = await contentHash([
-      item.title,
-      parsed.value.tldr,
-      JSON.stringify(parsed.value.script),
-    ])
+    if (!best || parsed.style.issues.length <= best.style.issues.length) {
+      best = { value: parsed.value, style: parsed.style }
+    }
+    if (parsed.style.issues.length === 0 || attempt === ATTEMPTS) break
+    rejection = `the facts and format are fine, but the script is not easy enough to follow. Keep the same facts and fix: ${parsed.style.issues.join('; ')}`
+    const written = parsed.value.script
+    previous = [
+      `hook: ${written.hook}`,
+      ...written.beats.map((b, i) => `beat ${i + 1}: ${b.text}`),
+      `outro: ${written.outro}`,
+    ].join('\n')
+    console.log(item.id.slice(0, 8), `attempt ${attempt} style:`, parsed.style.issues.join(' | '))
+  }
+  if (best) {
+    const { value, style } = best
+    const hash = await contentHash([item.title, value.tldr, JSON.stringify(value.script)])
     console.log(
       item.id.slice(0, 8),
       'ok',
-      `words=${narrationWordCount(parsed.value.script)}`,
-      parsed.value.script.headline,
+      `calls=${calls}`,
+      `words=${narrationWordCount(value.script)}`,
+      `grade=${style.readingGrade}`,
+      `hook=${style.hookScore} (${style.hookFormula}, ${style.hookSeconds}s)`,
+      `issues=${style.issues.length}`,
+      value.script.headline,
     )
+    if (outDir) {
+      writeFileSync(
+        join(outDir, `${item.id.slice(0, 8)}.json`),
+        JSON.stringify(
+          {
+            itemId: item.id,
+            title: item.title,
+            model,
+            effort: models.scriptEffort,
+            promptVersion: PROMPT_VERSION,
+            calls,
+            style,
+            content: value,
+            previousPromptVersion: item.prompt_version,
+            previousScript: item.script,
+            raws,
+          },
+          null,
+          2,
+        ),
+      )
+    }
     if (apply) {
       await db
         .updateTable('item')
         .set({
-          tldr: parsed.value.tldr,
-          script: JSON.stringify(parsed.value.script),
-          topics: parsed.value.topics,
+          tldr: value.tldr,
+          script: JSON.stringify(value.script),
+          topics: value.topics,
           content_hash: hash,
           prompt_version: PROMPT_VERSION,
         })
@@ -179,7 +248,7 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
 try {
   const items = (
     await sql<Row>`
-      select i.id, i.title, i.kind, i.canonical_url, i.canonical_key from item i
+      select i.id, i.title, i.kind, i.canonical_url, i.canonical_key, i.script, i.prompt_version from item i
       where i.status = 'rendered'
         and i.prompt_version is distinct from ${PROMPT_VERSION}
         and exists (select 1 from render r where r.item_id = i.id and r.status = 'done' and r.video_key is not null)

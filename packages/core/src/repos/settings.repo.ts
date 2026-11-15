@@ -19,6 +19,20 @@ import {
   directorEffortSchema,
   type DirectorEffort,
 } from '../domain/director'
+import {
+  DEFAULT_GATE_INSTRUCTIONS,
+  DEFAULT_GATE_SOURCE_RULES,
+  DEFAULT_GATE_WEIGHTS,
+  GATE_INSTRUCTIONS_MAX_CHARS,
+  GATE_INSTRUCTIONS_MIN_CHARS,
+  GATE_SCORE_MAX,
+  gateModeSchema,
+  gateSourceRulesSchema,
+  gateWeightsSchema,
+  type GateMode,
+  type GateSourceRules,
+  type GateWeights,
+} from '../domain/gate'
 import type { Logger } from '../lib/logger'
 
 export type SettingDef<T> = { key: string; schema: z.ZodType<T>; default: T }
@@ -129,6 +143,25 @@ export const SETTINGS = {
     z.string().min(DIRECTOR_REVIEW_MIN_CHARS).max(DIRECTOR_REVIEW_MAX_CHARS),
     DIRECTOR_DEFAULT_REVIEW,
   ),
+  // Shadow: the gate judges and records every item but changes nothing until an admin switches it to live.
+  gateMode: def('gate_mode', gateModeSchema, 'shadow' as GateMode),
+  gateThreshold: def('gate_threshold', z.number().min(0).max(GATE_SCORE_MAX), 55),
+  gateWeights: def<GateWeights>('gate_weights', gateWeightsSchema, DEFAULT_GATE_WEIGHTS),
+  gateSourceRules: def<GateSourceRules>(
+    'gate_source_rules',
+    gateSourceRulesSchema,
+    DEFAULT_GATE_SOURCE_RULES,
+  ),
+  gateInstructions: def(
+    'gate_instructions',
+    z.string().min(GATE_INSTRUCTIONS_MIN_CHARS).max(GATE_INSTRUCTIONS_MAX_CHARS),
+    DEFAULT_GATE_INSTRUCTIONS,
+  ),
+  gateModel: def('gate_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
+  gateEffort: def('gate_effort', claudeEffortSchema, 'low' as ClaudeEffort),
+  gateExploreRate: def('gate_explore_rate', z.number().min(0).max(0.5), 0.05),
+  gateExampleCount: def('gate_example_count', z.number().int().min(0).max(20), 8),
+  gateMaxCostUsdPerItem: def('gate_max_cost_usd_per_item', z.number().positive().max(1), 0.01),
   showViewCount: def('show_view_count', z.boolean(), false),
   viewCountThreshold: def('view_count_threshold', z.number().int().min(0), 100),
   showLikeCount: def('show_like_count', z.boolean(), true),

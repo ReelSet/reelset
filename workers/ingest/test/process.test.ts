@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decideOnError, retryDelaySeconds, stageFor } from '../src/pipeline/decide'
 import { handleMessage, type MessageLike } from '../src/pipeline/consumer'
+import { STYLE_LIMITS } from '../src/pipeline/plain'
 import { processItem } from '../src/pipeline/process'
 import { PROMPT_VERSION } from '../src/pipeline/prompt'
 import {
@@ -28,7 +29,13 @@ describe('decision helpers', () => {
     expect(stageFor('found')).toBe('summarize')
     expect(stageFor('summarized')).toBe('embed')
     expect(stageFor('embedded')).toBe('enqueue_render')
-    for (const s of ['voiced', 'rendered', 'failed', 'insufficient_source'] as const) {
+    for (const s of [
+      'voiced',
+      'rendered',
+      'failed',
+      'insufficient_source',
+      'source_only',
+    ] as const) {
       expect(stageFor(s)).toBe('skip')
     }
   })
@@ -150,6 +157,79 @@ describe('processItem', () => {
     const failed = t.fake.find('update "item" set "status"')[0]!
     expect(failed.params.join(' ')).toContain('generation rejected')
     expect(t.send).not.toHaveBeenCalled()
+  })
+
+  describe('style rewrites', () => {
+    const narration = (extra: Record<string, unknown> = {}) => ({
+      hookOptions: [
+        {
+          formula: 'Permission',
+          spoken: "You don't need a GPU to run this model.",
+          headline: 'NO GPU NEEDED',
+        },
+      ],
+      hook: 'x',
+      beats: [
+        {
+          text: "That matters if you're learning AI on a laptop. Cloud bills add up fast.",
+          visual: { type: 'title', title: 'acme/repo' },
+        },
+        {
+          text: 'Ollama shrinks the model to fit in 8 gigabytes. Then it runs offline.',
+          visual: { type: 'title', title: 'T2' },
+        },
+      ],
+      outro: 'No GPU, one command. Try it on your laptop.',
+      ...extra,
+    })
+    const flat = { outro: 'Install it and see for yourself.' }
+    const styled = (outputs: string[]) => {
+      const t = makeDeps(makeWorld(), outputs)
+      t.deps.styleLimits = STYLE_LIMITS
+      return t
+    }
+
+    it('sends a hard-to-follow script back once with the issues and the old narration', async () => {
+      const t = styled([validOutput(CHUNK_1, narration(flat)), validOutput(CHUNK_1, narration())])
+      const outcome = await processItem(t.deps, ITEM_ID, 1)
+
+      expect(outcome).toBe('rendered_enqueued')
+      expect(t.generate).toHaveBeenCalledTimes(2)
+      const second = t.generate.mock.calls[1]![0].user
+      expect(second).toContain('shares no word with the hook')
+      expect(second).toContain('<previous_script>')
+      expect(second).toContain('outro: Install it and see for yourself.')
+      const saved = t.fake.find('update "item" set "tldr"')[0]!
+      expect(saved.params.join(' ')).toContain('Try it on your laptop')
+    })
+
+    it('accepts the best script instead of failing when style issues remain after three calls', async () => {
+      const bad = validOutput(CHUNK_1, narration(flat))
+      const t = styled([bad, bad, bad])
+      const outcome = await processItem(t.deps, ITEM_ID, 1)
+
+      expect(outcome).toBe('rendered_enqueued')
+      expect(t.generate).toHaveBeenCalledTimes(3)
+      expect(transitionTargets(t.fake.queries)).not.toContain('failed')
+    })
+
+    it('falls back to a styled-rejected script when the rewrite breaks the format', async () => {
+      const t = styled([validOutput(CHUNK_1, narration(flat)), 'not json', 'still not json'])
+      const outcome = await processItem(t.deps, ITEM_ID, 1)
+
+      expect(outcome).toBe('rendered_enqueued')
+      expect(t.generate).toHaveBeenCalledTimes(3)
+      const saved = t.fake.find('update "item" set "tldr"')[0]!
+      expect(saved.params.join(' ')).toContain('Install it and see for yourself')
+    })
+
+    it('records the hook and reading grade on the summarized transition', async () => {
+      const t = styled([validOutput(CHUNK_1, narration())])
+      await processItem(t.deps, ITEM_ID, 1)
+      const meta = t.fake.queries.map((q) => q.params.join(' ')).join(' ')
+      expect(meta).toContain('"hookFormula":"Permission"')
+      expect(meta).toContain('"llmCalls":1')
+    })
   })
 
   describe('paper items', () => {

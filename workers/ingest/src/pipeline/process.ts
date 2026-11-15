@@ -17,12 +17,20 @@ import {
   type ItemStatus,
   type Logger,
   type ParsedPaper,
+  type Source,
 } from '@reelset/core'
-import { EMBED_BATCH_SIZE } from '../config'
+import { EMBED_BATCH_SIZE, SOURCE_ONLY_EMBED_EXCERPT_CHARS } from '../config'
 import { transitionClearingPriority } from '../generate/priority'
 import type { RenderJobMessage } from '../env'
 import { approxTokens, embeddingCostUsd, type Embedder } from './gemini'
-import { parseModelOutput, type LlmClient, type LlmImage } from './output'
+import {
+  parseModelOutput,
+  truncateAtWord,
+  type LlmClient,
+  type LlmImage,
+  type NarrationLimits,
+  type StyleReport,
+} from './output'
 import {
   buildEvidenceRows,
   hasEnoughEvidence,
@@ -42,7 +50,10 @@ import type { ScrapeFallback } from '../types'
 import { buildSourceBrief, type BriefInput, type SourceBrief } from './brief'
 import { enrichItem } from '../brief-fetch'
 import { paperAssetsPrompt, resolvePaperShots } from './paper-shots'
+import { primarySource } from '../score'
+import { markDecisionNotApplied, runGate, type GateDeps, type GateResult } from './gate'
 import { LLM_PROVIDER } from './llm'
+import { STYLE_LIMITS, type StyleLimits } from './plain'
 import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt, itemImagesPrompt } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
@@ -57,8 +68,12 @@ export type ProcessDeps = {
   scrape?: ScrapeFallback
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
   llmModel: ClaudeModel
-  narrationLimits?: { min?: number; max?: number }
+  narrationLimits?: NarrationLimits
+  /** Plain-language and hook checks; false turns them off (tests with synthetic scripts). */
+  styleLimits?: StyleLimits | false
   embeddingModel: string
+  /** The reel-worthiness gate; absent means every item goes straight to its script. */
+  gate?: GateDeps
   alertWebhookUrl?: string
   githubToken?: string
   /** Claude image vetting; absent in tests and when not configured. */
@@ -71,6 +86,7 @@ export type ProcessOutcome =
   | 'rendered_enqueued'
   | 'embedded'
   | 'insufficient_source'
+  | 'source_only'
   | 'generation_failed'
   | 'skipped_stale'
   | 'skipped_missing'
@@ -87,11 +103,17 @@ type ItemRow = {
   topics: string[]
   queued_at: Date | null
   priority_at?: Date | null
+  owner_id?: string | null
+  score?: number | null
+  status_changed_at?: Date | null
+  rendered_at?: Date | null
   images: unknown
   demo?: unknown
 }
 
-const GENERATION_ATTEMPTS = 2
+/** One extra call is allowed for a style rewrite; schema, length and safety failures still stop at two. */
+const MAX_LLM_CALLS = 3
+const MAX_HARD_REJECTIONS = 2
 const MAX_PROMPT_IMAGES = 4
 export const NARRATION_LIMITS = { min: 100, max: 112, maxSpokenChars: MAX_SPOKEN_CHARS }
 
@@ -109,6 +131,10 @@ async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefin
       'topics',
       'queued_at',
       'priority_at',
+      'owner_id',
+      'score',
+      'status_changed_at',
+      'rendered_at',
       'images',
       'demo',
     ])
@@ -166,7 +192,7 @@ async function storeImages(
   mentions: readonly { url: string }[],
   log: Logger,
   paper: ParsedPaper | null,
-): Promise<ItemImage[]> {
+): Promise<{ images: ItemImage[]; demo: unknown }> {
   try {
     const captured = await captureItemImages(
       {
@@ -187,24 +213,25 @@ async function storeImages(
       .where('id', '=', item.id)
       .where('images', 'is', null)
       .execute()
-    await storeDemo(deps, item, log)
-    return images
+    return { images, demo: await storeDemo(deps, item, log) }
   } catch (err) {
     log.warn(errorFields(err), 'image capture failed, continuing without images')
-    return []
+    return { images: [], demo: item.demo }
   }
 }
 
-async function storeDemo(deps: ProcessDeps, item: ItemRow, log: Logger): Promise<void> {
-  if (!item.canonical_key.startsWith('github:') || item.demo != null) return
+/** Captures a GitHub repo's demo once and returns the item's demo as it now stands. */
+async function storeDemo(deps: ProcessDeps, item: ItemRow, log: Logger): Promise<unknown> {
+  if (!item.canonical_key.startsWith('github:') || item.demo != null) return item.demo
   const [owner, repo] = item.canonical_key.slice('github:'.length).split('/')
-  if (!owner || !repo) return
+  if (!owner || !repo) return item.demo
   const demo = await captureRepoDemo(owner, repo, defaultDemoFetchers(), log)
   await deps.db
     .updateTable('item')
     .set({ demo: JSON.stringify(demo ?? { none: true }) })
     .where('id', '=', item.id)
     .execute()
+  return demo
 }
 
 function isRedditPost(canonicalKey: string): boolean {
@@ -304,10 +331,10 @@ async function summarize(
     pdfTexts = markdown ? pdfMarkdownEvidence(markdown) : null
     log.info({ arxivId, chunks: pdfTexts?.length ?? 0 }, 'paper pdf fallback via firecrawl')
   }
-  const images =
+  const { images, demo } =
     item.images == null
       ? await storeImages(deps, item, mentions, log, paper)
-      : parseItemImages(item.images)
+      : { images: parseItemImages(item.images), demo: item.demo }
 
   let transcript: string | null = null
   const videoId = youtubeIdFromKey(item.canonical_key)
@@ -407,6 +434,29 @@ async function summarize(
     .orderBy('mention_id')
     .orderBy('chunk_index')
     .execute()
+  const evidence = stored.map((c) => c.text)
+  const gate = await judgeItem(
+    deps,
+    item,
+    { mentions, images, demo, hasTranscript: transcript !== null, evidence },
+    log,
+  )
+  if (gate.kind === 'decided' && gate.applied && gate.verdict === 'source_only') {
+    const settled = await settleSourceOnly(
+      deps,
+      item,
+      gate,
+      evidence,
+      deliveryAttempt,
+      startedAt,
+      log,
+    )
+    if (settled) return 'source_only'
+    await markDecisionNotApplied(db, gate.decisionId, log).catch((err) =>
+      log.warn(errorFields(err), 'could not mark the gate decision not applied'),
+    )
+  }
+
   const promptChunks = selectPromptChunks(stored)
   const chunkIds = new Set(stored.map((c) => c.id))
   const promptChunkIds = new Set(promptChunks.map((c) => c.id))
@@ -451,9 +501,20 @@ async function summarize(
   log.info({ chunks: stored.length, promptChunks: promptChunks.length }, 'evidence ready')
 
   let rejection: string | undefined
+  let previous: string | undefined
   let accepted: GeneratedContent | null = null
+  let acceptedStyle: StyleReport | null = null
+  let fallback: { value: GeneratedContent; style: StyleReport } | null = null
+  let hardRejections = 0
+  let calls = 0
+  const styleLimits = deps.styleLimits === false ? undefined : (deps.styleLimits ?? STYLE_LIMITS)
 
-  for (let attempt = 1; attempt <= GENERATION_ATTEMPTS && !accepted; attempt++) {
+  for (
+    let attempt = 1;
+    attempt <= MAX_LLM_CALLS && hardRejections < MAX_HARD_REJECTIONS && !accepted;
+    attempt++
+  ) {
+    calls = attempt
     const llmStartedAt = performance.now()
     const result = await deps.llm.generate({
       system: SYSTEM_PROMPT,
@@ -467,6 +528,7 @@ async function summarize(
         paperAssets: paper ? paperAssetsPrompt(paper, images) : undefined,
         brief: brief.text || undefined,
         rejection,
+        previous,
       }),
       images: promptImages,
     })
@@ -501,9 +563,12 @@ async function summarize(
       promptChunkIds,
       sourceText,
       deps.narrationLimits ?? NARRATION_LIMITS,
+      styleLimits,
     )
     if (!parsed.ok) {
       rejection = parsed.reason
+      previous = undefined
+      hardRejections += 1
       log.warn({ attempt, reason: rejection }, 'model output rejected (parse)')
       continue
     }
@@ -515,10 +580,50 @@ async function summarize(
     })
     if (!verdict.ok) {
       rejection = verdict.reasons.join('; ')
+      previous = undefined
+      hardRejections += 1
       log.warn({ attempt, reasons: verdict.reasons }, 'model output rejected (safety)')
       continue
     }
-    accepted = parsed.value
+    const candidate = { value: parsed.value, style: parsed.style }
+    if (!fallback || candidate.style.issues.length <= fallback.style.issues.length) {
+      fallback = candidate
+    }
+    log.info(
+      {
+        attempt,
+        hookFormula: parsed.style.hookFormula,
+        hookScore: parsed.style.hookScore,
+        hookSeconds: parsed.style.hookSeconds,
+        readingGrade: parsed.style.readingGrade,
+        styleIssues: parsed.style.issues.length,
+      },
+      'script style checked',
+    )
+    if (parsed.style.issues.length > 0 && attempt < MAX_LLM_CALLS) {
+      rejection = `the facts and format are fine, but the script is not easy enough to follow. Keep the same facts and fix: ${parsed.style.issues.join('; ')}`
+      const written = parsed.value.script
+      previous = [
+        `hook: ${written.hook}`,
+        ...written.beats.map((b, i) => `beat ${i + 1}: ${b.text}`),
+        `outro: ${written.outro}`,
+      ].join('\n')
+      log.warn({ attempt, issues: parsed.style.issues }, 'script sent back for a style rewrite')
+      continue
+    }
+    accepted = fallback.value
+    acceptedStyle = fallback.style
+  }
+
+  if (!accepted && fallback) {
+    accepted = fallback.value
+    acceptedStyle = fallback.style
+  }
+  if (accepted && acceptedStyle && acceptedStyle.issues.length > 0) {
+    log.warn(
+      { calls, issues: acceptedStyle.issues },
+      'script accepted with style issues left after the last rewrite',
+    )
   }
 
   if (!accepted) {
@@ -567,12 +672,172 @@ async function summarize(
         to: 'summarized',
         attempt: deliveryAttempt,
         durationMs: Math.round(performance.now() - startedAt),
-        meta: { promptVersion: PROMPT_VERSION, chunks: stored.length },
+        meta: {
+          promptVersion: PROMPT_VERSION,
+          chunks: stored.length,
+          llmCalls: calls,
+          ...(acceptedStyle
+            ? {
+                hookFormula: acceptedStyle.hookFormula,
+                hookScore: acceptedStyle.hookScore,
+                readingGrade: acceptedStyle.readingGrade,
+                styleIssues: acceptedStyle.issues.map((i) => i.slice(0, 160)),
+              }
+            : {}),
+        },
       },
       log,
     )
   })
   return 'summarized'
+}
+
+type GateFacts = {
+  mentions: readonly {
+    source: Source
+    score: number | null
+    num_comments: number | null
+    published_at: Date
+  }[]
+  images: readonly ItemImage[]
+  demo: unknown
+  hasTranscript: boolean
+  evidence: readonly string[]
+}
+
+async function judgeItem(
+  deps: ProcessDeps,
+  item: ItemRow,
+  facts: GateFacts,
+  log: Logger,
+): Promise<GateResult> {
+  if (!deps.gate) return { kind: 'skipped', reason: 'off' }
+  const signals = facts.mentions.map((m) => ({
+    source: m.source,
+    score: m.score,
+    numComments: m.num_comments,
+    publishedAt: new Date(m.published_at),
+  }))
+  const source = primarySource(signals, new Date()) ?? facts.mentions[0]!.source
+  return runGate(
+    { db: deps.db, log, gate: deps.gate },
+    {
+      itemId: item.id,
+      title: item.title,
+      kind: item.kind,
+      source,
+      itemScore: Math.min(1, Math.max(0, Number(item.score) || 0)),
+      requested: isRequested(item),
+      renderedBefore: item.rendered_at != null,
+      inStatusSince: item.status_changed_at ? new Date(item.status_changed_at) : null,
+      mentions: signals,
+      usableImages: facts.images.filter((img) => img.kind !== 'avatar').length,
+      hasDemo: hasDemo(facts.demo),
+      hasTranscript: facts.hasTranscript,
+      evidence: facts.evidence,
+    },
+  )
+}
+
+function isRequested(item: Pick<ItemRow, 'owner_id' | 'priority_at'>): boolean {
+  return item.owner_id != null || item.priority_at != null
+}
+
+/** The gate said no reel: embed the item so Ask can cite it, then park it without a script. False when a user request arrived meanwhile, so the item must go on to its script. */
+async function settleSourceOnly(
+  deps: ProcessDeps,
+  item: ItemRow,
+  gate: Extract<GateResult, { kind: 'decided' }>,
+  evidence: readonly string[],
+  deliveryAttempt: number,
+  startedAt: number,
+  log: Logger,
+): Promise<boolean> {
+  const summary = item.tldr || truncateAtWord(evidence.join('\n'), SOURCE_ONLY_EMBED_EXCERPT_CHARS)
+  const chunksEmbedded = await embedItem(deps, item.id, itemEmbeddingText(item, summary), log)
+  const settled = await deps.db.transaction().execute(async (trx) => {
+    // Locks the row a reel request writes its priority to, so a request cannot slip in before the transition.
+    const current = await trx
+      .selectFrom('item')
+      .select(['owner_id', 'priority_at'])
+      .where('id', '=', item.id)
+      .forUpdate()
+      .executeTakeFirst()
+    if (current && isRequested(current)) return false
+    await transitionClearingPriority(
+      trx,
+      {
+        itemId: item.id,
+        from: 'found',
+        to: 'source_only',
+        attempt: deliveryAttempt,
+        durationMs: Math.round(performance.now() - startedAt),
+        meta: {
+          verdict: gate.verdict,
+          score: gate.score,
+          decisionId: gate.decisionId,
+          decidedBy: gate.decidedBy,
+          chunksEmbedded,
+          model: deps.embeddingModel,
+        },
+      },
+      log,
+    )
+    await trx.updateTable('item').set({ queued_at: null }).where('id', '=', item.id).execute()
+    return true
+  })
+  if (!settled) {
+    log.info(
+      { decisionId: gate.decisionId },
+      'a reel was requested while the gate judged the item, writing its script instead',
+    )
+    return false
+  }
+  log.info(
+    { decisionId: gate.decisionId, score: gate.score, chunksEmbedded },
+    'item kept as source only, no script written',
+  )
+  return true
+}
+
+function itemEmbeddingText(item: ItemRow, summary: string): string {
+  return [item.title, summary, item.topics.join(', ')].join('\n')
+}
+
+/** Embeds the item's pending evidence chunks and the item itself; returns how many chunks were embedded. */
+async function embedItem(
+  deps: ProcessDeps,
+  itemId: string,
+  itemText: string,
+  log: Logger,
+): Promise<number> {
+  const { db } = deps
+  const pending = await sql<{ id: string; text: string }>`
+    select id, text from evidence_chunk
+    where item_id = ${itemId} and embedding is null
+    order by mention_id, chunk_index`.execute(db)
+
+  for (let start = 0; start < pending.rows.length; start += EMBED_BATCH_SIZE) {
+    const batch = pending.rows.slice(start, start + EMBED_BATCH_SIZE)
+    const vectors = await deps.embedder.embed(batch.map((c) => c.text))
+    await recordEmbeddingSpend(
+      deps,
+      batch.map((c) => c.text),
+      itemId,
+      log,
+    )
+    const literals = vectors.map((v) => toVectorLiteral(v))
+    await sql`
+      update evidence_chunk c set embedding = v.e::vector
+      from unnest(${batch.map((c) => c.id)}::uuid[], ${literals}::text[]) as v(id, e)
+      where c.id = v.id`.execute(db)
+  }
+
+  const [itemVector] = await deps.embedder.embed([itemText])
+  if (!itemVector) throw new Error('embedder returned no vector for item')
+  await recordEmbeddingSpend(deps, [itemText], itemId, log)
+  await setItemEmbedding(db, itemId, itemVector, log)
+  return pending.rows.length
 }
 
 async function embedAndAdvance(
@@ -583,33 +848,12 @@ async function embedAndAdvance(
 ): Promise<ProcessOutcome> {
   const { db } = deps
   const startedAt = performance.now()
-
-  const pending = await sql<{ id: string; text: string }>`
-    select id, text from evidence_chunk
-    where item_id = ${item.id} and embedding is null
-    order by mention_id, chunk_index`.execute(db)
-
-  for (let start = 0; start < pending.rows.length; start += EMBED_BATCH_SIZE) {
-    const batch = pending.rows.slice(start, start + EMBED_BATCH_SIZE)
-    const vectors = await deps.embedder.embed(batch.map((c) => c.text))
-    await recordEmbeddingSpend(
-      deps,
-      batch.map((c) => c.text),
-      item.id,
-      log,
-    )
-    const literals = vectors.map((v) => toVectorLiteral(v))
-    await sql`
-      update evidence_chunk c set embedding = v.e::vector
-      from unnest(${batch.map((c) => c.id)}::uuid[], ${literals}::text[]) as v(id, e)
-      where c.id = v.id`.execute(db)
-  }
-
-  const itemText = [item.title, item.tldr ?? '', item.topics.join(', ')].join('\n')
-  const [itemVector] = await deps.embedder.embed([itemText])
-  if (!itemVector) throw new Error('embedder returned no vector for item')
-  await recordEmbeddingSpend(deps, [itemText], item.id, log)
-  await setItemEmbedding(db, item.id, itemVector, log)
+  const chunksEmbedded = await embedItem(
+    deps,
+    item.id,
+    itemEmbeddingText(item, item.tldr ?? ''),
+    log,
+  )
 
   await db.transaction().execute(async (trx) => {
     await transitionClearingPriority(
@@ -620,7 +864,7 @@ async function embedAndAdvance(
         to: 'embedded',
         attempt: deliveryAttempt,
         durationMs: Math.round(performance.now() - startedAt),
-        meta: { chunksEmbedded: pending.rows.length, model: deps.embeddingModel },
+        meta: { chunksEmbedded, model: deps.embeddingModel },
       },
       log,
     )

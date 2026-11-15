@@ -9,6 +9,7 @@ export const STATUS_GROUPS = {
   live: { label: 'Live', statuses: [ItemStatus.rendered] },
   failed: { label: 'Failed', statuses: [ItemStatus.failed] },
   skipped: { label: 'Skipped', statuses: [ItemStatus.insufficient_source] },
+  source_only: { label: 'Source only', statuses: [ItemStatus.source_only] },
 } as const
 
 export type StatusGroup = keyof typeof STATUS_GROUPS

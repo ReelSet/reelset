@@ -29,6 +29,11 @@ describe('stepperFor', () => {
     expect(states('failed')).toEqual(['done', 'failed', 'pending', 'pending', 'pending'])
   })
 
+  it('shows a source-only item as settled after Found, with nothing running or failed', () => {
+    expect(states('source_only')).toEqual(['done', 'pending', 'pending', 'pending', 'pending'])
+    expect(activeStepKey('source_only')).toBeNull()
+  })
+
   it('names the active step', () => {
     expect(activeStepKey('found')).toBe('script')
     expect(activeStepKey('embedded')).toBe('render')

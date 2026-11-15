@@ -22,7 +22,7 @@ export { suggestRetryStage } from './retry-stage'
 // Redirect targets come from a hidden form field, so only same-site admin paths are accepted.
 export function safeAdminPath(raw: unknown): string {
   if (typeof raw !== 'string') return ADMIN_ROUTES.pipeline
-  if (!/^\/admin(\/[a-z-]+)*(\?[A-Za-z0-9=&%+._-]*)?$/.test(raw)) return ADMIN_ROUTES.pipeline
+  if (!/^\/admin(\/[a-z-]+)*(\?[A-Za-z0-9=&%+._*-]*)?$/.test(raw)) return ADMIN_ROUTES.pipeline
   return raw
 }
 

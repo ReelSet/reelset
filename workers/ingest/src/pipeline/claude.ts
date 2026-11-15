@@ -3,9 +3,10 @@ import { SETTINGS, errorFields, type ClaudeEffort, type Logger } from '@reelset/
 import { QuotaExhaustedError } from './quota'
 import type { LlmClient, LlmImage, LlmUsage } from './output'
 
-// Room for adaptive thinking plus a ~1.5K-token JSON script.
-const MAX_OUTPUT_TOKENS = 16_000
-const REQUEST_TIMEOUT_MS = 120_000
+// Room for adaptive thinking plus a ~2K-token JSON script. reel-v9 calls measured 9K to 14.5K output
+// tokens and style rewrites ran past 16K, which wasted the whole call.
+const MAX_OUTPUT_TOKENS = 24_000
+const REQUEST_TIMEOUT_MS = 180_000
 const SDK_RETRIES = 2
 
 export class ClaudeError extends Error {
@@ -83,6 +84,11 @@ export function parseClaudeMessage(message: ClaudeMessage): { text: string; usag
 export type ClaudeOptions = {
   effort?: ClaudeEffort
   fetch?: typeof fetch
+  /** Output ceiling and request timeout; the defaults are sized for a full reel script. */
+  maxOutputTokens?: number
+  timeoutMs?: number
+  /** SDK-level retries per call; an optional step passes 0 so it gives up fast. */
+  maxRetries?: number
 }
 
 // Plain JSON plus repair (grammars miss the length limits); no sampling/prefill/budget (400 on 5.5).
@@ -95,14 +101,15 @@ export function createClaudeClient(
   const effort = options.effort ?? SETTINGS.scriptEffort.default
   const client = new Anthropic({
     apiKey,
-    maxRetries: SDK_RETRIES,
-    timeout: REQUEST_TIMEOUT_MS,
+    maxRetries: options.maxRetries ?? SDK_RETRIES,
+    timeout: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     ...(options.fetch ? { fetch: options.fetch } : {}),
   })
+  const maxTokens = options.maxOutputTokens ?? MAX_OUTPUT_TOKENS
   const call = async (system: string, user: string, images: readonly LlmImage[]) => {
     const message = await client.messages.create({
       model,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: maxTokens,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userContent(user, images) }],
       output_config: { effort },

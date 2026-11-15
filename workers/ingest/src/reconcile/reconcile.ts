@@ -13,6 +13,7 @@ import {
 } from '@reelset/core'
 import {
   ADMISSION_CANDIDATES,
+  ADMISSION_OVERRIDES,
   ENQUEUE_CHUNK,
   RECONCILE_BATCH,
   SPEND_CATEGORIES_FOR_CAP,
@@ -23,6 +24,7 @@ import {
 import { transitionClearingPriority } from '../generate/priority'
 import type { IngestItemMessage, RenderJobMessage } from '../env'
 import {
+  CAP_EXEMPT_STATUSES,
   admissionDecision,
   chunked,
   classifyStuck,
@@ -242,8 +244,8 @@ async function countAdmittedToday(db: Database, now: Date): Promise<number> {
     .where('item_event.outcome', '=', 'started')
     .where(sql`item_event.meta->>'admitted'`, '=', 'true')
     .where('item_event.created_at', '>=', utcDayStart(now))
-    // Items that failed or had too little source text never become a reel, so they must not eat the cap.
-    .where('item.status', 'not in', ['failed', 'insufficient_source'])
+    // Failed, thin-source and gate-rejected items never become a reel, so they must not eat the cap.
+    .where('item.status', 'not in', CAP_EXEMPT_STATUSES)
     // Released or requeued items (found, not queued) are candidates again, not spent slots.
     .where((eb) =>
       eb.not(eb.and([eb('item.status', '=', 'found'), eb('item.queued_at', 'is', null)])),
@@ -266,7 +268,7 @@ async function admittedTodayBySource(db: Database, now: Date): Promise<Map<strin
     .where('item_event.outcome', '=', 'started')
     .where(sql`item_event.meta->>'admitted'`, '=', 'true')
     .where('item_event.created_at', '>=', utcDayStart(now))
-    .where('item.status', 'not in', ['failed', 'insufficient_source'])
+    .where('item.status', 'not in', CAP_EXEMPT_STATUSES)
     // Released or requeued items (found, not queued) are candidates again, not spent slots.
     .where((eb) =>
       eb.not(eb.and([eb('item.status', '=', 'found'), eb('item.queued_at', 'is', null)])),
@@ -307,6 +309,33 @@ async function primarySources(
   return out
 }
 
+type FoundCandidate = { id: string; score: number }
+
+/** Found items an admin sent back with "make a reel anyway" (their latest gate decision). A failed lookup yields none, so admission carries on as usual. */
+async function overriddenFound(db: Database, log: Logger): Promise<FoundCandidate[]> {
+  try {
+    const { rows } = await sql<FoundCandidate>`
+      select item.id, item.score
+      from item
+      where item.status = 'found'
+        and item.queued_at is null
+        and exists (select 1 from mention m where m.item_id = item.id)
+        and (
+          select d.decided_by = 'admin' and d.verdict = 'reel'
+          from gate_decision d
+          where d.item_id = item.id
+          order by d.created_at desc, d.id desc
+          limit 1
+        )
+      order by item.score desc
+      limit ${ADMISSION_OVERRIDES}`.execute(db)
+    return rows.map((row) => ({ id: row.id, score: Number(row.score) }))
+  } catch (err) {
+    log.warn(errorFields(err), 'gate override lookup failed, admitting by score only')
+    return []
+  }
+}
+
 async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: Date, log: Logger) {
   const minScore = await getSetting(db, SETTINGS.minItemScore, log)
   const dailyCap = await getSetting(db, SETTINGS.dailyReelCap, log)
@@ -330,25 +359,31 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
     .limit(ADMISSION_CANDIDATES)
     .execute()
 
+  const overrides = await overriddenFound(db, log)
+  const overridden = new Set(overrides.map((o) => o.id))
+  const ordinary = candidates.filter((c) => !overridden.has(c.id))
   const sources = await primarySources(
     db,
-    candidates.map((c) => c.id),
+    [...overrides, ...ordinary].map((c) => c.id),
     now,
   )
-  const ordered = interleaveBySource(
-    candidates.map((c) => ({ ...c, source: sources.get(c.id) ?? 'unknown' })),
+  const withSource = (c: FoundCandidate) => ({ ...c, source: sources.get(c.id) ?? 'unknown' })
+  const interleaved = interleaveBySource(
+    ordinary.map(withSource),
     await admittedTodayBySource(db, now).catch((err) => {
       log.warn(errorFields(err), 'per-source admission counts failed, interleaving from zero')
       return new Map<string, number>()
     }),
     minScore,
   )
+  const ordered = [...overrides.map(withSource), ...interleaved]
 
   const admit: { id: string; score: number; source: string }[] = []
   for (const item of ordered) {
     const decision = admissionDecision({
       score: item.score,
-      minScore,
+      // An admin override outranks the score floor (scores decay), but not the daily and spend caps.
+      minScore: overridden.has(item.id) ? Number.NEGATIVE_INFINITY : minScore,
       admittedToday,
       dailyCap,
       spendTodayUsd: spent,
@@ -364,6 +399,7 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
   log.info(
     {
       candidates: candidates.length,
+      overrides: overrides.length,
       admit: admit.length,
       admitBySource: Object.fromEntries(
         [...new Set(admit.map((a) => a.source))].map((src) => [
@@ -398,6 +434,7 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
           admitted: true,
           score: scores.get(c.id) ?? null,
           source: bySource.get(c.id) ?? null,
+          ...(overridden.has(c.id) ? { gateOverride: true } : {}),
         },
       },
       log,

@@ -14,6 +14,7 @@ const ROWS: Row[] = [
     href: `${ADMIN_ROUTES.generate}#submissions`,
   },
   { key: 'openReelRequests', label: 'open reel requests', href: ADMIN_ROUTES.generate },
+  { key: 'gateAwaitingReview', label: 'gate decisions to review', href: ADMIN_ROUTES.gate },
 ]
 
 /** Only the queues that need a human, each linking to where they are handled; quiet when empty. */

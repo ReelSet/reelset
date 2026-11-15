@@ -1,4 +1,4 @@
-import { SETTINGS } from '@reelset/core'
+import { GATE_SETTING_KEY_PREFIX, SETTINGS } from '@reelset/core'
 import { describe, expect, it } from 'vitest'
 import { fmtBytes, fmtDate, fmtMs, fmtPct, truncate } from './format'
 import { parseAlertLastSent, successRate, transcriptStats, YOUTUBE_ALERT_KEY } from './health'
@@ -87,12 +87,14 @@ describe('settings form', () => {
     return found
   }
 
-  it('covers every SETTINGS entry between this page and the director page', () => {
+  it('covers every SETTINGS entry between this page and the director page, leaving gate_ keys to the gate page', () => {
     expect([...settingFields(), ...directorSettingFields()].map((f) => f.def.key).sort()).toEqual(
       Object.values(SETTINGS)
         .map((s) => s.key)
+        .filter((key) => !key.startsWith(GATE_SETTING_KEY_PREFIX))
         .sort(),
     )
+    expect(settingFields().some((f) => f.def.key.startsWith(GATE_SETTING_KEY_PREFIX))).toBe(false)
   })
 
   it('validates numbers with the core schema', () => {

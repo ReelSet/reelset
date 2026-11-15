@@ -55,6 +55,7 @@ function respondEmpty(q: CompiledQuery): Record<string, unknown>[] {
   if (has(q, 'from "profile"') && has(q, 'count(*) as "n"')) return [{ n: '42' }]
   if (has(q, 'from "profile"')) return [{ day: '2026-11-15', value: '2' }]
   if (has(q, '"publish_review"')) return [{ n: '7' }]
+  if (has(q, 'from "gate_decision"')) return [{ n: '8' }]
   if (has(q, 'from "item"')) return [{ n: '3' }]
   if (has(q, '"instagram_post"')) return [{ n: '4' }]
   if (has(q, '"credit_upgrade_request"')) return [{ n: '5' }]
@@ -87,6 +88,7 @@ describe('overviewStats', () => {
       openUpgradeRequests: 5,
       openReelRequests: 6,
       pendingFeedSubmissions: 7,
+      gateAwaitingReview: 8,
     })
     expect(out.unavailable).toEqual([])
   })
@@ -96,6 +98,14 @@ describe('overviewStats', () => {
     await overviewStats(db, log, { days: 30, tz: 'UTC', now: NOW })
     const grouped = queries.filter((q) => has(q, 'group by 1'))
     expect(grouped).toHaveLength(8)
+  })
+
+  it('keeps every other attention count when the gate table does not exist yet', async () => {
+    const { db } = scriptedDb((q) =>
+      has(q, 'gate_decision') ? new Error('relation does not exist') : respondEmpty(q),
+    )
+    const out = await overviewStats(db, log, { days: 7, tz: 'UTC', now: NOW })
+    expect(out.attention).toMatchObject({ failedItems: 3, gateAwaitingReview: 0 })
   })
 
   it('degrades a failing metric to zeros instead of failing the page', async () => {

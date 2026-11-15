@@ -6,7 +6,7 @@ import { FlashToast } from './FlashToast'
 import { SubmitButton } from './SubmitButton'
 import { button, input } from './primitives'
 
-export { th, td, input, button, buttonPrimary, Status } from './primitives'
+export { th, td, input, button, buttonPrimary, Status, statusLabel } from './primitives'
 
 export function Table({ children }: { children: React.ReactNode }) {
   return (

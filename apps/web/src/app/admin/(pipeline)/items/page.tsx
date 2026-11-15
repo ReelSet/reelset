@@ -23,6 +23,7 @@ import {
   button,
   buttonPrimary,
   input,
+  statusLabel,
   td,
   th,
 } from '@/components/admin/ui'
@@ -161,7 +162,7 @@ export default async function ItemsPage({ searchParams }: Props) {
           active={status}
           items={[
             { key: 'all', label: 'Any status', href: href({ status: undefined }) },
-            ...STATUSES.map((s) => ({ key: s, label: s, href: href({ status: s }) })),
+            ...STATUSES.map((s) => ({ key: s, label: statusLabel(s), href: href({ status: s }) })),
           ]}
         />
       </div>

@@ -555,6 +555,29 @@ describe('processReelRequests', () => {
     expect(queue.send).not.toHaveBeenCalled()
   })
 
+  it('sends a source-only item back through the pipeline as a requested reel: the request outranks the gate', async () => {
+    const req = request(['https://github.com/acme/widget'])
+    const { fake, queue, deps } = setup(req, {
+      inserted: { id: 'item-7', status: 'source_only', queued_at: null, created: false },
+    })
+    useFetch(...githubRoutes)
+    const result = await processReelRequests(deps)
+
+    expect(result).toMatchObject({ processing: 1, failed: 0 })
+    const transition = fake.find('update "item" set "status"')[0]!
+    expect(transition.params).toEqual(expect.arrayContaining(['found', 'item-7', 'source_only']))
+    const event = fake.find('insert into "item_event"')[0]!
+    expect(
+      event.params.some((p) => typeof p === 'string' && p.includes('"reason":"requested"')),
+    ).toBe(true)
+    const reset = fake.find('"priority_at" = now()').filter((q) => q.sql.startsWith('update'))
+    expect(reset).toHaveLength(1)
+    expect(reset[0]!.sql).toContain('"queued_at" = $1, "attempts" = $2')
+    expect(queue.send).toHaveBeenCalledWith({ itemId: 'item-7', attempt: 1 })
+    expect(requestResults(fake)[0]).toMatchObject({ status: 'processing' })
+    expect(fake.find('"refunded" =')).toHaveLength(0)
+  })
+
   it('leaves requests pending while the pipeline is paused', async () => {
     const req = request(['https://github.com/acme/widget'])
     const { fake, queue, deps } = setup(req, {

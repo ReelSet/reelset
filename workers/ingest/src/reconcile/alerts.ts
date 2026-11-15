@@ -117,7 +117,7 @@ async function gatherSnapshot(db: Database, log: Logger, now: Date): Promise<Ale
     from item_event e
     join item i on i.id = e.item_id
     where i.canonical_key like 'youtube:%'
-      and e.stage in ('summarized', 'insufficient_source')
+      and e.stage in ('summarized', 'source_only', 'insufficient_source')
       and e.outcome = 'ok'
     order by e.created_at desc
     limit ${TRANSCRIPT_WINDOW}`.execute(db)
@@ -142,7 +142,8 @@ async function gatherSnapshot(db: Database, log: Logger, now: Date): Promise<Ale
     youtubeTaskStatuses: youtubeTasks.map((t) => t.status),
     spendTodayUsd: await spendTodayUsd(db, SPEND_CATEGORIES_FOR_CAP),
     spendCapUsd,
-    transcriptResults: transcriptRows.rows.map((r) => r.stage === 'summarized'),
+    // A gate-rejected video still had its transcript read, so it counts as a transcript success.
+    transcriptResults: transcriptRows.rows.map((r) => r.stage !== 'insufficient_source'),
   }
 }
 

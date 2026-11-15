@@ -17,6 +17,7 @@ export type World = {
   mentions: Record<string, unknown>[]
   chunks: { id: string; text: string }[]
   images?: unknown
+  renderedAt?: Date | null
 }
 
 export function makeWorld(overrides: Partial<World> = {}): World {
@@ -83,6 +84,7 @@ export function makeDeps(
           topics: ['queues'],
           queued_at: world.queuedAt,
           ...(world.images !== undefined ? { images: world.images } : {}),
+          ...(world.renderedAt !== undefined ? { rendered_at: world.renderedAt } : {}),
         },
       ]
     }
@@ -125,6 +127,7 @@ export function makeDeps(
     renderQueue: { send },
     llmModel: 'claude-haiku-5-5',
     narrationLimits: {},
+    styleLimits: false,
     embeddingModel: 'embed-test',
   }
   return { deps, fake, generate, embed, transcriptFetch, send, world }

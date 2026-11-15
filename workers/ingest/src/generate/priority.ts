@@ -1,6 +1,12 @@
-import { transitionItem, type Database, type Logger, type TransitionInput } from '@reelset/core'
+import {
+  SETTLED_ITEM_STATUSES,
+  transitionItem,
+  type Database,
+  type Logger,
+  type TransitionInput,
+} from '@reelset/core'
 
-const TERMINAL = new Set(['rendered', 'failed', 'insufficient_source'])
+const TERMINAL = new Set<string>(SETTLED_ITEM_STATUSES)
 
 /** transitionItem, then drop the queue-jump flag once the item can no longer be waiting for a render. */
 export async function transitionClearingPriority(

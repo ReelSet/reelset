@@ -73,6 +73,7 @@ export const RENDER_RENDERING_LIVE_MS = 75 * 60_000
 export const MAX_STUCK_ATTEMPTS = 3
 export const RECONCILE_BATCH = 200
 export const ADMISSION_CANDIDATES = 600
+export const ADMISSION_OVERRIDES = 50
 export const ENQUEUE_CHUNK = 50
 
 export const CHUNK_TARGET_CHARS = 800
@@ -83,6 +84,20 @@ export const MIN_EVIDENCE_CHARS = 150
 export const MAX_TLDR_CHARS = 280
 export const EMBED_BATCH_SIZE = 50
 export const QUEUE_MAX_RETRIES = 3
+
+// The gate answer is ~200 tokens of JSON; the ceiling leaves room for a short think at low effort.
+export const GATE_MAX_OUTPUT_TOKENS = 2000
+// The gate is optional, so it gives up fast: one SDK try per call and a ceiling across both attempts.
+export const GATE_CALL_TIMEOUT_MS = 20_000
+export const GATE_TOTAL_TIMEOUT_MS = 45_000
+export const GATE_SDK_RETRIES = 0
+export const GATE_JUDGE_ATTEMPTS = 2
+export const GATE_EXAMPLE_TITLE_CHARS = 140
+export const GATE_ITEM_TITLE_CHARS = 300
+export const GATE_EXAMPLE_NOTE_CHARS = 200
+export const GATE_PROMPT_REASONS_MAX = 4
+// A source-only item has no TLDR, so its item embedding is built from the start of its evidence.
+export const SOURCE_ONLY_EMBED_EXCERPT_CHARS = 1200
 
 export const ALERT_NO_RENDER_MS = 3 * HOUR_MS
 export const ALERT_SOURCE_LAG_MS = 2 * HOUR_MS

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { STYLE_LIMITS } from '../src/pipeline/plain'
 import { parseModelOutput } from '../src/pipeline/output'
 
 const CHUNK = '11111111-1111-4111-8111-111111111111'
@@ -50,5 +51,82 @@ describe('parseModelOutput', () => {
       script: { ...validOutput.script, claims: [{ text: 'c', chunkIds: ['chunk-1'] }] },
     }
     expect(parseModelOutput(JSON.stringify(bad)).ok).toBe(false)
+  })
+})
+
+describe('hook options', () => {
+  const withOptions = (hookOptions: unknown, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      tldr: 'Short.',
+      topics: ['x'],
+      script: {
+        version: 1,
+        hookOptions,
+        hook: 'This is a new tool for developers.',
+        headline: 'NEW TOOL',
+        beats: [
+          {
+            text: "That matters if you're learning AI on a laptop. Cloud bills add up fast.",
+            visual: { type: 'title', title: 'T' },
+          },
+          {
+            text: 'Ollama shrinks the model to fit in 8 gigabytes. Then it runs offline.',
+            visual: { type: 'title', title: 'T2' },
+          },
+        ],
+        outro: 'No GPU, one command. Try it on your laptop.',
+        claims: [{ text: 'c', chunkIds: ['11111111-1111-4111-8111-111111111111'] }],
+        ...extra,
+      },
+    })
+  const options = [
+    { formula: 'The Reveal', spoken: 'This is a new tool for developers.', headline: 'NEW TOOL' },
+    {
+      formula: 'Permission',
+      spoken: "You don't need a GPU to run this model.",
+      headline: 'NO GPU NEEDED',
+    },
+    { formula: 'The Statistic', spoken: 'Let us talk about a model today.', headline: 'A MODEL' },
+  ]
+
+  it('keeps the strongest hook option with its headline and drops the options', () => {
+    const r = parseModelOutput(withOptions(options))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.script.hook).toBe("You don't need a GPU to run this model.")
+    expect(r.value.script.headline).toBe('NO GPU NEEDED')
+    expect(r.value.script).not.toHaveProperty('hookOptions')
+    expect(r.style.hookFormula).toBe('Permission')
+    expect(r.style.hookScore).toBeGreaterThanOrEqual(70)
+    expect(r.style.issues).toEqual([])
+  })
+
+  it('keeps the written hook when there are no options', () => {
+    const r = parseModelOutput(withOptions(undefined))
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.value.script.hook).toBe('This is a new tool for developers.')
+      expect(r.style.hookScore).toBeUndefined()
+    }
+  })
+
+  it('reports style issues only when style limits are given', () => {
+    const weak = [{ formula: 'The Reveal', spoken: 'This is something interesting for people.' }]
+    const flat = { outro: 'Install it and see for yourself.' }
+    expect(parseModelOutput(withOptions(weak, flat)).ok).toBe(true)
+    const r = parseModelOutput(withOptions(weak, flat), undefined, '', {}, STYLE_LIMITS)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.style.issues[0]).toContain('the best hook')
+    expect(r.style.issues.join(' ')).toContain('shares no word with the hook')
+    expect(r.style.readingGrade).toBeGreaterThan(0)
+  })
+
+  it('swaps stock phrases in the narration before validating', () => {
+    const r = parseModelOutput(
+      withOptions(options, { outro: 'No GPU, and it is a game-changer for your laptop.' }),
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.script.outro).toBe('No GPU, and it is a big deal for your laptop.')
   })
 })

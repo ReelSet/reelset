@@ -1,6 +1,9 @@
 import { reelScriptSchema, spokenChars } from '@reelset/core'
 import { z } from 'zod'
 import { MAX_TLDR_CHARS } from '../config'
+import { hookAdvice, pickHook, readHookOptions, type HookPick } from './hook-score'
+import { readingGrade, styleIssues, type StyleLimits } from './plain'
+import { cleanSlop } from './slop'
 import {
   MAX_NARRATION_WORDS,
   clipHeadline,
@@ -63,6 +66,36 @@ function clip(o: Obj, key: string, max: number): void {
   if (typeof v === 'string') o[key] = truncateAtWord(v, max)
 }
 
+function plain(o: Obj, key: string): void {
+  const v = o[key]
+  if (typeof v === 'string') o[key] = cleanSlop(v).text
+}
+
+/**
+ * The model writes three hooks on the same fact and names its favourite in "hook"; the scorer
+ * swaps in another option (with its headline) only when the favourite is weak. Output without
+ * hookOptions keeps the hook it has.
+ */
+export function chooseHook(json: unknown): HookPick | null {
+  if (!isObj(json) || !isObj(json.script)) return null
+  const script = json.script
+  const options = readHookOptions(script.hookOptions).map((o) => ({
+    ...o,
+    spoken: cleanSlop(o.spoken).text,
+  }))
+  delete script.hookOptions
+  const favourite = typeof script.hook === 'string' ? cleanSlop(script.hook).text : undefined
+  const pick = pickHook(
+    options.filter((o) => o.spoken),
+    undefined,
+    favourite,
+  )
+  if (!pick) return null
+  script.hook = pick.option.spoken
+  if (pick.option.headline) script.headline = pick.option.headline
+  return pick
+}
+
 /**
  * Models regularly overshoot the hard length limits by a few characters. Rejecting those wastes
  * the LLM spend and the daily reel slot, so trim at word boundaries and fill a missing quote
@@ -99,6 +132,8 @@ export function repairModelOutput(
   }
   const script = json.script
   if (!isObj(script)) return json
+  plain(script, 'hook')
+  plain(script, 'outro')
   clip(script, 'hook', 120)
   clip(script, 'outro', 120)
   const headline = clipHeadline(script.headline)
@@ -118,6 +153,7 @@ export function repairModelOutput(
     const labelLedger: Ledger = new Map()
     for (const beat of beats) {
       if (!isObj(beat)) continue
+      plain(beat, 'text')
       clip(beat, 'text', 220)
       repairShots(beat, factNumbers, labelLedger, { sourceText: facts, claims })
       repairBroll(beat)
@@ -145,7 +181,17 @@ export function repairModelOutput(
   return json
 }
 
-export type ParsedOutput = { ok: true; value: GeneratedContent } | { ok: false; reason: string }
+/** How the accepted script did on the style checks; issues are advice for a rewrite, never a hard failure. */
+export type StyleReport = {
+  issues: string[]
+  readingGrade: number
+  hookFormula?: string
+  hookScore?: number
+  hookSeconds?: number
+}
+
+export type ParsedOutput =
+  { ok: true; value: GeneratedContent; style: StyleReport } | { ok: false; reason: string }
 
 export type NarrationLimits = { min?: number; max?: number; maxSpokenChars?: number }
 
@@ -173,6 +219,7 @@ export function parseModelOutput(
   allowedChunkIds?: ReadonlySet<string>,
   facts = '',
   limits: NarrationLimits = {},
+  style?: StyleLimits,
 ): ParsedOutput {
   const stripped = text
     .trim()
@@ -184,6 +231,7 @@ export function parseModelOutput(
   } catch {
     return { ok: false, reason: 'response was not valid JSON' }
   }
+  const pick = chooseHook(json)
   const parsed = outputSchema.safeParse(repairModelOutput(json, allowedChunkIds, facts))
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -195,5 +243,25 @@ export function parseModelOutput(
   const reason = narrationRejection(parsed.data.script, limits)
   if (reason) return { ok: false, reason }
   const topics = [...new Set(parsed.data.topics.map((t) => t.toLowerCase()))]
-  return { ok: true, value: { ...parsed.data, topics } }
+  const script = parsed.data.script
+  const issues = style ? styleIssues(script, style) : []
+  if (style && pick && pick.result.score < style.minHookScore) {
+    issues.unshift(
+      `the best hook ("${pick.option.spoken}") is weak: ${hookAdvice(pick.result)}; write three new hook options`,
+    )
+  }
+  const report: StyleReport = {
+    issues,
+    readingGrade: readingGrade(
+      [script.hook, ...script.beats.map((b) => b.text), script.outro].join(' '),
+    ),
+    ...(pick
+      ? {
+          hookScore: pick.result.score,
+          hookSeconds: pick.result.seconds,
+          ...(pick.option.formula ? { hookFormula: pick.option.formula.slice(0, 40) } : {}),
+        }
+      : {}),
+  }
+  return { ok: true, value: { ...parsed.data, topics }, style: report }
 }

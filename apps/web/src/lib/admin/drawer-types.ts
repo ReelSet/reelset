@@ -1,4 +1,5 @@
 import type { UserDetail } from '@/server/admin/users'
+import type { GateView } from './gate-view'
 
 export type Serialized<T> = T extends Date
   ? string
@@ -55,6 +56,7 @@ export type ItemDrawerData = {
   spend: { category: string; costUsd: number; label: string | null }[]
   totalUsd: number
   postedPermalink: string | null
+  gate: GateView | null
 }
 
 export type UserDrawerData = Serialized<UserDetail>

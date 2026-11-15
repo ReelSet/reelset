@@ -22,6 +22,7 @@ export const ItemStatus = {
   rendered: 'rendered',
   insufficient_source: 'insufficient_source',
   failed: 'failed',
+  source_only: 'source_only',
 } as const
 export type ItemStatus = (typeof ItemStatus)[keyof typeof ItemStatus]
 export const MentionKind = {

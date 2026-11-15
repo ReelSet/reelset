@@ -167,22 +167,23 @@ async function upsertItem(
   })
 }
 
-/** A rendered item whose video is gone (retention cleanup) is made again, at priority. */
-async function reRender(
+type Remake = {
+  itemId: string
+  from: 'rendered' | 'source_only'
+  reason: 'video_missing' | 'requested'
+}
+
+/** Sends a settled item back to `found` at priority for a request: a rendered item whose video is gone, or one the gate kept as source only (a request outranks the gate). */
+async function remake(
   deps: GenerateDeps,
   req: ReelRequestRow,
-  itemId: string,
+  { itemId, from, reason }: Remake,
   log: Logger,
 ): Promise<'processing'> {
   const { db } = deps
   await transitionItem(
     db,
-    {
-      itemId,
-      from: 'rendered',
-      to: 'found',
-      meta: { manual: true, requestId: req.id, reason: 'video_missing' },
-    },
+    { itemId, from, to: 'found', meta: { manual: true, requestId: req.id, reason } },
     log,
   )
   await db
@@ -192,7 +193,7 @@ async function reRender(
     .execute()
   await kickItem(deps, itemId, req.id, log)
   await setReelRequestResult(db, req.id, { status: 'processing', itemId }, ['resolving'])
-  log.info('rendered item had no video left, rendering it again for the request')
+  log.info({ from, reason }, 'settled item sent back through the pipeline for the request')
   return 'processing'
 }
 
@@ -306,11 +307,14 @@ async function handleRequest(
       await doneInstantly(db, req, state.id, il)
       return 'done'
     }
-    return reRender(deps, req, state.id, il)
+    return remake(deps, req, { itemId: state.id, from: 'rendered', reason: 'video_missing' }, il)
   }
   if (state.status === 'insufficient_source') {
     await failRequest(db, req, INSUFFICIENT_SOURCE_MESSAGE, state.id, il)
     return 'failed'
+  }
+  if (state.status === 'source_only') {
+    return remake(deps, req, { itemId: state.id, from: 'source_only', reason: 'requested' }, il)
   }
   if (state.status === 'failed') {
     await failRequest(db, req, RENDER_FAILED_MESSAGE, state.id, il)

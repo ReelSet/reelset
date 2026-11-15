@@ -30,7 +30,7 @@ const NO_ID = '00000000-0000-0000-0000-000000000000'
 
 const ref = (name: string) => sql.ref(name)
 
-const dirOf = (sort: { dir: 'asc' | 'desc' }) => (ob: OrderByItemBuilder) =>
+export const dirOf = (sort: { dir: 'asc' | 'desc' }) => (ob: OrderByItemBuilder) =>
   sort.dir === 'asc' ? ob.asc().nullsLast() : ob.desc().nullsLast()
 
 const iso = (value: Date | string) => new Date(value).toISOString()
@@ -51,7 +51,7 @@ const sourceList = sql.raw(
     .join(', '),
 )
 
-const itemSource = sql<string>`coalesce(
+export const itemSource = sql<string>`coalesce(
   (select m.source::text from mention m where m.item_id = item.id order by m.score desc nulls last limit 1),
   case when split_part(item.canonical_key, ':', 1) in (${sourceList})
     then split_part(item.canonical_key, ':', 1) else 'unknown' end

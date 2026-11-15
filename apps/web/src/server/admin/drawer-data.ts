@@ -1,5 +1,6 @@
-import { reelScriptSchema } from '@reelset/core'
-import type { Database } from '@reelset/core'
+import { errorFields, latestGateDecision, reelScriptSchema } from '@reelset/core'
+import type { Database, GateDecisionRow, Logger } from '@reelset/core'
+import { toGateView } from '@/lib/admin/gate'
 import { suggestRetryStage } from '@/lib/admin/retry-stage'
 import type { ItemDrawerData, ScriptView } from '@/lib/admin/drawer-types'
 import { mediaUrl } from '@/lib/media'
@@ -17,7 +18,12 @@ function scriptView(raw: unknown): ScriptView | null {
   return { hook, outro, beats: beats.map((b) => ({ text: b.text, visualType: b.visual.type })) }
 }
 
-type Context = { mediaBase: string; permalink: string | null; now: Date }
+type Context = {
+  mediaBase: string
+  permalink: string | null
+  now: Date
+  gate?: GateDecisionRow | null
+}
 
 /** Pure projection of the pipeline query onto exactly what the item drawer renders. */
 export function toItemDrawerData(detail: ItemDetail, ctx: Context): ItemDrawerData {
@@ -78,6 +84,21 @@ export function toItemDrawerData(detail: ItemDetail, ctx: Context): ItemDrawerDa
     spend: spendRows,
     totalUsd: spendRows.reduce((sum, s) => sum + s.costUsd, 0),
     postedPermalink: ctx.permalink,
+    gate: ctx.gate ? toGateView(ctx.gate) : null,
+  }
+}
+
+// The drawer must keep working before the gate table exists, so a failed lookup reads as "never judged".
+async function gateDecisionOrNull(
+  db: Database,
+  itemId: string,
+  log: Logger,
+): Promise<GateDecisionRow | null> {
+  try {
+    return await latestGateDecision(db, itemId)
+  } catch (err) {
+    log.warn({ ...errorFields(err), itemId }, 'gate decision unavailable for the item drawer')
+    return null
   }
 }
 
@@ -85,9 +106,13 @@ export async function loadItemDrawer(
   db: Database,
   id: string,
   mediaBase: string,
+  log: Logger,
 ): Promise<ItemDrawerData | null> {
   const detail = await itemDetail(db, id)
   if (!detail) return null
-  const permalink = await livePostPermalink(db, id)
-  return toItemDrawerData(detail, { mediaBase, permalink, now: new Date() })
+  const [permalink, gate] = await Promise.all([
+    livePostPermalink(db, id),
+    gateDecisionOrNull(db, id, log),
+  ])
+  return toItemDrawerData(detail, { mediaBase, permalink, now: new Date(), gate })
 }

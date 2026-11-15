@@ -21,6 +21,7 @@ const STATUS_TONE: Record<string, string> = {
   rendering: 'bg-info',
   queued: 'bg-muted',
   insufficient_source: 'bg-warn',
+  source_only: 'bg-info',
   answered: 'bg-ok',
   error: 'bg-danger',
   spend_capped: 'bg-warn',
@@ -28,11 +29,15 @@ const STATUS_TONE: Record<string, string> = {
   no_evidence: 'bg-faint',
 }
 
+const STATUS_LABEL: Record<string, string> = { source_only: 'Source only' }
+
+export const statusLabel = (value: string): string => STATUS_LABEL[value] ?? value
+
 export function Status({ value }: { value: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className={`h-1.5 w-1.5 rounded-full ${STATUS_TONE[value] ?? 'bg-muted'}`} />
-      {value}
+      {statusLabel(value)}
     </span>
   )
 }

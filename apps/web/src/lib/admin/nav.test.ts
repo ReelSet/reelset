@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { ADMIN_ROUTES, NAV_GROUPS, isActivePath, isGroupActive, navBadges } from './nav'
+import {
+  ADMIN_ROUTES,
+  NAV_GROUPS,
+  PIPELINE_TABS,
+  SETTINGS_TABS,
+  isActivePath,
+  isGroupActive,
+  navBadges,
+} from './nav'
+import { safeAdminPath } from './retry'
 
 const group = (key: string) => NAV_GROUPS.find((g) => g.key === key)!
 
@@ -39,7 +48,32 @@ describe('navBadges', () => {
         openUpgradeRequests: 3,
         openReelRequests: 4,
         pendingFeedSubmissions: 5,
+        gateAwaitingReview: 40,
       }),
     ).toEqual({ pipeline: 2, instagram: 1, generate: 12 })
+  })
+})
+
+describe('gate routes', () => {
+  it('lists the review queue under Pipeline and its settings under Settings', () => {
+    expect(PIPELINE_TABS).toContainEqual({ href: ADMIN_ROUTES.gate, label: 'Gate' })
+    expect(SETTINGS_TABS).toContainEqual({ href: ADMIN_ROUTES.gateSettings, label: 'Gate' })
+  })
+
+  it('never lights up both groups for one page', () => {
+    expect(isGroupActive(ADMIN_ROUTES.gate, group('pipeline'))).toBe(true)
+    expect(isGroupActive(ADMIN_ROUTES.gate, group('settings'))).toBe(false)
+    expect(isGroupActive(ADMIN_ROUTES.gateSettings, group('settings'))).toBe(true)
+    expect(isGroupActive(ADMIN_ROUTES.gateSettings, group('pipeline'))).toBe(false)
+    expect(isActivePath(ADMIN_ROUTES.gateSettings, ADMIN_ROUTES.gate)).toBe(false)
+  })
+
+  it('are accepted as redirect targets for their forms', () => {
+    const queue = `${ADMIN_ROUTES.gate}?review=all&by=explore&page=2`
+    expect(safeAdminPath(queue)).toBe(queue)
+    const starred = ADMIN_ROUTES.gate + '?q=c*+%3Cb%3E%27x'
+    expect(safeAdminPath(starred)).toBe(starred)
+    expect(safeAdminPath(`${ADMIN_ROUTES.gate}?q=<script>`)).toBe(ADMIN_ROUTES.pipeline)
+    expect(safeAdminPath(ADMIN_ROUTES.gateSettings)).toBe(ADMIN_ROUTES.gateSettings)
   })
 })

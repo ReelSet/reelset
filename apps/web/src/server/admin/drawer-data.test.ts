@@ -88,4 +88,78 @@ describe('toItemDrawerData', () => {
     expect(json).not.toContain('render_key')
     expect(json).not.toContain('"meta"')
   })
+
+  it('has no gate block for an item the gate never judged', () => {
+    expect(data.gate).toBeNull()
+  })
+})
+
+describe('toItemDrawerData gate block', () => {
+  const gate = {
+    id: 'g1',
+    item_id: 'i1',
+    verdict: 'source_only',
+    score: 38,
+    threshold: 55,
+    signals: { hook: 3, visual: 2, secret: 1 },
+    reasons: ['routine release'],
+    rationale: 'A version bump.',
+    decided_by: 'model',
+    rule: null,
+    mode: 'live',
+    applied: true,
+    model: 'claude-haiku-5-5',
+    prompt_version: 'gate-v1',
+    config_hash: 'cfg-hash-1',
+    cost_usd: 0.002,
+    label: 'disagree',
+    label_reason: 'actually_interesting',
+    label_note: 'big launch',
+    labeled_by: 'admin-uuid-1',
+    labeled_at: new Date('2026-01-01T02:00:00Z'),
+    created_at: new Date('2026-01-01T01:00:00Z'),
+  } as unknown as NonNullable<Parameters<typeof toItemDrawerData>[1]['gate']>
+
+  const data = toItemDrawerData(detail, {
+    mediaBase: 'https://media.test/',
+    permalink: null,
+    now: new Date('2026-01-02T00:00:00Z'),
+    gate,
+  })
+
+  it('projects the decision, its signals and the admin label', () => {
+    expect(data.gate).toMatchObject({
+      decisionId: 'g1',
+      itemId: 'i1',
+      verdict: 'source_only',
+      score: 38,
+      threshold: 55,
+      reasons: ['routine release'],
+      rationale: 'A version bump.',
+      decidedBy: 'model',
+      mode: 'live',
+      applied: true,
+      model: 'claude-haiku-5-5',
+      promptVersion: 'gate-v1',
+      decidedAt: '2026-01-01T01:00:00.000Z',
+      label: 'disagree',
+      labelReason: 'Actually interesting',
+      labelNote: 'big launch',
+    })
+    expect(data.gate?.signals).toHaveLength(6)
+    expect(data.gate?.signals[0]).toEqual({ key: 'hook', label: 'Hook', value: 3, pct: 30 })
+    expect(data.gate?.disagreeReasons.map((r) => r.key)).toEqual([
+      'actually_interesting',
+      'strong_visuals_missed',
+      'other',
+    ])
+  })
+
+  it('exposes only the projected gate fields', () => {
+    const json = JSON.stringify(data.gate)
+    expect(json).not.toContain('cfg-hash-1')
+    expect(json).not.toContain('admin-uuid-1')
+    expect(json).not.toContain('secret')
+    expect(json).not.toContain('cost')
+  })
 })

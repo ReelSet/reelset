@@ -22,11 +22,12 @@ const script = (beatWords: number, extra: Record<string, unknown> = {}) => ({
 })
 
 describe('hook engineering rules in the prompt', () => {
-  it('bans weak openers, asks for three drafted hooks and a number-led headline', () => {
+  it('bans weak openers, asks for three hook options and a number-led headline', () => {
     for (const phrase of ['In this video', 'Have you ever', "Let's talk about"]) {
       expect(SYSTEM_PROMPT).toContain(phrase)
     }
-    expect(SYSTEM_PROMPT).toContain('Draft three different hooks')
+    expect(SYSTEM_PROMPT).toContain('Write THREE hooks in "hookOptions"')
+    expect(SYSTEM_PROMPT).toContain('HOOK FORMULAS')
     expect(SYSTEM_PROMPT).toContain('must agree with the hook')
     expect(SYSTEM_PROMPT).toContain('sentence case of 3 to 8 words')
     expect(SYSTEM_PROMPT).toContain(STYLE_GUIDE)

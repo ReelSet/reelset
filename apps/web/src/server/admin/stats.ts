@@ -6,6 +6,7 @@ import {
   type Logger,
 } from '@reelset/core'
 import { sql, type RawBuilder } from 'kysely'
+import { gateAwaitingReview } from './gate-queries'
 import {
   buildPeriods,
   buildSeries,
@@ -94,10 +95,20 @@ export type Attention = {
   openUpgradeRequests: number
   openReelRequests: number
   pendingFeedSubmissions: number
+  gateAwaitingReview: number
+}
+
+// The gate table arrives with a later migration; until then its count reads as zero instead of failing every badge.
+async function gateReviewBacklog(db: Database): Promise<number> {
+  try {
+    return await gateAwaitingReview(db)
+  } catch {
+    return 0
+  }
 }
 
 export async function attentionCounts(db: Database): Promise<Attention> {
-  const [items, instagram, upgrades, requests, submissions] = await Promise.all([
+  const [items, instagram, upgrades, requests, submissions, gateReviews] = await Promise.all([
     db
       .selectFrom('item')
       .select(db.fn.countAll<string>().as('n'))
@@ -124,6 +135,7 @@ export async function attentionCounts(db: Database): Promise<Attention> {
       .where('status', 'in', [...REEL_REQUEST_OPEN])
       .executeTakeFirst(),
     countPendingPublish(db),
+    gateReviewBacklog(db),
   ])
   return {
     failedItems: Number(items?.n ?? 0),
@@ -131,6 +143,7 @@ export async function attentionCounts(db: Database): Promise<Attention> {
     openUpgradeRequests: Number(upgrades?.n ?? 0),
     openReelRequests: Number(requests?.n ?? 0),
     pendingFeedSubmissions: submissions,
+    gateAwaitingReview: gateReviews,
   }
 }
 
@@ -149,6 +162,7 @@ const EMPTY_ATTENTION: Attention = {
   openUpgradeRequests: 0,
   openReelRequests: 0,
   pendingFeedSubmissions: 0,
+  gateAwaitingReview: 0,
 }
 
 /** One grouped query per metric, run in parallel; a failing metric degrades to zeros and is listed in `unavailable`. */

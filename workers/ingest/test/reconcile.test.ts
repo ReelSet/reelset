@@ -59,7 +59,7 @@ describe('classifyStuck', () => {
     expect(classifyStuck({ ...item, statusChangedAt: minutesAgo(5) }, now)).toBe('ok')
   })
   it('ignores statuses the reconciler does not own', () => {
-    for (const status of ['rendered', 'failed', 'insufficient_source'] as const) {
+    for (const status of ['rendered', 'failed', 'insufficient_source', 'source_only'] as const) {
       expect(classifyStuck({ ...item, status }, now)).toBe('ok')
     }
   })
@@ -99,9 +99,15 @@ function scriptedDb(rows: {
   spent?: number
   settings?: Record<string, unknown>
   priorityIds?: string[]
+  overrides?: Row[]
+  gateLookupFails?: boolean
 }) {
   return createFakeDb((q: RecordedQuery) => {
     const s = q.sql
+    if (s.includes('from gate_decision')) {
+      if (rows.gateLookupFails) throw new Error('relation "gate_decision" does not exist')
+      return rows.overrides ?? []
+    }
     if (s.includes('from "app_setting"')) {
       const key = String(q.params[0])
       return key in (rows.settings ?? {}) ? [{ value: rows.settings![key] }] : []
@@ -175,6 +181,107 @@ describe('reconcile', () => {
     expect(count.sql).toContain('inner join "item" on "item"."id" = "item_event"."item_id"')
     expect(count.sql).toContain('"item"."status" not in')
     expect(count.params).toEqual(expect.arrayContaining(['failed', 'insufficient_source']))
+  })
+
+  it('does not count source-only items against the daily cap, in total or per source', async () => {
+    const fake = scriptedDb({ found: [{ id: 'item-1', score: 0.9 }] })
+    await reconcile(fake.db, queues(), testLog, now)
+    const counts = fake.find('count(distinct item_event.item_id)')
+    expect(counts).toHaveLength(2)
+    for (const count of counts) {
+      expect(count.sql).toContain('"item"."status" not in')
+      expect(count.params).toContain('source_only')
+    }
+  })
+
+  describe('admin "make a reel anyway" overrides', () => {
+    const claimedIds = (fake: ReturnType<typeof scriptedDb>) =>
+      fake
+        .find('update "item" set "queued_at" = now()')
+        .flatMap((q) => q.params.filter((p) => typeof p === 'string' && p.startsWith('item-')))
+
+    it('admits an overridden item below the minimum score and outside the score candidates', async () => {
+      const fake = scriptedDb({
+        found: [{ id: 'item-1', score: 0.9 }],
+        overrides: [{ id: 'item-old', score: 0.01 }],
+        settings: { min_item_score: 0.3 },
+      })
+      const q = queues()
+      const result = await reconcile(fake.db, q, testLog, now)
+      expect(result.admitted).toBe(2)
+      expect(result.skipped.below_score).toBe(0)
+      expect(claimedIds(fake)).toEqual(['item-old', 'item-1'])
+      const events = fake.find('insert into "item_event"')
+      expect(
+        events.filter((e) =>
+          e.params.some((p) => typeof p === 'string' && p.includes('"gateOverride":true')),
+        ),
+      ).toHaveLength(1)
+      const lookup = fake.find('from gate_decision')[0]!
+      expect(lookup.sql).toContain("item.status = 'found'")
+      expect(lookup.sql).toContain('item.queued_at is null')
+      expect(lookup.sql).toContain("d.decided_by = 'admin' and d.verdict = 'reel'")
+    })
+
+    it('admits an overridden item ahead of higher-scored ordinary items when one slot is left', async () => {
+      const fake = scriptedDb({
+        found: [
+          { id: 'item-1', score: 0.9 },
+          { id: 'item-2', score: 0.8 },
+          { id: 'item-old', score: 0.01 },
+        ],
+        overrides: [{ id: 'item-old', score: 0.01 }],
+        admitted: 199,
+        settings: { daily_reel_cap: 200 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-old'])
+      expect(result.skipped).toEqual({ below_score: 0, daily_cap: 2, spend_cap: 0 })
+    })
+
+    it('makes an overridden item wait when the daily cap or the spend cap is reached', async () => {
+      const capped = scriptedDb({
+        overrides: [{ id: 'item-old', score: 0.01 }],
+        admitted: 200,
+        settings: { daily_reel_cap: 200 },
+      })
+      const cappedResult = await reconcile(capped.db, queues(), testLog, now)
+      expect(cappedResult.admitted).toBe(0)
+      expect(cappedResult.skipped.daily_cap).toBe(1)
+      expect(claimedIds(capped)).toEqual([])
+
+      const broke = scriptedDb({
+        overrides: [{ id: 'item-old', score: 0.01 }],
+        spent: 999,
+        settings: { pipeline_daily_spend_cap_usd: 5 },
+      })
+      const brokeResult = await reconcile(broke.db, queues(), testLog, now)
+      expect(brokeResult.admitted).toBe(0)
+      expect(brokeResult.skipped.spend_cap).toBe(1)
+    })
+
+    it('admits by score as before when the gate lookup fails', async () => {
+      const fake = scriptedDb({
+        found: [
+          { id: 'item-1', score: 0.9 },
+          { id: 'item-2', score: 0.1 },
+        ],
+        gateLookupFails: true,
+        settings: { min_item_score: 0.3 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(result.skipped.below_score).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-1'])
+    })
+  })
+
+  it('only ever admits found items and only watches pipeline stages for stuck items', async () => {
+    const fake = scriptedDb({ found: [{ id: 'item-1', score: 0.9 }] })
+    await reconcile(fake.db, queues(), testLog, now)
+    const stuck = fake.find('"queued_at" <')[0]!
+    expect(stuck.params).not.toContain('source_only')
     const candidates = fake.find('select "id", "score" from "item"')[0]!
     expect(candidates.sql).toContain('exists (select "mention"."id" from "mention"')
   })
