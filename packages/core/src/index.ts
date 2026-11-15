@@ -2,6 +2,23 @@ export * from './db/enums'
 export type * from './db/types'
 export { createDb, type Database, type DbHandle, type DbOptions } from './db/client'
 export { createLogger, elapsedMs, errorFields, type Logger } from './lib/logger'
+export {
+  HIDDEN_INSTAGRAM_ERROR,
+  HIDDEN_REASONS,
+  HIDDEN_REASON_LABELS,
+  HIDDEN_REQUEST_MESSAGE,
+  ITEM_VISIBILITIES,
+  hiddenReasonSchema,
+  parseVisibility,
+  type HiddenReason,
+  type ItemVisibility,
+} from './domain/visibility'
+export {
+  SPAM_SCORE_THRESHOLD,
+  githubSpamVerdict,
+  type GithubSpamInput,
+  type GithubSpamVerdict,
+} from './domain/github-spam'
 export { SOURCES, parseSource, sourceSchema } from './domain/source'
 export {
   PIPELINE_STAGES,
@@ -94,6 +111,7 @@ export {
   getPipelinePause,
   pausePipeline,
 } from './repos/pipeline-pause.repo'
+export { hideItems, unhideItems, type VisibilityChange } from './repos/visibility.repo'
 export { recordSpend, spendTodayUsd, type SpendInput } from './repos/spend.repo'
 export {
   ALERT_KEYS,

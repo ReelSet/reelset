@@ -52,7 +52,7 @@ export function buildReel(
   itemId: string | null,
   mediaBase: string,
 ): GeneratedReel | null {
-  if (!itemId || !ctx.item) return null
+  if (!itemId || !ctx.item || ctx.item.visibility === 'hidden') return null
   const done = ctx.render?.status === 'done' && ctx.item.status === 'rendered'
   return {
     itemId,

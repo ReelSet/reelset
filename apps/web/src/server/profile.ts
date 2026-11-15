@@ -26,6 +26,7 @@ function reelsFrom(db: Database, table: 'like' | 'save', profileId: string) {
     .select(['item.id', 'item.title', 'r.poster_key', `${table}.created_at as at`])
     .where(`${table}.profile_id`, '=', profileId)
     .where('item.status', '=', ItemStatus.rendered)
+    .where('item.visibility', '<>', 'hidden')
     .where((eb) =>
       eb.or([eb('item.visibility', '=', 'public'), eb('item.owner_id', '=', profileId)]),
     )

@@ -1,5 +1,6 @@
 'use server'
 
+import { formDataStrings, hideInputSchema, unhideInputSchema } from '@/lib/admin/moderation'
 import { idSchema, itemRetrySchema } from '@/lib/admin/retry'
 import { getDb } from '@/server/db'
 import { runAdminAction } from '@/server/admin/run'
@@ -10,6 +11,7 @@ import {
   retryRender,
   saveSetting,
 } from '@/server/admin/commands'
+import { hideSelected, unhideSelected } from '@/server/admin/moderation'
 import {
   createDirectorSkill,
   moveDirectorSkill,
@@ -36,6 +38,25 @@ export async function discardItemAction(formData: FormData): Promise<void> {
     const parsed = idSchema.safeParse({ id: formData.get('id') })
     if (!parsed.success) return { ok: false, message: 'Invalid item id' }
     return discardItem(getDb(), { itemId: parsed.data.id, adminId }, log)
+  })
+}
+
+export async function hideItemsAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'hide-items', async ({ log }) => {
+    const parsed = hideInputSchema.safeParse({
+      itemIds: formDataStrings(formData, 'itemId'),
+      reason: formData.get('reason'),
+    })
+    if (!parsed.success) return { ok: false, message: 'Select at least one item and a reason' }
+    return hideSelected(getDb(), parsed.data, log)
+  })
+}
+
+export async function unhideItemsAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'unhide-items', async ({ log }) => {
+    const parsed = unhideInputSchema.safeParse({ itemIds: formDataStrings(formData, 'itemId') })
+    if (!parsed.success) return { ok: false, message: 'Select at least one item' }
+    return unhideSelected(getDb(), parsed.data, log)
   })
 }
 

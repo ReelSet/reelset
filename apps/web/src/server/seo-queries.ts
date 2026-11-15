@@ -3,6 +3,7 @@ import {
   SERVED_RENDER_ORDER_SQL,
   SETTINGS,
   getSetting,
+  parseVisibility,
   type Database,
   type Logger,
 } from '@reelset/core'
@@ -88,7 +89,7 @@ export async function loadReelPage(
     select i.id, i.title, i.tldr, i.topics, i.kind::text as kind, i.canonical_url, i.published_at,
       i.rendered_at, i.script, i.visibility, served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
-    where i.status = ${ItemStatus.rendered}::item_status and ${match}
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility <> 'hidden' and ${match}
     order by i.published_at desc
     limit ${PARAM_CANDIDATES}
   `.execute(db)
@@ -98,6 +99,12 @@ export async function loadReelPage(
     return null
   }
   if (rows.length > 1) l.warn({ candidates: rows.length }, 'short id matched several reels')
+
+  const visibility = parseVisibility(row.visibility)
+  if (visibility === 'hidden') {
+    l.warn({ itemId: row.id }, 'hidden reel reached the page loader, treated as not found')
+    return null
+  }
 
   const parts = scriptParts(row.script)
   const [facts, mentions] = await Promise.all([
@@ -113,7 +120,7 @@ export async function loadReelPage(
   l.info({ itemId: row.id, hasVideo: row.video_key !== null }, 'reel page loaded')
   return {
     id: row.id,
-    visibility: row.visibility === 'private' ? 'private' : 'public',
+    visibility,
     title: row.title,
     tldr: row.tldr,
     hook: parts.hook,

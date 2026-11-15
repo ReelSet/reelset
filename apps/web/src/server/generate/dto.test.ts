@@ -72,6 +72,33 @@ describe('buildReelRequestDto', () => {
   })
 })
 
+describe('buildReelRequestDto for a hidden item', () => {
+  it('withholds the reel and its media', () => {
+    const dto = buildReelRequestDto(
+      row,
+      {
+        item: {
+          id: row.item_id as string,
+          title: 'Spam',
+          status: 'rendered',
+          visibility: 'hidden',
+        },
+        render: {
+          status: 'done',
+          video_key: 'reels/a.mp4',
+          poster_key: null,
+          video_duration_ms: 1000,
+          finished_at: new Date(),
+        },
+        events: [],
+        aheadOfYou: null,
+      },
+      'https://media.test/',
+    )
+    expect(dto.reel).toBeNull()
+  })
+})
+
 describe('pickRender', () => {
   it('prefers the newest-template done render', () => {
     const base = { poster_key: null, video_duration_ms: null, created_at: new Date(0) }

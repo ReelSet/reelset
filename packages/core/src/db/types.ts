@@ -177,6 +177,8 @@ export type Item = {
   rendered_at: Timestamp | null
   queued_at: Timestamp | null
   visibility: Generated<string>
+  hidden_reason: string | null
+  hidden_at: Timestamp | null
   owner_id: string | null
   priority_at: Timestamp | null
   created_at: Generated<Timestamp>

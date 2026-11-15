@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { reelScriptSchema } from '@reelset/core'
-import { fmtBytes, fmtMs, fmtUsd } from '@/lib/admin/format'
+import { fmtBytes, fmtDate, fmtMs, fmtUsd } from '@/lib/admin/format'
 import { buildTimeline, stepperFor, relativeTime } from '@/lib/admin/pipeline'
 import { mediaUrl } from '@/lib/media'
+import { HideControls } from '@/components/admin/moderation/HideControls'
+import { VisibilityBadge } from '@/components/admin/moderation/VisibilityBadge'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { ArrowUpRightIcon } from '@/components/ui/icons'
 import type { ItemDetail } from '@/server/admin/pipeline-queries'
@@ -40,6 +42,7 @@ export function ItemDrawer({
   instagramHref,
   postedPermalink,
   now,
+  tz,
 }: {
   detail: ItemDetail
   closeHref: string
@@ -48,6 +51,7 @@ export function ItemDrawer({
   instagramHref: string
   postedPermalink: string | null
   now: Date
+  tz: string
 }) {
   const { item, events, renders, spend } = detail
   const done = renders.find((r) => r.status === 'done' && r.video_key)
@@ -81,7 +85,7 @@ export function ItemDrawer({
             >
               Source <ArrowUpRightIcon className="h-3 w-3" />
             </a>
-            {item.status === 'rendered' ? (
+            {item.status === 'rendered' && item.visibility !== 'hidden' ? (
               <Link href={instagramHref} className="text-info hover:underline">
                 {postedPermalink ? 'Posted to Instagram' : 'Post to Instagram'}
               </Link>
@@ -98,6 +102,19 @@ export function ItemDrawer({
             ) : null}
           </p>
         </header>
+
+        {item.visibility === 'private' ? null : (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line p-3">
+            <div className="space-y-0.5 text-xs">
+              <p className="text-muted">{item.visibility === 'hidden' ? 'Hidden' : 'Public'}</p>
+              <VisibilityBadge visibility={item.visibility} reason={item.hidden_reason} />
+              {item.hidden_at ? (
+                <p className="text-faint">since {fmtDate(item.hidden_at, tz)}</p>
+              ) : null}
+            </div>
+            <HideControls itemId={item.id} visibility={item.visibility} returnTo={returnTo} />
+          </div>
+        )}
 
         <Stepper steps={stepperFor(item.status, item.last_ok_stage)} />
 

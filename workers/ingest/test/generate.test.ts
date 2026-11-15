@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { INSUFFICIENT_SOURCE_MESSAGE, type ReelRequestRow } from '@reelset/core'
+import {
+  HIDDEN_REQUEST_MESSAGE,
+  INSUFFICIENT_SOURCE_MESSAGE,
+  type ReelRequestRow,
+} from '@reelset/core'
 import { isBlockedHost } from '../src/generate/hosts'
 import { processReelRequests, type GenerateDeps } from '../src/generate/process'
 import { MESSAGES, classifyUrl, resolveSource } from '../src/generate/resolve'
@@ -267,7 +271,13 @@ describe('resolveSource', () => {
 })
 
 type World = {
-  existing?: { id: string; status: string; queued_at: Date | null; has_done_render: boolean }
+  existing?: {
+    id: string
+    status: string
+    queued_at: Date | null
+    has_done_render: boolean
+    visibility?: string
+  }
   inserted?: { id: string; status: string; queued_at: Date | null; created: boolean }
   settings?: Record<string, unknown>
   upsertedHasDoneRender?: boolean
@@ -393,6 +403,60 @@ describe('processReelRequests', () => {
     expect(requestResults(fake)[0]!.params).toContain('item-9')
     expect(queue.send).not.toHaveBeenCalled()
     expect(fake.find('insert into "item" ')).toHaveLength(0)
+    expect(fake.find('"refunded" =')).toHaveLength(1)
+  })
+
+  it('refuses a hidden item before any fetching and refunds, instead of answering done', async () => {
+    const req = request(['https://github.com/acme/widget'])
+    const { fake, queue, deps } = setup(req, {
+      existing: {
+        id: 'item-hidden',
+        status: 'rendered',
+        queued_at: null,
+        has_done_render: true,
+        visibility: 'hidden',
+      },
+    })
+    const { calls } = useFetch(...githubRoutes)
+
+    const result = await processReelRequests(deps)
+
+    expect(result).toMatchObject({ claimed: 1, failed: 1, done: 0 })
+    expect(calls).toHaveLength(0)
+    expect(requestResults(fake)[0]).toMatchObject({ status: 'failed' })
+    expect(requestResults(fake)[0]!.params).toContain(HIDDEN_REQUEST_MESSAGE)
+    expect(fake.find('insert into "item" ')).toHaveLength(0)
+    expect(queue.send).not.toHaveBeenCalled()
+    expect(fake.find('"refunded" =')).toHaveLength(1)
+  })
+
+  it('refuses a hidden item found only after resolving the link, without touching its priority', async () => {
+    const req = request(['https://news.ycombinator.com/item?id=777'])
+    const { fake, queue, deps } = setup(req, {
+      existing: {
+        id: 'item-hidden',
+        status: 'found',
+        queued_at: null,
+        has_done_render: false,
+        visibility: 'hidden',
+      },
+    })
+    useFetch((u) =>
+      u === 'https://hn.algolia.com/api/v1/items/777'
+        ? json({
+            id: 777,
+            type: 'story',
+            title: 'Show HN: Widget',
+            url: 'https://blog.example.com/widget',
+            created_at_i: 1_760_000_000,
+            children: [],
+          })
+        : undefined,
+    )
+
+    expect(await processReelRequests(deps)).toMatchObject({ failed: 1, processing: 0 })
+    expect(fake.find('insert into "item" ')).toHaveLength(0)
+    expect(queue.send).not.toHaveBeenCalled()
     expect(fake.find('"refunded" =')).toHaveLength(1)
   })
 

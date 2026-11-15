@@ -183,7 +183,8 @@ export type RetryPostResult =
   | { changed: true }
   | {
       changed: false
-      reason: 'not_found' | 'not_failed' | 'still_checking' | 'already_live_or_queued'
+      reason:
+        'not_found' | 'not_failed' | 'still_checking' | 'already_live_or_queued' | 'item_hidden'
     }
 
 const LIVE_STATUSES = [S.queued, S.posting, S.posted, S.deleting]
@@ -201,6 +202,12 @@ async function whyNotRetryable(db: Database, id: string): Promise<RetryPostResul
   if (isLostLookupPending(row.error, startedAt, new Date())) {
     return { changed: false, reason: 'still_checking' }
   }
+  const item = await db
+    .selectFrom('item')
+    .select('visibility')
+    .where('id', '=', row.item_id)
+    .executeTakeFirst()
+  if (item?.visibility === 'hidden') return { changed: false, reason: 'item_hidden' }
   const live = await db
     .selectFrom('instagram_post')
     .select('id')
@@ -231,6 +238,11 @@ export async function retryInstagramPost(db: Database, id: string): Promise<Retr
         sql<boolean>`not exists (
           select 1 from instagram_post o where o.item_id = instagram_post.item_id
             and o.id <> instagram_post.id and o.status in ('queued', 'posting', 'posted', 'deleting')
+        )`,
+      )
+      .where(
+        sql<boolean>`not exists (
+          select 1 from item i where i.id = instagram_post.item_id and i.visibility = 'hidden'
         )`,
       )
       .executeTakeFirst()

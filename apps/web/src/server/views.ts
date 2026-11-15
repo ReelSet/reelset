@@ -33,6 +33,7 @@ export async function recordViews(
       .select('id')
       .where('id', 'in', itemIds)
       .where('status', '=', ItemStatus.rendered)
+      .where('visibility', '<>', 'hidden')
       .execute()
     if (visible.length === 0) return { recorded: 0, counted: [], limited: false }
 

@@ -311,6 +311,33 @@ describe('github adapter', () => {
     })
   })
 
+  it('drops impostor and cracked-software repos before and after the README fetch', async () => {
+    const bare = { description: null, topics: [], language: null }
+    useFetch(
+      (url) =>
+        url.includes('/search/repositories')
+          ? json({
+              items: [
+                repo(1),
+                repo(2, {
+                  full_name: 'ClipChiefSnips/scrcpy',
+                  owner: { login: 'ClipChiefSnips' },
+                  ...bare,
+                }),
+                repo(3, { full_name: 'WeldMoonBreed/exitlag', owner: { login: 'WeldMoonBreed' } }),
+                repo(4),
+              ],
+            })
+          : undefined,
+      (url) =>
+        url.endsWith('/repos/acme/repo4/readme')
+          ? text('[Download](https://files.example/setup.zip) password: 1234')
+          : undefined,
+    )
+    const out = await githubAdapter.fetch('trending-new', testLog, makeCtx())
+    expect(out.mentions.map((m) => m.externalId)).toEqual(['1'])
+  })
+
   it('skips repos with unparseable dates', () => {
     expect(repoToMention({ ...repo(9), created_at: 'nope' } as never)).toBeNull()
   })

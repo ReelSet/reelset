@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { POST_FIELDS } from '../src/config'
 import { parseModelOutput, repairModelOutput, truncateAtWord } from '../src/pipeline/output'
 import { SYSTEM_PROMPT } from '../src/pipeline/prompt'
-import { readmeLooksSpammy, spamReason, type GithubRepo } from '../src/sources/github'
+import { repoSpamVerdict, type GithubRepo } from '../src/sources/github'
 import { redditAdapter } from '../src/sources/reddit'
 import { makeCtx } from './helpers/ctx'
 import { json, testLog, useFetch } from './helpers/mock-fetch'
@@ -137,7 +137,7 @@ describe('github spam filter', () => {
   const now = new Date('2026-11-09T12:00:00Z')
 
   it('keeps ordinary repos', () => {
-    expect(spamReason(repo(), now)).toBeNull()
+    expect(repoSpamVerdict(repo(), now).spam).toBe(false)
   })
   it.each([
     'BeauticianChopper/adobe-acrobat-pro',
@@ -145,20 +145,22 @@ describe('github spam filter', () => {
     'x/photoshop-2026-cracked',
     'x/winrar_keygen',
   ])('flags %s', (full_name) => {
-    expect(spamReason(repo({ full_name, description: null }), now)).not.toBeNull()
+    expect(repoSpamVerdict(repo({ full_name, description: null }), now).spam).toBe(true)
   })
   it('flags repos with no description, topics or language', () => {
-    expect(spamReason(repo({ description: null, topics: [], language: null }), now)).toMatch(
-      /no description/,
-    )
+    expect(
+      repoSpamVerdict(repo({ description: null, topics: [], language: null }), now).reasons,
+    ).toContain('no description, topics or language')
   })
   it('flags crack words in the description', () => {
     expect(
-      spamReason(repo({ description: 'Free download full version with activation' }), now),
-    ).not.toBeNull()
+      repoSpamVerdict(repo({ description: 'Free download full version with activation' }), now)
+        .spam,
+    ).toBe(true)
   })
   it('flags spammy readmes only', () => {
-    expect(readmeLooksSpammy('Download the crack and use password: 1234')).toBe(true)
-    expect(readmeLooksSpammy('# fastq\nInstall with cargo add fastq.')).toBe(false)
+    const spammy = 'Download the crack and use password: 1234'
+    expect(repoSpamVerdict(repo(), now, spammy).spam).toBe(true)
+    expect(repoSpamVerdict(repo(), now, '# fastq\nInstall with cargo add fastq.').spam).toBe(false)
   })
 })

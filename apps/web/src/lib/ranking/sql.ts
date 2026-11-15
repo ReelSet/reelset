@@ -142,6 +142,7 @@ export function hydrateQuery(
       (join) => join.onTrue(),
     )
     .where('item.status', '=', ItemStatus.rendered)
+    .where('item.visibility', '<>', 'hidden')
     .where('item.id', 'in', itemIds)
     .select((eb) => [
       'item.id',

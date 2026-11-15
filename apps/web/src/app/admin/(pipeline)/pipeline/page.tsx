@@ -22,6 +22,7 @@ import {
 } from '@/server/admin/pipeline-queries'
 import { mediaBaseUrl } from '@/server/env'
 import { getDb } from '@/server/db'
+import { viewerTimeZone } from '@/server/timezone'
 import { log } from '@/server/logger'
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
@@ -35,6 +36,7 @@ export default async function PipelinePage({ searchParams }: Props) {
   const sp = await searchParams
   const db = getDb()
   const now = new Date()
+  const tz = await viewerTimeZone()
   const filters = parseRecentFilters(sp, KNOWN_SOURCES)
   const page = parsePage(sp.page, RECENT_PAGE_SIZE)
   const itemParam = z.guid().safeParse(Array.isArray(sp.item) ? sp.item[0] : sp.item)
@@ -118,6 +120,7 @@ export default async function PipelinePage({ searchParams }: Props) {
           instagramHref={`${ADMIN_ROUTES.instagram}?item=${detail.item.id}`}
           postedPermalink={permalink}
           now={now}
+          tz={tz}
         />
       ) : null}
     </div>

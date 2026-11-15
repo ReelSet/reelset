@@ -1,4 +1,4 @@
-import { errorFields, type Logger } from '@reelset/core'
+import { errorFields, githubSpamVerdict, type GithubSpamVerdict, type Logger } from '@reelset/core'
 import { z } from 'zod'
 import {
   GITHUB_API_BASE,
@@ -26,7 +26,7 @@ export const repoSchema = z.looseObject({
   topics: z.array(z.string()).nullish(),
   fork: z.boolean().nullish(),
   archived: z.boolean().nullish(),
-  owner: z.looseObject({ login: z.string() }).nullish(),
+  owner: z.looseObject({ login: z.string(), type: z.string().nullish() }).nullish(),
 })
 
 const searchSchema = z.looseObject({ items: z.array(repoSchema) })
@@ -43,37 +43,23 @@ export function buildQuery(range: { after: Date; before: Date | null }): string 
   return parts.join(' ')
 }
 
-const SPAM_PATTERNS: RegExp[] = [
-  /\b(?:crack(?:ed)?|keygen|key-?gen|warez|nulled|activator|serial[\s-]?key|license[\s-]?key|product[\s-]?key|patcher)\b/i,
-  /\b(?:monero|crypto|bitcoin|btc|eth)[\s-]?miner\b/i,
-  /\b(?:free[\s-]?download|download[\s-]?(?:free|full)|full[\s-]?version|pre-?activated|no[\s-]?survey)\b/i,
-  // Paid-software clones: "<commercial product> pro/premium/free/..."
-  /\b(?:adobe|acrobat|photoshop|illustrator|premiere|autocad|office|windows|directory[\s-]?opus|idm|winrar|vegas|camtasia|sketchup)[\s-]\S*[\s-]?(?:pro|premium|ultimate|full|free|activated)\b/i,
-]
-// \b treats _ as a word character, so turn it (and dots) into spaces before matching.
-const normalizeForSpam = (text: string): string => text.replace(/[_.]+/g, ' ')
-
-/** Returns why a repo looks like spam, malware bait or cracked software, or null if it looks fine. */
-export function spamReason(repo: GithubRepo, now = new Date()): string | null {
-  const text = normalizeForSpam(
-    [repo.full_name, repo.description ?? '', ...(repo.topics ?? [])].join(' \n '),
-  )
-  for (const pattern of SPAM_PATTERNS)
-    if (pattern.test(text)) return `matches ${pattern.source.slice(0, 40)}`
-  if (!repo.description?.trim() && !repo.topics?.length && !repo.language)
-    return 'no description, topics or language'
-  const ageDays = Math.max((now.getTime() - new Date(repo.created_at).getTime()) / DAY_MS, 0.25)
-  // Genuine launches rarely gain thousands of stars with no topics and no description.
-  if (repo.stargazers_count / ageDays > 2000 && !repo.description?.trim())
-    return 'implausible star velocity'
-  return null
-}
-
-const README_SPAM =
-  /(?:download|get)\s+(?:the\s+)?(?:crack|keygen|full\s+version|activator)|activation\s+(?:key|code)s?|password\s*[:=]\s*\S+|free\s+download/i
-
-export function readmeLooksSpammy(readme: string): boolean {
-  return README_SPAM.test(readme)
+export function repoSpamVerdict(
+  repo: GithubRepo,
+  now = new Date(),
+  readme?: string | null,
+): GithubSpamVerdict {
+  return githubSpamVerdict({
+    fullName: repo.full_name,
+    description: repo.description ?? null,
+    topics: repo.topics ?? [],
+    language: repo.language ?? null,
+    stars: repo.stargazers_count,
+    createdAt: repo.created_at,
+    ownerLogin: repo.owner?.login ?? null,
+    ownerType: repo.owner?.type ?? null,
+    readme,
+    now,
+  })
 }
 
 export function repoToMention(repo: GithubRepo): NormalizedMention | null {
@@ -167,6 +153,7 @@ export async function fetchReadme(
 async function fetchRepos(scope: string, log: Logger, ctx: FetchContext): Promise<AdapterOutcome> {
   const l = log.child({ source: 'github', scope })
   const mentions: NormalizedMention[] = []
+  const repoByMention = new Map<NormalizedMention, GithubRepo>()
   const seen = new Set<number>()
   let exhausted = false
 
@@ -191,13 +178,18 @@ async function fetchRepos(scope: string, log: Logger, ctx: FetchContext): Promis
     for (const repo of response.items) {
       if (seen.has(repo.id)) continue
       seen.add(repo.id)
-      const reason = spamReason(repo, ctx.now)
-      if (reason) {
-        l.info({ repo: repo.full_name, reason }, 'github repo skipped as spam')
+      const verdict = repoSpamVerdict(repo, ctx.now)
+      if (verdict.spam) {
+        l.info(
+          { repo: repo.full_name, score: verdict.score, reasons: verdict.reasons },
+          'github repo skipped as spam',
+        )
         continue
       }
       const mention = repoToMention(repo)
-      if (mention) mentions.push(mention)
+      if (!mention) continue
+      mentions.push(mention)
+      repoByMention.set(mention, repo)
     }
     l.debug({ page, items: response.items.length, total: mentions.length }, 'github page')
     if (response.items.length < GITHUB_PER_PAGE) {
@@ -211,8 +203,13 @@ async function fetchRepos(scope: string, log: Logger, ctx: FetchContext): Promis
     if (performance.now() > ctx.deadlineAt) break
     try {
       const readme = await fetchReadme(mention.title, ctx.githubToken, l, ctx.hostIntervalMs)
-      if (readme && readmeLooksSpammy(readme)) {
-        l.info({ repo: mention.title }, 'github repo skipped, spammy readme')
+      const repo = repoByMention.get(mention)
+      const verdict = repo ? repoSpamVerdict(repo, ctx.now, readme) : null
+      if (verdict?.spam) {
+        l.info(
+          { repo: mention.title, score: verdict.score, reasons: verdict.reasons },
+          'github repo skipped as spam after README',
+        )
         spam.add(mention)
       } else if (readme) mention.extraTexts = [readme]
     } catch (err) {

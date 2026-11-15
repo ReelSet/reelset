@@ -26,6 +26,8 @@ import { lastDays, pivotSpend, type SpendRow } from '@/lib/admin/spend'
 export const STUCK_MINUTES = 30
 export const SPEND_DAYS = 14
 
+const NO_ID = '00000000-0000-0000-0000-000000000000'
+
 const ref = (name: string) => sql.ref(name)
 
 const dirOf = (sort: { dir: 'asc' | 'desc' }) => (ob: OrderByItemBuilder) =>
@@ -86,7 +88,13 @@ const ITEM_SORT: Record<ItemSortKey, RawBuilder<unknown>> = {
   changed: ref('item.status_changed_at'),
 }
 
-export type ItemFilters = { source: string | null; status: ItemStatus | null; q: string | null }
+export type ItemFilters = {
+  source: string | null
+  status: ItemStatus | null
+  q: string | null
+  visibility?: 'public' | 'hidden' | 'private' | null
+  ids?: readonly string[] | null
+}
 
 export async function listItems(
   db: Database,
@@ -107,9 +115,14 @@ export async function listItems(
       'last_error',
       'published_at',
       'status_changed_at',
+      'visibility',
+      'hidden_reason',
+      'hidden_at',
       itemSource.as('source'),
       sql<string>`(select count(*) from "like" l where l.item_id = item.id)`.as('like_count'),
     ])
+  if (filters.visibility) query = query.where('visibility', '=', filters.visibility)
+  if (filters.ids) query = query.where('id', 'in', filters.ids.length ? [...filters.ids] : [NO_ID])
   if (filters.status) query = query.where('status', '=', filters.status)
   if (filters.source) query = query.where(sql<boolean>`${itemSource} = ${filters.source}`)
   if (filters.q) query = query.where('title', 'ilike', `%${filters.q.replace(/[%_]/g, '')}%`)

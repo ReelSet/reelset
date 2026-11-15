@@ -16,6 +16,7 @@ export async function setLike(
       .select('id')
       .where('id', '=', input.itemId)
       .where('status', '=', ItemStatus.rendered)
+      .where('visibility', '<>', 'hidden')
       .executeTakeFirst()
     if (!item) {
       l.info('like target not found or not visible')

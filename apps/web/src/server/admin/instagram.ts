@@ -63,6 +63,7 @@ export function servedRenderQuery(db: Database, itemId: string) {
     .where('r.status', '=', RenderStatus.done)
     .where('r.video_key', 'is not', null)
     .where('item.status', '=', 'rendered')
+    .where('item.visibility', '<>', 'hidden')
     .orderBy(SERVED_RENDER_ORDER)
     .limit(1)
 }
@@ -80,6 +81,7 @@ export async function publishedReels(db: Database, offset: number) {
       sql<string | null>`${livePost('permalink')}`.as('permalink'),
     ])
     .where('item.status', '=', 'rendered')
+    .where('item.visibility', '<>', 'hidden')
     .where(sql<boolean>`${latestDone('video_key')} is not null`)
     .orderBy('item.rendered_at', 'desc')
     .orderBy('item.id')
@@ -108,6 +110,7 @@ export async function composerReel(db: Database, itemId: string) {
     ])
     .where('item.id', '=', itemId)
     .where('item.status', '=', 'rendered')
+    .where('item.visibility', '<>', 'hidden')
     .executeTakeFirst()
   if (!row?.video_key) return null
   const draft = buildCaption({
@@ -249,6 +252,7 @@ const RETRY_REFUSALS: Record<Extract<RetryPostResult, { changed: false }>['reaso
   not_failed: 'Only a post that did not go out can be retried',
   still_checking: 'Still checking Instagram for this reel. Retry once the check finishes.',
   already_live_or_queued: 'This reel is already queued or posted',
+  item_hidden: 'This reel is hidden from the feed. Unhide it before posting.',
 }
 
 export async function retryFailedPost(

@@ -133,3 +133,9 @@ Admin (`/admin/instagram`) queues rows in `instagram_post`; the render worker po
 - Failure handling: a scene that throws while drawing falls back to the generic screen for that scene (counted in `sceneErrors`). The orchestrator kills the child when it prints nothing for 120 s (the child prints a `tick` per frame). A script that does not load, a crash, a stall, a refusal, a reply with no code block or an API error ends in the generic renderer with `fallbackReason` one of `no_api_key | api_error | load_error | crash | timeout`.
 - Result: `<job>/director-result.json` (`{ used, model, scenes, sceneErrors, fallbackReason, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, ms }`) is copied into the render metadata as `director` whenever a director block was sent. No prompt text or key is ever logged.
 - Debug: `node dist/draw.mjs <jobDir> --sheet --out dir` (contact sheet), `--stills t1,t2`, `--show Name`, `--scenes script.js` to draw a saved model script, `--selftest` (renders a 2 s fixture with no network; run in CI and after the image build).
+
+## Hiding items (moderation)
+
+- `item.visibility` is `public | private | hidden` (CHECK constraint). `hidden` is admin-only: excluded from feed, `/r/<slug>` (404), `/api/reel`, sitemap, related, topics, profile likes/saves, Ask, Instagram auto-post and manual queue; a reel request for a hidden item fails and refunds. `hidden_reason` is `spam | low_quality | other`, `hidden_at` the time.
+- Hide/unhide at `/admin/items` (per row, bulk, or the drawer). Hiding fails any queued Instagram post with `Hidden from the feed`. Unhide returns the item to `public` (or `private` when it has an owner).
+- GitHub spam is rejected at ingest by `githubSpamVerdict` (`packages/core/src/domain/github-spam.ts`, score >= 3); the same function drives the `Suspected spam` filter on `/admin/items`.

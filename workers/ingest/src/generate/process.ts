@@ -1,5 +1,6 @@
 import { sql } from 'kysely'
 import {
+  HIDDEN_REQUEST_MESSAGE,
   INSUFFICIENT_SOURCE_MESSAGE,
   RENDER_FAILED_MESSAGE,
   claimPendingReelRequests,
@@ -50,6 +51,8 @@ type ItemState = {
   hasDoneRender: boolean
 }
 
+type ExistingItem = ItemState & { visibility: string }
+
 const DONE_RENDER = sql<boolean>`exists (
   select 1 from render
   where render.item_id = item.id and render.status = 'done' and render.video_key is not null
@@ -84,10 +87,21 @@ async function doneInstantly(
   log.info({ itemId }, 'item already rendered, request done instantly and refunded')
 }
 
-async function existingByKey(db: Database, key: string): Promise<ItemState | null> {
+async function failHidden(
+  db: Database,
+  req: ReelRequestRow,
+  itemId: string,
+  log: Logger,
+): Promise<'failed'> {
+  log.info({ itemId }, 'requested item is hidden from the feed, request refused')
+  await failRequest(db, req, HIDDEN_REQUEST_MESSAGE, null, log)
+  return 'failed'
+}
+
+async function existingByKey(db: Database, key: string): Promise<ExistingItem | null> {
   const row = await db
     .selectFrom('item')
-    .select(['id', 'status', 'queued_at', DONE_RENDER.as('has_done_render')])
+    .select(['id', 'status', 'queued_at', 'visibility', DONE_RENDER.as('has_done_render')])
     .where('canonical_key', '=', key)
     .executeTakeFirst()
   return row
@@ -96,6 +110,7 @@ async function existingByKey(db: Database, key: string): Promise<ItemState | nul
         status: row.status,
         queued_at: row.queued_at,
         hasDoneRender: row.has_done_render,
+        visibility: row.visibility,
       }
     : null
 }
@@ -241,6 +256,7 @@ async function handleRequest(
       linkedUrl: urls[0]!,
     })?.canonicalKey
     const existing = key ? await existingByKey(db, key) : null
+    if (existing?.visibility === 'hidden') return failHidden(db, req, existing.id, log)
     if (existing?.status === 'rendered' && existing.hasDoneRender) {
       await doneInstantly(db, req, existing.id, log)
       return 'done'
@@ -277,6 +293,9 @@ async function handleRequest(
     await failRequest(db, req, message, null, log)
     return 'failed'
   }
+
+  const known = await existingByKey(db, target.canonicalKey)
+  if (known?.visibility === 'hidden') return failHidden(db, req, known.id, log)
 
   const { state, created } = await upsertItem(db, target, primary, mentions, req)
   const il = log.child({ itemId: state.id, created, status: state.status })
