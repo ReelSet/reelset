@@ -356,7 +356,10 @@ describe('processReelRequests', () => {
     )
     expect(itemInsert.sql).toContain('priority_at')
     expect(itemInsert.sql).toContain('on conflict ("canonical_key") do update set "updated_at"')
-    expect(itemInsert.sql.split('do update set')[1]).not.toContain('visibility')
+    const onConflict = itemInsert.sql.split('do update set')[1]!
+    expect(onConflict).not.toContain('visibility')
+    expect(onConflict).toContain('"priority_at" = case when item.status in')
+    expect(onConflict).toContain('coalesce(item.priority_at, now())')
 
     const mentionInsert = fake.find('insert into "mention"')
     expect(mentionInsert).toHaveLength(1)

@@ -120,7 +120,14 @@ async function upsertItem(
         owner_id: req.user_id,
         priority_at: sql`now()`,
       })
-      .onConflict((oc) => oc.column('canonical_key').doUpdateSet({ updated_at: sql`now()` }))
+      // A request for an item already waiting in the backlog must still jump the queue.
+      .onConflict((oc) =>
+        oc.column('canonical_key').doUpdateSet({
+          updated_at: sql`now()`,
+          priority_at: sql`case when item.status in ('rendered', 'failed', 'insufficient_source')
+            then item.priority_at else coalesce(item.priority_at, now()) end`,
+        }),
+      )
       .returning(['id', 'status', 'queued_at', sql<boolean>`(xmax = 0)`.as('created')])
       .executeTakeFirstOrThrow()
     await upsertMentions(
