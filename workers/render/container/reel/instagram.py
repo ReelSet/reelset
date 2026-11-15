@@ -3,11 +3,13 @@
 Stateless: the worker passes the saved session in each call and stores the returned one.
 Nothing here logs in unless `login` is called, and `login` never retries."""
 
+import hashlib
 import json
 import logging
 import os
 import tempfile
 import threading
+import time
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -26,6 +28,10 @@ DOWNLOAD_TIMEOUT_SECONDS = 120
 POSTER_DOWNLOAD_TIMEOUT_SECONDS = 20
 DOWNLOAD_USER_AGENT = "reelset-render/2"
 CLIP_DELAY_RANGE = [1, 3]
+LOGIN_DELAY_RANGE = [0.5, 1.5]
+REQUEST_TIMEOUT_SECONDS = 30
+LOGIN_WAIT_SECONDS = 75
+LOGIN_RESULT_TTL_SECONDS = 10 * 60
 ERROR_MESSAGE_MAX = 200
 FIND_RECENT_MEDIA = 12
 FIND_CLOCK_SKEW_SECONDS = 120
@@ -44,11 +50,29 @@ class InstagramError(Exception):
         self.status = status
 
 
+def apply_request_timeout(client, seconds: float = REQUEST_TIMEOUT_SECONDS) -> None:
+    """instagrapi 3.2.9 sends most private requests without a timeout, so a stalled connection would
+    hang the whole exclusive operation. Every session call gets a default unless it sets its own."""
+    for name in ("private", "public", "graphql"):
+        session = getattr(client, name, None)
+        if session is None or not hasattr(session, "request"):
+            continue
+        original = session.request
+
+        def request(method, url, _original=original, **kwargs):
+            if kwargs.get("timeout") is None:
+                kwargs["timeout"] = seconds
+            return _original(method, url, **kwargs)
+
+        session.request = request
+
+
 def new_client(proxy_url: str | None = None):
     from instagrapi import Client
 
     client = Client()
     client.delay_range = CLIP_DELAY_RANGE
+    apply_request_timeout(client)
     if proxy_url:
         client.set_proxy(proxy_url)
     return client
@@ -204,6 +228,7 @@ def login(
     if not username or not password:
         raise InstagramError("invalid_input", "username and password are required", 400)
     client = factory()
+    client.delay_range = LOGIN_DELAY_RANGE
     _keep_device(client, session)
     first_code = (code or "").strip() or (client.totp_generate_code(totp_secret) if totp_secret else "")
     try:
@@ -458,3 +483,59 @@ def run_exclusive(fn: Callable):
         return fn()
     finally:
         _lock.release()
+
+
+class LoginJobs:
+    """Logins run in a background thread so one HTTP request never has to outlive the tunnel's 100 s
+    limit. A repeat call with the same credentials joins the running job, or collects its result
+    once (kept for LOGIN_RESULT_TTL_SECONDS after it finishes)."""
+
+    def __init__(self, wait_seconds: float = LOGIN_WAIT_SECONDS, ttl: float = LOGIN_RESULT_TTL_SECONDS):
+        self.wait_seconds = wait_seconds
+        self.ttl = ttl
+        self._mutex = threading.Lock()
+        self._jobs: dict = {}
+
+    @staticmethod
+    def key(username: str, password: str, code: str | None, totp_secret: str | None) -> str:
+        raw = "\x00".join([username, password, code or "", totp_secret or ""])
+        return hashlib.sha256(raw.encode()).hexdigest()
+
+    def _purge(self, now: float) -> None:
+        for key in [k for k, j in self._jobs.items() if j["finished"] and now - j["finished"] > self.ttl]:
+            del self._jobs[key]
+
+    def run(self, key: str, work: Callable) -> dict | None:
+        """The login result, or None while it is still running after the wait."""
+        with self._mutex:
+            self._purge(time.monotonic())
+            job = self._jobs.get(key)
+            if job is None:
+                if not _lock.acquire(blocking=False):
+                    raise InstagramError("busy", "another Instagram operation is running", 409)
+                job = {"done": threading.Event(), "result": None, "error": None, "finished": None}
+                self._jobs[key] = job
+                threading.Thread(target=self._execute, args=(job, work), daemon=True).start()
+                log.info("login job started")
+        if not job["done"].wait(self.wait_seconds):
+            return None
+        with self._mutex:
+            if self._jobs.get(key) is job:
+                del self._jobs[key]
+        if job["error"] is not None:
+            raise job["error"]
+        return job["result"]
+
+    @staticmethod
+    def _execute(job: dict, work: Callable) -> None:
+        try:
+            job["result"] = work()
+        except BaseException as err:  # noqa: BLE001 - handed to the waiting request
+            job["error"] = err
+        finally:
+            job["finished"] = time.monotonic()
+            _lock.release()
+            job["done"].set()
+
+
+login_jobs = LoginJobs()

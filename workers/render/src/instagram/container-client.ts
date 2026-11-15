@@ -5,6 +5,7 @@ import type { ContainerFetcher } from '../container-client'
 
 export const IG_TIMEOUT_MS = {
   status: 45_000,
+  // The box answers a login within 75 s (202 in_progress while it keeps going), under the tunnel's 100 s.
   login: 90_000,
   post: 5 * 60_000,
   delete: 90_000,
@@ -44,6 +45,9 @@ const deleteResultSchema = z.object({
   session: z.record(z.string(), z.unknown()),
   proxy: igProxySchema,
 })
+
+export const IN_PROGRESS = 'in_progress'
+export const TIMEOUT = 'timeout'
 
 export type IgSession = Record<string, unknown>
 export type IgState = { session: IgSession | null; proxyIndex: number | null }
@@ -103,10 +107,20 @@ export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger):
       )
     } catch (err) {
       log.error({ action, ...errorFields(err) }, 'instagram container call failed')
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError'))
+        throw new IgCallError(TIMEOUT, 'the poster did not answer in time', false)
       throw new IgCallError('unreachable', 'could not reach the poster', false)
     }
     log.info({ action, status: res.status }, 'instagram container call')
     const payload: unknown = await res.json().catch(() => null)
+    if (
+      res.status === 202 &&
+      typeof payload === 'object' &&
+      payload !== null &&
+      'error' in payload &&
+      payload.error === IN_PROGRESS
+    )
+      throw new IgCallError(IN_PROGRESS, 'the poster is still working', true)
     const hasError = typeof payload === 'object' && payload !== null && 'error' in payload
     if (!res.ok && !hasError && GATEWAY_STATUSES.has(res.status)) {
       throw new IgCallError('gateway', `poster gateway returned ${res.status}`, false)

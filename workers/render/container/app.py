@@ -214,7 +214,20 @@ class Handler(BaseHTTPRequestHandler):
             work = lambda: instagram.delete_media(session, require_str("mediaPk"), factory)  # noqa: E731
         else:
             return self._json(404, {"error": "not_found"})
-        result = instagram.run_exclusive(work)
+        if action == "login":
+            key = instagram.LoginJobs.key(
+                require_str("username"),
+                require_str("password"),
+                body.get("code") or None,
+                body.get("totpSecret") or None,
+            )
+            result = instagram.login_jobs.run(key, work)
+            if result is None:
+                return self._json(
+                    202, {"error": "in_progress", "message": "login still running"}
+                )
+        else:
+            result = instagram.run_exclusive(work)
         self._json(200, {**result, "proxy": proxy.public()})
 
     def _youtube_search(self):

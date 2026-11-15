@@ -8,7 +8,10 @@ import {
 } from '@reelset/core'
 import { decryptJson, encryptJson } from './crypto'
 import {
+  IG_TIMEOUT_MS,
+  IN_PROGRESS,
   IgCallError,
+  TIMEOUT,
   type IgContainerClient,
   type IgCredentials,
   type IgReelUpload,
@@ -31,7 +34,29 @@ export type IgDeps = {
 
 const SESSION_LOST_STATES: readonly string[] = ['needs_login', 'needs_code', 'challenge']
 const PROXY_DOWN = 'proxy_down'
+const BUSY = 'busy'
 const UNREACHABLE_MESSAGE = 'Poster unreachable, try again.'
+const SLOW_LOGIN_MESSAGE =
+  'Instagram login is taking too long (the poster is busy rendering). Try again in a few minutes.'
+const BUSY_LOGIN_MESSAGE = 'The poster is busy with another Instagram job. Try again in a minute.'
+// A login that outlives one box call is polled with the same body; the whole connect stays under
+// the web action's 280 s.
+export const LOGIN_BUDGET_MS = 240_000
+
+async function loginWithPolling(deps: IgDeps, state: IgState, creds: IgCredentials, code?: string) {
+  const clock = () => (deps.now?.() ?? new Date()).getTime()
+  const started = clock()
+  for (;;) {
+    try {
+      return await deps.client.login(state, creds, code)
+    } catch (err) {
+      if (!(err instanceof IgCallError) || err.code !== IN_PROGRESS) throw err
+      if (clock() - started + IG_TIMEOUT_MS.login > LOGIN_BUDGET_MS)
+        throw new IgCallError(TIMEOUT, 'instagram login did not finish in time', true)
+      deps.log.info({ waitedMs: clock() - started }, 'instagram login still running, polling')
+    }
+  }
+}
 
 async function loadState(deps: IgDeps): Promise<IgState> {
   const blob = await deps.store.getSession()
@@ -165,7 +190,7 @@ export async function connectAccount(deps: IgDeps, input: ConnectInput = {}): Pr
     )
   }
   try {
-    const result = await deps.client.login(state, creds, input.code)
+    const result = await loginWithPolling(deps, state, creds, input.code)
     if (result.state === 'connected' && result.session) {
       await saveState(deps, result.session, result.proxy)
       log.info('instagram connected')
@@ -195,7 +220,13 @@ export async function connectAccount(deps: IgDeps, input: ConnectInput = {}): Pr
   } catch (err) {
     log.error(errorFields(err), 'instagram login call failed')
     if (err instanceof IgCallError && err.code === PROXY_DOWN) return recordProxyDown(deps, err)
-    return writeAccount(deps, { state: 'unknown', message: UNREACHABLE_MESSAGE }, (n) => n)
+    const message =
+      err instanceof IgCallError && err.code === TIMEOUT
+        ? SLOW_LOGIN_MESSAGE
+        : err instanceof IgCallError && err.code === BUSY
+          ? BUSY_LOGIN_MESSAGE
+          : UNREACHABLE_MESSAGE
+    return writeAccount(deps, { state: 'unknown', message }, (n) => n)
   }
 }
 
@@ -223,8 +254,6 @@ export async function disconnectAccount(deps: IgDeps): Promise<IgAccount> {
 export type QueueOutcome =
   | { ran: 'none'; reason: 'not_connected' | 'nothing_due' }
   | { ran: 'post' | 'delete'; postId: string; ok: boolean }
-
-const BUSY = 'busy'
 
 function mediaUrl(base: string, key: string): string {
   return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`

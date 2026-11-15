@@ -26,6 +26,9 @@ import { getDb } from '@/server/db'
 
 export const metadata = { title: 'Instagram' }
 
+// Server actions on this page inherit this; connect polls the box for up to ~4 minutes.
+export const maxDuration = 300
+
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
 
 const PATH = '/admin/instagram'

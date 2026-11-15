@@ -63,6 +63,38 @@ describe('instagram container client gateway errors', () => {
   })
 })
 
+describe('instagram container client login', () => {
+  it('turns a 202 in_progress into an in_progress error to poll on', async () => {
+    const t = fakeContainer(202, { error: 'in_progress', message: 'login still running' })
+    const err = await t.client
+      .login(STATE, { username: 'u', password: 'p' })
+      .catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'in_progress', reachedContainer: true })
+  })
+
+  it('reports an aborted call as a timeout, not unreachable', async () => {
+    const fetcher = {
+      async fetch(): Promise<Response> {
+        throw new DOMException('aborted', 'TimeoutError')
+      },
+    }
+    const client = createIgContainerClient(fetcher, silentLog)
+    const err = await client.login(STATE, { username: 'u', password: 'p' }).catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'timeout', reachedContainer: false })
+  })
+
+  it('reports a refused connection as unreachable', async () => {
+    const fetcher = {
+      async fetch(): Promise<Response> {
+        throw new TypeError('network down')
+      },
+    }
+    const client = createIgContainerClient(fetcher, silentLog)
+    const err = await client.status(STATE).catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'unreachable' })
+  })
+})
+
 describe('instagram container client find', () => {
   it('sends the caption and the start time in epoch seconds', async () => {
     const t = fakeContainer(200, {

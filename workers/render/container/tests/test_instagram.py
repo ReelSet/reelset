@@ -456,6 +456,103 @@ class ExclusiveTests(unittest.TestCase):
         instagram.run_exclusive(inner)
 
 
+class LoginDelayTests(unittest.TestCase):
+    def test_login_uses_the_shorter_delay_range(self):
+        client = FakeClient()
+        client.delay_range = instagram.CLIP_DELAY_RANGE
+        instagram.login(None, "u", "p", None, "1", factory=lambda: client)
+        self.assertEqual(client.delay_range, instagram.LOGIN_DELAY_RANGE)
+
+
+class RequestTimeoutTests(unittest.TestCase):
+    def test_default_timeout_applied_unless_given(self):
+        seen = []
+
+        class Session:
+            def request(self, method, url, **kwargs):
+                seen.append(kwargs.get("timeout"))
+
+        client = SimpleNamespace(private=Session(), public=Session())
+        instagram.apply_request_timeout(client, 7)
+        client.private.request("GET", "u")
+        client.public.request("POST", "u", timeout=2)
+        client.private.request("GET", "u", timeout=None)
+        self.assertEqual(seen, [7, 2, 7])
+
+
+class LoginJobTests(unittest.TestCase):
+    def jobs(self, wait=0.05):
+        return instagram.LoginJobs(wait_seconds=wait, ttl=600)
+
+    def test_in_progress_then_done_then_cached_once(self):
+        import threading
+
+        gate = threading.Event()
+        runs = []
+
+        def work():
+            runs.append(1)
+            gate.wait(5)
+            return {"state": "connected"}
+
+        jobs = self.jobs()
+        key = jobs.key("u", "p", None, None)
+        self.assertIsNone(jobs.run(key, work))
+        self.assertIsNone(jobs.run(key, work))
+        gate.set()
+        jobs.wait_seconds = 2
+        self.assertEqual(jobs.run(key, work), {"state": "connected"})
+        self.assertEqual(runs, [1])
+        self.assertEqual(jobs.run(key, lambda: {"state": "fresh"}), {"state": "fresh"})
+
+    def test_finished_result_collected_by_late_poll(self):
+        jobs = self.jobs()
+        key = jobs.key("u", "p", "1", None)
+        self.assertEqual(jobs.run(key, lambda: {"state": "connected"}), {"state": "connected"})
+
+    def test_late_poll_gets_result_after_wait_expired(self):
+        import threading
+
+        gate = threading.Event()
+        jobs = self.jobs()
+        key = jobs.key("u", "p", None, None)
+        self.assertIsNone(jobs.run(key, lambda: (gate.wait(5), {"state": "needs_code"})[1]))
+        gate.set()
+        jobs.wait_seconds = 2
+        self.assertEqual(jobs.run(key, lambda: {"state": "x"}), {"state": "needs_code"})
+
+    def test_expired_result_is_dropped(self):
+        jobs = instagram.LoginJobs(wait_seconds=0.05, ttl=0)
+        key = jobs.key("u", "p", None, None)
+        jobs._jobs[key] = {"done": None, "result": {"state": "old"}, "error": None, "finished": 1.0}
+        self.assertEqual(jobs.run(key, lambda: {"state": "new"}), {"state": "new"})
+
+    def test_busy_when_another_operation_runs(self):
+        jobs = self.jobs()
+
+        def inner():
+            with self.assertRaises(instagram.InstagramError) as ctx:
+                jobs.run(jobs.key("u", "p", None, None), lambda: {})
+            self.assertEqual(ctx.exception.code, "busy")
+
+        instagram.run_exclusive(inner)
+
+    def test_lock_released_after_login_and_error_is_raised(self):
+        jobs = self.jobs(wait=2)
+
+        def boom():
+            raise instagram.InstagramError("invalid_input", "x", 400)
+
+        with self.assertRaises(instagram.InstagramError):
+            jobs.run(jobs.key("u", "p", None, None), boom)
+        instagram.run_exclusive(lambda: None)
+
+    def test_key_depends_on_every_field(self):
+        k = instagram.LoginJobs.key
+        keys = {k("u", "p", None, None), k("u", "p", "1", None), k("u", "p", None, "s"), k("u", "q", None, None)}
+        self.assertEqual(len(keys), 4)
+
+
 
 class DownloadTests(unittest.TestCase):
     def test_sends_a_user_agent_and_reports_http_errors(self):

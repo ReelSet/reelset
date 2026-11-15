@@ -1,7 +1,7 @@
 import { igAccountSchema, type IgAccount } from '@reelset/core'
 import { z } from 'zod'
 
-export const WORKER_TIMEOUT_MS = { status: 60_000, connect: 100_000, run: 8_000 }
+export const WORKER_TIMEOUT_MS = { status: 60_000, connect: 280_000, run: 8_000 }
 
 export type WorkerConfig = { baseUrl: string; token: string; fetch?: typeof fetch }
 

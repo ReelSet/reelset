@@ -338,6 +338,53 @@ describe('connectAccount / checkAccount', () => {
     expect(t.store.saveSession).toHaveBeenCalled()
   })
 
+  it('keeps polling the box while the login is in progress', async () => {
+    const t = await setup({ account: { ...connected, state: 'needs_login' } })
+    let ms = 0
+    t.deps.now = () => new Date(ms)
+    const ok = await t.client.login(
+      { session: null, proxyIndex: null },
+      { username: 'u', password: 'p' },
+    )
+    vi.mocked(t.client.login).mockReset()
+    vi.mocked(t.client.login)
+      .mockImplementationOnce(async () => {
+        ms += 75_000
+        throw new IgCallError('in_progress', 'x', true)
+      })
+      .mockImplementationOnce(async () => {
+        ms += 75_000
+        throw new IgCallError('in_progress', 'x', true)
+      })
+      .mockResolvedValueOnce(ok)
+    const acc = await connectAccount(t.deps)
+    expect(t.client.login).toHaveBeenCalledTimes(3)
+    expect(acc.state).toBe('connected')
+  })
+
+  it('gives up with a too-slow message once the polling budget is spent', async () => {
+    const t = await setup({ account: { ...connected, state: 'needs_login' } })
+    let ms = 0
+    t.deps.now = () => new Date(ms)
+    vi.mocked(t.client.login).mockImplementation(async () => {
+      ms += 80_000
+      throw new IgCallError('in_progress', 'x', true)
+    })
+    const acc = await connectAccount(t.deps)
+    expect(t.client.login).toHaveBeenCalledTimes(2)
+    expect(acc.message).toMatch(/taking too long/)
+  })
+
+  it('tells timeout, busy and unreachable apart', async () => {
+    const t = await setup({ account: { ...connected, state: 'needs_login' } })
+    vi.mocked(t.client.login).mockRejectedValueOnce(new IgCallError('timeout', 'x', false))
+    expect((await connectAccount(t.deps)).message).toMatch(/taking too long/)
+    vi.mocked(t.client.login).mockRejectedValueOnce(new IgCallError('busy', 'x', true))
+    expect((await connectAccount(t.deps)).message).toMatch(/busy with another Instagram job/)
+    vi.mocked(t.client.login).mockRejectedValueOnce(new IgCallError('unreachable', 'x', false))
+    expect((await connectAccount(t.deps)).message).toBe('Poster unreachable, try again.')
+  })
+
   it('counts a rejected login but not a missing 2FA code', async () => {
     const t = await setup({ account: { ...connected, state: 'needs_login', loginFailures: 1 } })
     vi.mocked(t.client.login).mockResolvedValueOnce({
