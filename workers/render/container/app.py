@@ -100,6 +100,8 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": True,
                     "box": BOX_NAME,
+                    # 2 = Instagram ops are background jobs a repeat call joins (safe to re-send).
+                    "igJobs": 2,
                     "running": jobs.running(),
                     "inflight": inflight,
                     "idleSeconds": idle,
@@ -221,13 +223,26 @@ class Handler(BaseHTTPRequestHandler):
                 body.get("code") or None,
                 body.get("totpSecret") or None,
             )
-            result = instagram.login_jobs.run(key, work)
-            if result is None:
-                return self._json(
-                    202, {"error": "in_progress", "message": "login still running"}
-                )
+            result = instagram.login_jobs.run(key, work, "login")
+        elif action == "post":
+            key = instagram.BackgroundJobs.make_key(
+                "post", require_str("videoUrl"), require_str("caption")
+            )
+            result = instagram.jobs.run(
+                key, work, "post", instagram.POST_RESULT_TTL_SECONDS, keep_result=True
+            )
+        elif action == "delete":
+            key = instagram.BackgroundJobs.make_key("delete", require_str("mediaPk"))
+            result = instagram.jobs.run(key, work, "delete")
+        elif action == "find":
+            key = instagram.BackgroundJobs.make_key(
+                "find", require_str("caption"), since, *sorted(exclude)
+            )
+            result = instagram.jobs.run(key, work, "find")
         else:
             result = instagram.run_exclusive(work)
+        if result is None:
+            return self._json(202, {"error": "in_progress", "message": f"{action} still running"})
         self._json(200, {**result, "proxy": proxy.public()})
 
     def _youtube_search(self):

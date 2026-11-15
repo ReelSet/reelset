@@ -95,6 +95,24 @@ describe('instagram container client login', () => {
   })
 })
 
+describe('instagram container client polling', () => {
+  it.each(['post', 'remove', 'find'] as const)(
+    'turns a 202 in_progress on %s into a poll signal',
+    async (op) => {
+      const t = fakeContainer(202, { error: 'in_progress', message: 'still running' })
+      const run = {
+        post: () => t.client.post(STATE, { videoUrl: 'v', posterUrl: null, caption: 'c' }),
+        remove: () => t.client.remove(STATE, '1'),
+        find: () => t.client.find(STATE, 'c', new Date(1000), []),
+      }[op]
+      expect(await run().catch((e: unknown) => e)).toMatchObject({
+        code: 'in_progress',
+        reachedContainer: true,
+      })
+    },
+  )
+})
+
 describe('instagram container client find', () => {
   it('sends the caption and the start time in epoch seconds', async () => {
     const t = fakeContainer(200, {

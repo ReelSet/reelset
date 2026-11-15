@@ -8,6 +8,7 @@ import {
   checkAccount,
   connectAccount,
   disconnectAccount,
+  POLL_BUDGET_MS,
   runInstagramQueue,
   type IgDeps,
 } from './service'
@@ -83,6 +84,7 @@ async function setup(
     markLostNotFound: vi.fn(async () => true),
   }
   const client: IgContainerClient = {
+    supportsJobs: vi.fn(async () => true),
     status: vi.fn(async () => ({
       state: 'connected' as const,
       username: 'reelset',
@@ -184,13 +186,90 @@ describe('runInstagramQueue', () => {
     expect(t.store.release).not.toHaveBeenCalled()
   })
 
-  it('hands a gateway timeout to the lost-post lookup instead of failing it', async () => {
+  it('polls past a gateway cut, then hands a post that never answers to the lost-post lookup', async () => {
     const t = await setup()
-    vi.mocked(t.client.post).mockRejectedValueOnce(
+    let ms = 0
+    t.deps.now = () => new Date(ms)
+    vi.mocked(t.client.post).mockImplementation(async () => {
+      ms += 80_000
+      throw new IgCallError('gateway', 'poster gateway returned 524', false)
+    })
+    await runInstagramQueue(t.deps)
+    expect(vi.mocked(t.client.post).mock.calls.length).toBeGreaterThan(5)
+    expect(t.store.markFailed).toHaveBeenCalledWith('p1', INSTAGRAM_LOST_ERROR)
+  })
+
+  it('never re-sends a lost post to a box without background jobs (it would upload twice)', async () => {
+    const t = await setup()
+    vi.mocked(t.client.supportsJobs).mockResolvedValue(false)
+    vi.mocked(t.client.post).mockRejectedValue(
       new IgCallError('gateway', 'poster gateway returned 524', false),
     )
     await runInstagramQueue(t.deps)
+    expect(t.client.post).toHaveBeenCalledTimes(1)
     expect(t.store.markFailed).toHaveBeenCalledWith('p1', INSTAGRAM_LOST_ERROR)
+  })
+
+  it('keeps polling a post the box reports in progress until it is published', async () => {
+    const t = await setup()
+    let ms = 0
+    t.deps.now = () => new Date(ms)
+    const ok = await t.client.post(
+      { session: null, proxyIndex: null },
+      {
+        videoUrl: 'v',
+        posterUrl: null,
+        caption: 'c',
+      },
+    )
+    vi.mocked(t.client.post).mockReset()
+    vi.mocked(t.client.post)
+      .mockImplementationOnce(async () => {
+        ms += 75_000
+        throw new IgCallError('in_progress', 'x', true)
+      })
+      .mockImplementationOnce(async () => {
+        ms += 75_000
+        throw new IgCallError('in_progress', 'x', true)
+      })
+      .mockResolvedValueOnce(ok)
+    expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'post', postId: 'p1', ok: true })
+    expect(t.client.post).toHaveBeenCalledTimes(3)
+    expect(t.store.markPosted).toHaveBeenCalled()
+    expect(t.store.markFailed).not.toHaveBeenCalled()
+  })
+
+  it('gives up after about 12 minutes of in_progress and leaves the post to the lost lookup', async () => {
+    const t = await setup()
+    let ms = 0
+    t.deps.now = () => new Date(ms)
+    vi.mocked(t.client.post).mockImplementation(async () => {
+      ms += 75_000
+      throw new IgCallError('in_progress', 'x', true)
+    })
+    await runInstagramQueue(t.deps)
+    expect(ms).toBeLessThanOrEqual(POLL_BUDGET_MS)
+    expect(t.store.markFailed).toHaveBeenCalledWith('p1', INSTAGRAM_LOST_ERROR)
+    expect(t.store.release).not.toHaveBeenCalled()
+  })
+
+  it('polls a delete and a lost-post lookup the same way', async () => {
+    const t = await setup({ lost: LOST })
+    let ms = 0
+    t.deps.now = () => new Date(ms)
+    vi.mocked(t.client.find).mockImplementationOnce(async () => {
+      ms += 75_000
+      throw new IgCallError('in_progress', 'x', true)
+    })
+    vi.mocked(t.store.claimDelete).mockResolvedValueOnce({ ...POST, media_pk: '55' })
+    vi.mocked(t.client.remove).mockImplementationOnce(async () => {
+      ms += 75_000
+      throw new IgCallError('in_progress', 'x', true)
+    })
+    const out = await runInstagramQueue(t.deps)
+    expect(t.client.find).toHaveBeenCalledTimes(2)
+    expect(t.client.remove).toHaveBeenCalledTimes(2)
+    expect(out).toMatchObject({ ran: 'delete', ok: true })
   })
 
   it('puts the post back in the queue when another instagram operation is running', async () => {

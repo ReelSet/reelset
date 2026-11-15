@@ -7,9 +7,11 @@ export const IG_TIMEOUT_MS = {
   status: 45_000,
   // The box answers a login within 75 s (202 in_progress while it keeps going), under the tunnel's 100 s.
   login: 90_000,
-  post: 5 * 60_000,
+  // Post, delete and find run in the background on the box like login and are polled: each call
+  // waits at most 75 s for an answer.
+  post: 90_000,
   delete: 90_000,
-  find: 60_000,
+  find: 90_000,
 }
 
 const accountResultSchema = z.object({
@@ -82,7 +84,14 @@ export type IgContainerClient = {
     since: Date,
     excludeMediaPks: readonly string[],
   ): Promise<IgFindResult>
+  /**
+   * Whether the box runs Instagram ops as background jobs that a repeat call joins. Only then is a
+   * call whose answer was lost (timeout, 524) safe to send again; an older box would upload twice.
+   */
+  supportsJobs(): Promise<boolean>
 }
+
+const IG_JOBS_VERSION = 2
 
 // Cloudflare answers these itself (the tunnel or a 100 s origin timeout) while the box may still be
 // uploading, so the outcome is unknown rather than a failure the box reported.
@@ -142,7 +151,24 @@ export function createIgContainerClient(fetcher: ContainerFetcher, log: Logger):
     return parsed.data
   }
 
+  async function supportsJobs(): Promise<boolean> {
+    try {
+      const res = await fetcher.fetch(
+        new Request(`${CONTAINER_BASE_URL}/health`, { signal: AbortSignal.timeout(10_000) }),
+      )
+      const body: unknown = await res.json().catch(() => null)
+      const version = (body as { igJobs?: unknown } | null)?.igJobs
+      const ok = typeof version === 'number' && version >= IG_JOBS_VERSION
+      log.info({ igJobs: version ?? null, ok }, 'instagram box job support checked')
+      return ok
+    } catch (err) {
+      log.warn(errorFields(err), 'instagram box health check failed')
+      return false
+    }
+  }
+
   return {
+    supportsJobs,
     status: (state) => call('status', state, accountResultSchema, IG_TIMEOUT_MS.status),
     login: (state, creds, code) =>
       call('login', { ...state, ...creds, code }, accountResultSchema, IG_TIMEOUT_MS.login),

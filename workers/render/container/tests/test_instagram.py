@@ -554,6 +554,65 @@ class LoginJobTests(unittest.TestCase):
 
 
 
+class BackgroundJobsTests(unittest.TestCase):
+    def jobs(self, wait=0.05):
+        return instagram.BackgroundJobs(wait_seconds=wait, ttl=600)
+
+    def test_post_runs_once_for_one_key_and_result_stays_cached(self):
+        import threading
+
+        gate = threading.Event()
+        runs = []
+
+        def work():
+            runs.append(1)
+            gate.wait(5)
+            return {"mediaPk": "1"}
+
+        jobs = self.jobs()
+        key = jobs.make_key("post", "v", "c")
+        self.assertIsNone(jobs.run(key, work, "post", 1800, keep_result=True))
+        self.assertIsNone(jobs.run(key, work, "post", 1800, keep_result=True))
+        gate.set()
+        jobs.wait_seconds = 2
+        self.assertEqual(jobs.run(key, work, "post", 1800, keep_result=True), {"mediaPk": "1"})
+        self.assertEqual(jobs.run(key, work, "post", 1800, keep_result=True), {"mediaPk": "1"})
+        self.assertEqual(runs, [1])
+
+    def test_result_collected_once_without_keep(self):
+        jobs = self.jobs(2)
+        key = jobs.make_key("find", "c", 1)
+        self.assertEqual(jobs.run(key, lambda: {"n": 1}), {"n": 1})
+        self.assertEqual(jobs.run(key, lambda: {"n": 2}), {"n": 2})
+
+    def test_failed_post_is_not_cached_so_a_retry_runs_again(self):
+        jobs = self.jobs(2)
+        key = jobs.make_key("post", "v", "c")
+
+        def boom():
+            raise instagram.InstagramError("upload_failed", "x")
+
+        with self.assertRaises(instagram.InstagramError):
+            jobs.run(key, boom, "post", 1800, keep_result=True)
+        self.assertEqual(jobs.run(key, lambda: {"ok": 1}, "post", 1800, keep_result=True), {"ok": 1})
+
+    def test_busy_for_a_different_op_while_a_job_runs(self):
+        import threading
+
+        gate = threading.Event()
+        jobs = self.jobs()
+        self.assertIsNone(jobs.run(jobs.make_key("post", "v", "c"), lambda: gate.wait(5) or {}))
+        with self.assertRaises(instagram.InstagramError) as ctx:
+            jobs.run(jobs.make_key("delete", "1"), lambda: {})
+        self.assertEqual(ctx.exception.code, "busy")
+        gate.set()
+        self.assertIsNotNone(jobs.run(jobs.make_key("post", "v", "c"), lambda: {}))
+
+    def test_key_includes_the_op_name(self):
+        k = instagram.BackgroundJobs.make_key
+        self.assertNotEqual(k("post", "v", "c"), k("find", "v", "c"))
+
+
 class DownloadTests(unittest.TestCase):
     def test_sends_a_user_agent_and_reports_http_errors(self):
         import tempfile

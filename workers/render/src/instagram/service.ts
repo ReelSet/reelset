@@ -58,6 +58,52 @@ async function loginWithPolling(deps: IgDeps, state: IgState, creds: IgCredentia
   }
 }
 
+// Post, delete and find keep running on the box after a call gives up; the worker polls with the same
+// body for up to this long (the queue consumer allows 15 min, shared with the lost-post lookup).
+export const POLL_BUDGET_MS = 12 * 60_000
+export const RUN_BUDGET_MS = 14 * 60_000
+const POLL_AGAIN_CODES: readonly string[] = [IN_PROGRESS, TIMEOUT, 'gateway']
+
+async function pollBox<T>(
+  deps: IgDeps,
+  op: string,
+  log: Logger,
+  call: () => Promise<T>,
+  budgetMs = POLL_BUDGET_MS,
+): Promise<T> {
+  const clock = () => (deps.now?.() ?? new Date()).getTime()
+  const started = clock()
+  let polls = 0
+  let sawInProgress = false
+  for (;;) {
+    polls += 1
+    try {
+      const result = await call()
+      if (polls > 1) log.info({ op, polls }, 'instagram box finished after polling')
+      return result
+    } catch (err) {
+      if (!(err instanceof IgCallError) || !POLL_AGAIN_CODES.includes(err.code)) throw err
+      if (err.code === IN_PROGRESS) sawInProgress = true
+      else if (!sawInProgress && !(await deps.client.supportsJobs())) {
+        log.warn({ op, code: err.code }, 'box cannot join a lost call, not sending it again')
+        throw err
+      }
+      const waited = clock() - started
+      if (waited + IG_TIMEOUT_MS.post > budgetMs) {
+        log.warn(
+          { op, polls, waitedMs: waited, sawInProgress },
+          'instagram box still busy, giving up',
+        )
+        throw new IgCallError(TIMEOUT, `instagram ${op} did not finish in time`, false)
+      }
+      log.info(
+        { op, polls, waitedMs: waited, code: err.code },
+        'instagram box still working, polling',
+      )
+    }
+  }
+}
+
 async function loadState(deps: IgDeps): Promise<IgState> {
   const blob = await deps.store.getSession()
   if (!blob) return { session: null, proxyIndex: null }
@@ -269,13 +315,18 @@ function reelUpload(deps: IgDeps, post: ClaimedPost): IgReelUpload {
   }
 }
 
-async function runPost(deps: IgDeps, post: ClaimedPost, state: IgState): Promise<boolean> {
+async function runPost(
+  deps: IgDeps,
+  post: ClaimedPost,
+  state: IgState,
+  budgetMs = POLL_BUDGET_MS,
+): Promise<boolean> {
   const log = deps.log.child({ postId: post.id, itemId: post.item_id })
   const upload = reelUpload(deps, post)
   if (!upload.posterUrl)
     log.warn({ videoKey: post.video_key }, 'no poster key for video, cover falls back to a frame')
   try {
-    const result = await deps.client.post(state, upload)
+    const result = await pollBox(deps, 'post', log, () => deps.client.post(state, upload), budgetMs)
     await saveState(deps, result.session, result.proxy)
     await deps.store.markPosted(post.id, { mediaPk: result.mediaPk, permalink: result.permalink })
     await writeAccount(deps, { message: switchNote(result.proxy), proxy: result.proxy }, (n) => n)
@@ -307,10 +358,21 @@ async function runPost(deps: IgDeps, post: ClaimedPost, state: IgState): Promise
   }
 }
 
-async function runDelete(deps: IgDeps, post: ClaimedPost, state: IgState): Promise<boolean> {
+async function runDelete(
+  deps: IgDeps,
+  post: ClaimedPost,
+  state: IgState,
+  budgetMs = POLL_BUDGET_MS,
+): Promise<boolean> {
   const log = deps.log.child({ postId: post.id, mediaPk: post.media_pk })
   try {
-    const result = await deps.client.remove(state, post.media_pk ?? '')
+    const result = await pollBox(
+      deps,
+      'delete',
+      log,
+      () => deps.client.remove(state, post.media_pk ?? ''),
+      budgetMs,
+    )
     await saveState(deps, result.session, result.proxy)
     if (!result.deleted) {
       throw new IgCallError('delete_failed', 'Instagram did not confirm the delete', true)
@@ -345,11 +407,18 @@ export async function recoverLostPost(
   deps: IgDeps,
   lost: LostPost,
   state: IgState,
+  budgetMs = POLL_BUDGET_MS,
 ): Promise<'found' | 'not_found' | 'unknown'> {
   const log = deps.log.child({ postId: lost.id, itemId: lost.item_id, op: 'ig-find' })
   try {
     const exclude = await deps.store.recentMediaPks()
-    const result = await deps.client.find(state, lost.caption, lost.started_at, exclude)
+    const result = await pollBox(
+      deps,
+      'find',
+      log,
+      () => deps.client.find(state, lost.caption, lost.started_at, exclude),
+      budgetMs,
+    )
     await saveState(deps, result.session, result.proxy)
     if (result.found && result.mediaPk && result.permalink) {
       await deps.store.markLostFound(lost.id, {
@@ -380,12 +449,19 @@ export async function runInstagramQueue(deps: IgDeps): Promise<QueueOutcome> {
   const state = await loadState(deps)
   if (!state.session) return { ran: 'none', reason: 'not_connected' }
 
+  const clock = () => (deps.now?.() ?? new Date()).getTime()
+  const runStarted = clock()
+  const remaining = () => Math.min(POLL_BUDGET_MS, RUN_BUDGET_MS - (clock() - runStarted))
   const lost = await deps.store.nextLost()
-  if (lost) await recoverLostPost(deps, lost, state)
+  if (lost) await recoverLostPost(deps, lost, state, remaining())
 
+  // Not enough of the consumer's wall time left for a poll: leave the work for the next run.
+  if (remaining() < 2 * IG_TIMEOUT_MS.post) return { ran: 'none', reason: 'nothing_due' }
   const del = await deps.store.claimDelete()
-  if (del) return { ran: 'delete', postId: del.id, ok: await runDelete(deps, del, state) }
+  if (del)
+    return { ran: 'delete', postId: del.id, ok: await runDelete(deps, del, state, remaining()) }
   const post = await deps.store.claimPost()
-  if (post) return { ran: 'post', postId: post.id, ok: await runPost(deps, post, state) }
+  if (post)
+    return { ran: 'post', postId: post.id, ok: await runPost(deps, post, state, remaining()) }
   return { ran: 'none', reason: 'nothing_due' }
 }
