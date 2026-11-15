@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { LogoMark } from '@/components/ui/Logo'
 import { SocialLinks } from '@/components/ui/SocialLinks'
@@ -124,9 +125,9 @@ export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
         className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[36rem] -translate-x-1/2 rounded-full bg-accent/10 blur-3xl"
       />
       <div className="animate-fade-up relative w-full max-w-sm">
-        <a href="/" aria-label="Reelset home" className="inline-block">
+        <Link href="/" aria-label="Reelset home" className="inline-block">
           <LogoMark className="h-11 w-11" />
-        </a>
+        </Link>
         <h1 className="mt-6 text-[28px] font-semibold tracking-tight">Sign in to Reelset</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           Like reels and tune your feed. Continue with Google, or we email you a magic link.
@@ -207,9 +208,9 @@ export function LoginForm({ next, failed }: { next: string; failed: boolean }) {
             )}
           </form>
         )}
-        <a href="/" className="mt-8 inline-block text-sm text-faint transition hover:text-fg">
+        <Link href="/" className="mt-8 inline-block text-sm text-faint transition hover:text-fg">
           Back to the feed
-        </a>
+        </Link>
         <SocialLinks className="mt-10" />
       </div>
     </main>

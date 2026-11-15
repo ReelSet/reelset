@@ -1,6 +1,7 @@
 import { errorFields } from '@reelset/core'
 import { NextResponse, type NextRequest } from 'next/server'
 import { safeReturnPath } from '@/lib/auth/return-url'
+import { signupInfoFrom } from '@/lib/auth/signup-info'
 import { ensureProfile } from '@/server/auth'
 import { routeLog } from '@/server/logger'
 import { createSupabaseResponseClient } from '@/server/supabase'
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
       )
       return NextResponse.redirect(`${origin}/login?error=callback`)
     }
-    await ensureProfile(user.id)
+    await ensureProfile(user.id, user.email ?? null, signupInfoFrom(user))
     log.info({ profileId: user.id }, 'login completed')
     return apply(NextResponse.redirect(`${origin}${next}`))
   } catch (err) {

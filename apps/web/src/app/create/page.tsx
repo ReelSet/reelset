@@ -6,10 +6,10 @@ import {
   Hero,
   HowItWorks,
   McpTeaser,
-  PhoneShowcase,
   PricingTeaser,
   SiteFooter,
 } from '@/components/marketing/blocks'
+import { PhoneShowcase } from '@/components/marketing/PhoneShowcase'
 import { getOptionalUser } from '@/server/auth'
 
 export const dynamic = 'force-dynamic'

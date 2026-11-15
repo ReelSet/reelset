@@ -28,7 +28,17 @@ export async function loadRequestContexts(
     const [itemRows, renderRows, eventRows] = await Promise.all([
       db
         .selectFrom('item')
-        .select(['id', 'title', 'status', 'visibility'])
+        .select([
+          'id',
+          'title',
+          'status',
+          'visibility',
+          'owner_id',
+          'publish_review',
+          'publish_requested_at',
+          'publish_reviewed_at',
+          'publish_note',
+        ])
         .where('id', 'in', itemIds)
         .execute(),
       db

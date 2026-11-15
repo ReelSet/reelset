@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ItemLink } from '@/components/admin/drawer/DrawerLink'
 import { ItemStatus, Source } from '@reelset/core'
 import { fmtDate, truncate } from '@/lib/admin/format'
 import { ADMIN_ROUTES } from '@/lib/admin/nav'
@@ -196,12 +197,15 @@ export default async function ItemsPage({ searchParams }: Props) {
                     />
                   </td>
                   <td className={td}>
-                    <Link
-                      href={`${ADMIN_ROUTES.pipeline}?item=${i.id}`}
+                    <ItemLink
+                      id={i.id}
+                      title={i.title}
+                      source={i.source ?? undefined}
+                      status={i.status}
                       className="text-fg hover:text-info"
                     >
                       {truncate(i.title, 90)}
-                    </Link>
+                    </ItemLink>
                     <div className="mt-0.5 flex flex-wrap gap-x-2">
                       <VisibilityBadge visibility={i.visibility} reason={i.hidden_reason} />
                       {i.hidden_at && (

@@ -1,8 +1,9 @@
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { CopyButton } from '@/components/generate/CopyButton'
 import { Accent, Hero, SectionTitle, SiteFooter } from '@/components/marketing/blocks'
 import { McpConnect } from '@/components/marketing/McpConnect'
-import { BoltIcon, ClockIcon, PlayIcon, SparkleIcon } from '@/components/ui/icons'
+import { BoltIcon, ClockIcon, PlayIcon, ShareIcon, SparkleIcon } from '@/components/ui/icons'
 import { getOptionalUser } from '@/server/auth'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,11 @@ const TOOLS = [
     name: 'list_my_reels',
     Icon: PlayIcon,
     body: 'See your recent reels and what each one is doing.',
+  },
+  {
+    name: 'publish_reel',
+    Icon: ShareIcon,
+    body: 'Submit a finished reel for review so it can appear in the public feed.',
   },
   {
     name: 'get_credits',
@@ -64,7 +70,7 @@ export default async function McpPage() {
       </Hero>
 
       <section className="mx-auto w-full max-w-4xl px-5 py-8">
-        <SectionTitle kicker="What agents can do" title="Four tools, one finished reel" />
+        <SectionTitle kicker="What agents can do" title="Five tools, one finished reel" />
         <ul className="grid gap-3 sm:grid-cols-2">
           {TOOLS.map(({ name, Icon, body }) => (
             <li key={name} className="rounded-lg border border-line bg-surface p-5">
@@ -104,13 +110,13 @@ export default async function McpPage() {
           <p className="mt-1">
             Agent reels use the same 1,000 free credits every month (100 per reel, about 10 reels).
             Failed reels are refunded. Need more?{' '}
-            <a href="/pricing" className="text-accent hover:underline">
+            <Link href="/pricing" className="text-accent hover:underline">
               Request credits
-            </a>
+            </Link>
             . Keep your key secret, and revoke it anytime from your{' '}
-            <a href="/profile#api-keys" className="text-accent hover:underline">
+            <Link href="/profile#api-keys" className="text-accent hover:underline">
               profile
-            </a>
+            </Link>
             .
           </p>
         </div>

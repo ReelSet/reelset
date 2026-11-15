@@ -1,8 +1,9 @@
-import { requestSteps, type ReelRequestRow } from '@reelset/core'
+import { publishStateOf, requestSteps, type ReelRequestRow } from '@reelset/core'
 import {
   reelDownloadUrl,
   type CreditsDto,
   type GeneratedReel,
+  type PublishInfo,
   type ReelRequestDto,
 } from '@/lib/generate/types'
 import { mediaUrl } from '@/lib/media'
@@ -14,6 +15,11 @@ export type RequestItemInfo = {
   title: string
   status: string
   visibility: string
+  owner_id: string | null
+  publish_review: string | null
+  publish_requested_at: Date | null
+  publish_reviewed_at: Date | null
+  publish_note: string | null
 }
 export type RequestRenderInfo = {
   status: string
@@ -47,10 +53,21 @@ export function pickRender<
   return [...renders].sort((a, b) => time(b.created_at) - time(a.created_at))[0] ?? null
 }
 
+function buildPublishInfo(item: RequestItemInfo, requesterId: string): PublishInfo {
+  return {
+    state: publishStateOf({ visibility: item.visibility, publishReview: item.publish_review }),
+    owned: item.owner_id === requesterId,
+    requestedAt: item.publish_requested_at?.toISOString() ?? null,
+    reviewedAt: item.publish_reviewed_at?.toISOString() ?? null,
+    note: item.publish_note,
+  }
+}
+
 export function buildReel(
   ctx: RequestContext,
   itemId: string | null,
   mediaBase: string,
+  requesterId: string,
 ): GeneratedReel | null {
   if (!itemId || !ctx.item || ctx.item.visibility === 'hidden') return null
   const done = ctx.render?.status === 'done' && ctx.item.status === 'rendered'
@@ -63,6 +80,7 @@ export function buildReel(
     posterUrl: done ? mediaUrl(mediaBase, ctx.render?.poster_key ?? null) : null,
     durationMs: done ? (ctx.render?.video_duration_ms ?? null) : null,
     visibility: ctx.item.visibility === 'private' ? 'private' : 'public',
+    publish: buildPublishInfo(ctx.item, requesterId),
   }
 }
 
@@ -91,7 +109,7 @@ export function buildReelRequestDto(
     creditsCharged: row.credits_charged,
     steps,
     aheadOfYou: status === 'done' || status === 'failed' || rendering ? null : ctx.aheadOfYou,
-    reel: buildReel(ctx, row.item_id, mediaBase),
+    reel: buildReel(ctx, row.item_id, mediaBase, row.user_id),
   }
 }
 

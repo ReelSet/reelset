@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
@@ -31,17 +32,17 @@ export default async function AskEntryPage({ params }: { params: Promise<{ id: s
   return (
     <div className="mx-auto w-full max-w-2xl px-5 pb-16">
       <header className="flex items-center justify-between pt-safe lg:justify-end">
-        <a href="/" aria-label="Reelset home" className="lg:hidden">
+        <Link href="/" aria-label="Reelset home" className="lg:hidden">
           <Wordmark className="text-[15px]" />
-        </a>
+        </Link>
         <div className="flex items-center gap-2">
           <ConversationDelete id={id} />
-          <a
+          <Link
             href="/ask/history"
             className="rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
           >
             Your questions
-          </a>
+          </Link>
         </div>
       </header>
       <div className="mt-10 flex flex-col gap-12">
@@ -59,12 +60,12 @@ export default async function AskEntryPage({ params }: { params: Promise<{ id: s
           </article>
         ))}
       </div>
-      <a
+      <Link
         href="/ask"
         className="mt-12 inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
       >
         Ask another
-      </a>
+      </Link>
     </div>
   )
 }

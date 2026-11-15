@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { ItemLink } from '@/components/admin/drawer/DrawerLink'
 import { Suspense } from 'react'
 import { SubmitButton } from '@/components/admin/SubmitButton'
 import { RenderStatus } from '@reelset/core'
@@ -125,9 +125,9 @@ export default async function RendersPage({ searchParams }: Props) {
                     <tr key={r.id}>
                       <td className={td}>{fmtDate(r.created_at, tz)}</td>
                       <td className={td}>
-                        <Link href={`${ADMIN_ROUTES.pipeline}?item=${r.item_id}`}>
+                        <ItemLink id={r.item_id} title={r.title} status={r.item_status}>
                           {truncate(r.title, 60)}
-                        </Link>
+                        </ItemLink>
                       </td>
                       <td className={td}>
                         <Status value={r.item_status} />

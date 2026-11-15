@@ -17,11 +17,7 @@ export const DISCARD_META_KEY = 'adminDiscard'
 
 export const idSchema = z.object({ id: z.guid() })
 
-// No worker re-enqueues `voiced` items, so a failure after voicing restarts from `embedded`.
-export function suggestRetryStage(lastOkStage: string | null | undefined): RetryStage {
-  if (lastOkStage === ItemStatus.voiced) return ItemStatus.embedded
-  return RETRY_STAGES.find((stage) => stage === lastOkStage) ?? ItemStatus.found
-}
+export { suggestRetryStage } from './retry-stage'
 
 // Redirect targets come from a hidden form field, so only same-site admin paths are accepted.
 export function safeAdminPath(raw: unknown): string {

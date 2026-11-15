@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { CheckIcon } from '@/components/ui/icons'
 import { ApiFailure, requestCredits } from './api'
@@ -35,9 +36,9 @@ export function RequestCredits({
 
   if (!signedIn) {
     return (
-      <a href={`/login?next=${encodeURIComponent(next)}`} className={base}>
+      <Link href={`/login?next=${encodeURIComponent(next)}`} className={base}>
         Sign in to request
-      </a>
+      </Link>
     )
   }
   if (state === 'sent') {

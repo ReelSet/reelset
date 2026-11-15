@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { StatusPage, ghostBtn, primaryBtn } from '@/components/ui/StatusPage'
 
 export const metadata = { title: 'Page not found' }
@@ -9,12 +10,12 @@ export default function NotFound() {
       title="Nothing here"
       body="This page does not exist, or the reel has moved on."
     >
-      <a href="/" className={primaryBtn}>
+      <Link href="/" className={primaryBtn}>
         Back to the feed
-      </a>
-      <a href="/ask" className={ghostBtn}>
+      </Link>
+      <Link href="/ask" className={ghostBtn}>
         Ask
-      </a>
+      </Link>
     </StatusPage>
   )
 }

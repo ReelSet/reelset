@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { BookmarkIcon, HeartIcon } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -55,12 +56,12 @@ export function ProfileLibrary({ liked, saved }: { liked: PosterReel[]; saved: P
                 : 'Tap the bookmark on a reel to keep it here.'
             }
             action={
-              <a
+              <Link
                 href="/"
                 className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
               >
                 Browse reels
-              </a>
+              </Link>
             }
           />
         </div>
@@ -72,7 +73,7 @@ export function ProfileLibrary({ liked, saved }: { liked: PosterReel[]; saved: P
               className="animate-fade-up"
               style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
             >
-              <a
+              <Link
                 href={reelPath(r)}
                 className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-surface transition active:scale-[0.97]"
               >
@@ -88,7 +89,7 @@ export function ProfileLibrary({ liked, saved }: { liked: PosterReel[]; saved: P
                 <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2 pt-8 text-[11px] leading-snug">
                   <span className="line-clamp-2 [overflow-wrap:anywhere]">{r.title}</span>
                 </span>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

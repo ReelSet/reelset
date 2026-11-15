@@ -59,6 +59,8 @@ const HINTS: Record<string, string> = {
   like_count_threshold: 'Minimum likes before the count is shown (0 = always, shows 0)',
   show_save_count: 'Show the save count on reels once it reaches save_count_threshold',
   save_count_threshold: 'Minimum saves before the count is shown (0 = always)',
+  notify_signups: 'Email the admin address once for every new user signup',
+  admin_time_zone: 'Time zone for times in admin emails (IANA name, e.g. Asia/Kolkata)',
   admin_email: 'Where credit requests and other admin notifications are emailed',
   monthly_free_credits:
     'Free credits every user gets each UTC month; unused credits do not roll over',

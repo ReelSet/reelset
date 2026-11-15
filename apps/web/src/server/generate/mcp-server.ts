@@ -7,6 +7,7 @@ import {
   getCreditsTool,
   getReelStatusTool,
   listMyReelsTool,
+  publishReelTool,
   type McpContext,
 } from './mcp-tools'
 
@@ -46,6 +47,15 @@ export function createReelsetMcpServer(ctx: McpContext): McpServer {
       annotations: { readOnlyHint: true },
     },
     (args) => listMyReelsTool(ctx, args),
+  )
+  server.registerTool(
+    'publish_reel',
+    {
+      title: 'Submit a reel to the feed',
+      description: TOOL_DESCRIPTIONS.publish_reel,
+      inputSchema: { request_id: z.string().describe('The request_id of a finished reel') },
+    },
+    (args) => publishReelTool(ctx, args),
   )
   server.registerTool(
     'get_credits',

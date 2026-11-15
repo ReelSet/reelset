@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { SideNav } from '@/components/ui/AppNav'
 import { Wordmark } from '@/components/ui/Logo'
 import { SocialLinks } from '@/components/ui/SocialLinks'
@@ -10,9 +11,9 @@ export function SideRail({ authenticated = false, avatar }: Props) {
   return (
     <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col justify-between px-8 py-10 lg:flex">
       <div>
-        <a href="/" aria-label="Reelset home">
+        <Link href="/" aria-label="Reelset home">
           <Wordmark className="text-lg" />
-        </a>
+        </Link>
         <p className="mt-4 max-w-[14rem] text-sm leading-relaxed text-muted">
           What developers are building, in 60-second reels.
         </p>
@@ -28,12 +29,12 @@ export function SideRail({ authenticated = false, avatar }: Props) {
           ))}
         </ul>
         <nav aria-label="More" className="flex gap-4 text-xs text-faint">
-          <a href="/mcp" className="transition hover:text-fg">
+          <Link href="/mcp" className="transition hover:text-fg">
             MCP
-          </a>
-          <a href="/pricing" className="transition hover:text-fg">
+          </Link>
+          <Link href="/pricing" className="transition hover:text-fg">
             Pricing
-          </a>
+          </Link>
         </nav>
         <SocialLinks />
       </div>

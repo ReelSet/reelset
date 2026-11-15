@@ -1,8 +1,9 @@
+import Link from 'next/link'
 import { PlayIcon } from '@/components/ui/icons'
 import { SourceDot } from '@/components/ui/sources'
 import type { ReelRequestDto } from '@/lib/generate/types'
 import { detectSource, displayUrl } from './detect'
-import { friendlyError, timeAgo } from './format'
+import { FEED_STATE_LABEL, friendlyError, timeAgo } from './format'
 import { CompactStepper } from './Stepper'
 
 function Row({ r }: { r: ReelRequestDto }) {
@@ -11,7 +12,7 @@ function Row({ r }: { r: ReelRequestDto }) {
   const sources = [...new Set(r.urls.map((u) => detectSource(u).source))]
   return (
     <li>
-      <a
+      <Link
         href={`/create/${r.id}`}
         className="group flex gap-3 rounded-md border border-line bg-surface p-3 transition hover:border-line-strong hover:bg-raised active:scale-[0.995]"
       >
@@ -45,14 +46,16 @@ function Row({ r }: { r: ReelRequestDto }) {
             ) : r.status === 'done' ? (
               <p className="text-xs text-ok">
                 Ready
-                {r.reel?.visibility === 'private' && <span className="text-faint"> · Private</span>}
+                {r.reel && (
+                  <span className="text-faint"> · {FEED_STATE_LABEL[r.reel.publish.state]}</span>
+                )}
               </p>
             ) : (
               <CompactStepper request={r} />
             )}
           </div>
         </div>
-      </a>
+      </Link>
     </li>
   )
 }

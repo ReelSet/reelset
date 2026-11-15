@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState, type ReactNode } from 'react'
 import { ReelGrid } from '@/components/seo/Browse'
 import { CloseIcon, SearchIcon } from '@/components/ui/icons'
@@ -69,13 +70,13 @@ export function TopicExplorer({ topics, reels, source, filters, children }: Prop
             <ul className="mb-6 flex flex-wrap gap-2">
               {results.topics.map((t) => (
                 <li key={t.slug}>
-                  <a
+                  <Link
                     href={filterHref(`/t/${t.slug}`, source)}
                     className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-sm text-muted transition hover:border-line-strong hover:bg-raised hover:text-fg active:scale-95"
                   >
                     {t.label}
                     <span className="text-xs text-faint tabular-nums">{t.count}</span>
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

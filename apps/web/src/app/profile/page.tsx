@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { ApiKeys } from '@/components/profile/ApiKeys'
@@ -54,16 +55,16 @@ export default async function ProfilePage() {
   return (
     <div className="mx-auto w-full max-w-2xl px-5 pb-20">
       <header className="flex items-center justify-between pt-safe lg:hidden">
-        <a href="/" aria-label="Reelset home">
+        <Link href="/" aria-label="Reelset home">
           <Wordmark className="text-[15px]" />
-        </a>
-        <a
+        </Link>
+        <Link
           href="/"
           className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
         >
           <HomeIcon className="h-4 w-4" />
           Feed
-        </a>
+        </Link>
       </header>
 
       <section className="animate-fade-up mt-10 flex items-start gap-4">
@@ -122,15 +123,15 @@ export default async function ProfilePage() {
         <h2 className="text-xs font-medium uppercase tracking-wider text-faint">API keys</h2>
         <p className="mt-1 mb-3 text-sm text-muted">
           Let your AI agent make reels through MCP.{' '}
-          <a href="/mcp" className="text-accent hover:underline">
+          <Link href="/mcp" className="text-accent hover:underline">
             Setup guide
-          </a>
+          </Link>
         </p>
         <ApiKeys />
       </section>
 
       <Section title="Ask" delay={240}>
-        <a
+        <Link
           href="/ask/history"
           className="flex min-h-12 items-center gap-3 rounded-md border border-line bg-surface px-4 text-sm transition hover:bg-raised active:scale-[0.99]"
         >
@@ -139,7 +140,7 @@ export default async function ProfilePage() {
           <span aria-hidden className="ml-auto text-faint">
             →
           </span>
-        </a>
+        </Link>
       </Section>
 
       <Section title="Community" hint="Reelset is open source. Ideas and PRs welcome." delay={300}>

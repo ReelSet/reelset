@@ -1,6 +1,6 @@
 import { discardItemAction, retryItemAction } from '@/app/admin/actions'
-import { suggestRetryStage } from '@/lib/admin/retry'
-import { button } from '@/components/admin/ui'
+import { suggestRetryStage } from '@/lib/admin/retry-stage'
+import { button } from '@/components/admin/primitives'
 import { SubmitButton } from '@/components/admin/SubmitButton'
 
 // Same server action as the old Retry form: failed -> suggested earlier stage, never a blind restart.

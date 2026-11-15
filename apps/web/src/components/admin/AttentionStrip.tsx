@@ -8,6 +8,11 @@ const ROWS: Row[] = [
   { key: 'failedItems', label: 'failed items (24h)', href: ADMIN_ROUTES.pipeline },
   { key: 'failedInstagramPosts', label: 'failed Instagram posts', href: ADMIN_ROUTES.instagram },
   { key: 'openUpgradeRequests', label: 'credit upgrade requests', href: ADMIN_ROUTES.generate },
+  {
+    key: 'pendingFeedSubmissions',
+    label: 'feed submissions to review',
+    href: `${ADMIN_ROUTES.generate}#submissions`,
+  },
   { key: 'openReelRequests', label: 'open reel requests', href: ADMIN_ROUTES.generate },
 ]
 

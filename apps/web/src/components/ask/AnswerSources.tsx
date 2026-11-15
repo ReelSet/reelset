@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { RelatedReelDto } from '@/lib/api-types'
 import { reelPath } from '@/lib/reel-url'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
@@ -16,7 +17,7 @@ export function RelatedReels({ reels }: { reels: RelatedReelDto[] }) {
             className="animate-fade-up w-[92px] shrink-0 snap-start"
             style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
           >
-            <a
+            <Link
               href={reelPath({ id: r.itemId, title: r.title })}
               className="group block active:scale-[0.97]"
             >
@@ -39,7 +40,7 @@ export function RelatedReels({ reels }: { reels: RelatedReelDto[] }) {
               <span className="mt-0.5 line-clamp-2 text-[12px] font-medium leading-snug">
                 {r.title}
               </span>
-            </a>
+            </Link>
           </li>
         ))}
       </ul>

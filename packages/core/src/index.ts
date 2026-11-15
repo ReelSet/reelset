@@ -112,6 +112,30 @@ export {
   pausePipeline,
 } from './repos/pipeline-pause.repo'
 export { hideItems, unhideItems, type VisibilityChange } from './repos/visibility.repo'
+export {
+  PUBLISH_NOTE_MAX_CHARS,
+  PUBLISH_REVIEWS,
+  PUBLISH_STATES,
+  publishNoteSchema,
+  publishStateOf,
+  type PublishReview,
+  type PublishState,
+  type PublishStateInput,
+} from './domain/publish-review'
+export {
+  countPendingPublish,
+  requestPublish,
+  reviewPublish,
+  withdrawPublish,
+  type PublishChange,
+  type PublishDecision,
+  type PublishRefusal,
+} from './repos/publish.repo'
+export {
+  SIGNUP_NOTIFY_WINDOW_MINUTES,
+  claimSignupNotification,
+  type ClaimedSignup,
+} from './repos/signup.repo'
 export { recordSpend, spendTodayUsd, type SpendInput } from './repos/spend.repo'
 export {
   ALERT_KEYS,

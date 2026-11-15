@@ -1,0 +1,6 @@
+export const DRAWER_EXIT_MS = 160
+export const DRAWER_PREFETCH_DELAY_MS = 100
+export const DRAWER_CACHE_FRESH_MS = 10_000
+export const DRAWER_CACHE_MAX_ENTRIES = 40
+export const DRAWER_LIVE_REFRESH_MS = 15_000
+export const DRAWER_FETCH_TIMEOUT_MS = 20_000

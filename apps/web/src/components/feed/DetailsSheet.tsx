@@ -10,7 +10,7 @@ import {
 import { CloseIcon } from '@/components/ui/icons'
 import type { FeedItemDto } from '@/lib/api-types'
 import type { CountRule } from '@/lib/counts'
-import type { ReelPageData } from '@/lib/seo/types'
+import { reelFromFeedItem } from '@/lib/seo/from-feed-item'
 import { useReelDetails } from './useReelDetails'
 import { ViewCount } from './ViewCount'
 
@@ -27,35 +27,6 @@ const HALF = 0.52
 const FULL = 0.88
 const CLOSE_BELOW = HALF * 0.6
 
-/** What the feed already carries, so the sheet is useful before /api/reel/[id] answers. */
-function fromItem(item: FeedItemDto): ReelPageData {
-  return {
-    id: item.id,
-    visibility: 'public',
-    title: item.title,
-    tldr: item.tldr,
-    hook: null,
-    transcript: item.transcript,
-    topics: item.topics,
-    kind: item.kind,
-    canonicalUrl: item.canonicalUrl,
-    publishedAt: item.publishedAt,
-    renderedAt: null,
-    videoUrl: item.videoUrl,
-    posterUrl: item.posterUrl,
-    durationMs: item.durationMs,
-    facts: [],
-    mentions: item.mentions.map((m) => ({
-      source: m.source,
-      url: m.url,
-      title: null,
-      author: null,
-      score: m.score,
-      comments: null,
-    })),
-  }
-}
-
 /** Mobile details sheet: half height with the video playing above, drag the handle to resize. */
 export function DetailsSheet({
   item,
@@ -67,7 +38,7 @@ export function DetailsSheet({
   onClose: () => void
 }) {
   const loaded = useReelDetails(item.id)
-  const reel = loaded ?? fromItem(item)
+  const reel = loaded ?? reelFromFeedItem(item)
   const [tab, setTab] = useState<TabKey>('tldr')
   const [snap, setSnap] = useState<'half' | 'full'>('half')
   const [dragRatio, setDragRatio] = useState<number | null>(null)

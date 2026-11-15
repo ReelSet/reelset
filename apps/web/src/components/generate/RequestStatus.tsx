@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { DownloadIcon, LinkIcon, ShareIcon, SparkleIcon } from '@/components/ui/icons'
@@ -8,6 +9,7 @@ import type { ReelRequestDto } from '@/lib/generate/types'
 import { ApiFailure, getRequest, isOpen } from './api'
 import { copyText } from './CopyButton'
 import { detectSource, displayUrl } from './detect'
+import { FeedSubmit } from './FeedSubmit'
 import { friendlyError } from './format'
 import { BigStepper } from './Stepper'
 import { usePolling } from './usePolling'
@@ -71,7 +73,7 @@ function Actions({ request }: { request: ReelRequestDto }) {
       <p className="min-h-4 text-xs text-ok" role="status">
         {note}
       </p>
-      {reel.visibility === 'private' && (
+      {reel.publish.state !== 'live' && (
         <p className="text-xs text-faint">Private · only people with the link</p>
       )}
     </div>
@@ -108,12 +110,12 @@ export function RequestStatus({ id }: { id: string }) {
         <p className="mt-1 text-sm text-muted">
           {missing ? 'It may belong to another account.' : error.message}
         </p>
-        <a
+        <Link
           href="/create"
           className="mt-5 inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-semibold text-accent-fg"
         >
           Back to Create
-        </a>
+        </Link>
       </div>
     )
   }
@@ -172,13 +174,13 @@ export function RequestStatus({ id }: { id: string }) {
                 : 'No credits were used. '}
               Try different links, or a page with more text on it.
             </p>
-            <a
+            <Link
               href="/create"
               className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-fg"
             >
               <SparkleIcon className="h-4 w-4" />
               Try again
-            </a>
+            </Link>
           </div>
         )}
 
@@ -190,9 +192,9 @@ export function RequestStatus({ id }: { id: string }) {
             You can leave this page. Your reel keeps rendering and shows up under Your reels.
           </p>
         )}
-        <a href="/create" className="mt-6 inline-block text-sm text-muted hover:text-fg">
+        <Link href="/create" className="mt-6 inline-block text-sm text-muted hover:text-fg">
           ← All your reels
-        </a>
+        </Link>
       </div>
 
       <div className="md:order-last">
@@ -216,6 +218,7 @@ export function RequestStatus({ id }: { id: string }) {
               )}
             </div>
             <Actions request={request} />
+            <FeedSubmit request={request} onChange={setRequest} />
           </div>
         ) : (
           <div

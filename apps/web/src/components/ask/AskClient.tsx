@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRef, useState } from 'react'
 import type { AskResponse, AskStreamEvent } from '@/lib/api-types'
 import { createSseParser } from '@/lib/ask/sse'
@@ -176,26 +177,26 @@ export function AskClient({
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5">
       <header className="flex items-center justify-between pt-safe lg:justify-end">
-        <a href="/" aria-label="Reelset home" className="lg:hidden">
+        <Link href="/" aria-label="Reelset home" className="lg:hidden">
           <Wordmark className="text-[15px]" />
-        </a>
+        </Link>
         <div className="flex items-center gap-2">
           {signedIn && (
-            <a
+            <Link
               href="/ask/history"
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95"
             >
               <ClockIcon className="h-4 w-4" />
               Your questions
-            </a>
+            </Link>
           )}
-          <a
+          <Link
             href="/"
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-fg active:scale-95 lg:hidden"
           >
             <HomeIcon className="h-4 w-4" />
             Feed
-          </a>
+          </Link>
         </div>
       </header>
 

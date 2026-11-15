@@ -15,6 +15,11 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;')
 }
 
+/** Collapses line breaks so user text cannot inject headers into a subject. */
+export function singleLine(text: string, max = 120): string {
+  return text.replace(/[\r\n]+/g, ' ').slice(0, max)
+}
+
 export async function sendEmail(input: EmailInput, log: Logger): Promise<EmailResult> {
   const key = process.env.RESEND_API_KEY
   if (!key) {

@@ -2,6 +2,7 @@ import type { Database, Logger } from '@reelset/core'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { CreditsDto, ReelRequestDto } from '@/lib/generate/types'
 import { MAX_URLS_PER_REQUEST } from '@/lib/generate/types'
+import { submitToFeed } from './publish'
 import { createGenerateRequest, getCredits, getRequestForViewer, listMyRequests } from './service'
 import type { Viewer } from './service'
 
@@ -23,6 +24,8 @@ function reelFields(request: ReelRequestDto): Structured {
     download_url: request.reel?.downloadUrl ?? null,
     poster_url: request.reel?.posterUrl ?? null,
     page_url: request.reel?.pageUrl ?? null,
+    feed_status: request.reel?.publish.state ?? null,
+    feed_note: request.reel?.publish.note ?? null,
     duration_ms: request.reel?.durationMs ?? null,
     sources: request.urls,
   }
@@ -110,6 +113,22 @@ export async function listMyReelsTool(
   return ok(text, { reels: requests.map(reelFields), count: requests.length })
 }
 
+export async function publishReelTool(
+  ctx: McpContext,
+  args: { request_id: string },
+): Promise<CallToolResult> {
+  const result = await submitToFeed(
+    ctx.db,
+    { viewer: ctx.user, requestId: args.request_id },
+    ctx.log,
+  )
+  if (!result.ok) return fail(result.message, { error: result.error })
+  return ok(
+    `Submitted request ${args.request_id} for review. It appears in the public feed once approved.`,
+    reelFields(result.request),
+  )
+}
+
 export async function getCreditsTool(ctx: McpContext): Promise<CallToolResult> {
   const credits = await getCredits(ctx.db, ctx.user, ctx.log)
   const left = creditsLeft(credits)
@@ -131,6 +150,8 @@ export const TOOL_DESCRIPTIONS = {
     'Check progress of a reel made with generate_reel. Returns the status (pending, resolving, processing, done, failed), the pipeline steps (Queued, Reading sources, Writing script, Voice & render, Ready), your place in the queue, and when done the video_url (MP4), poster_url and page_url. Poll about every 30 seconds.',
   list_my_reels:
     'List your most recent reel requests with their status and links, newest first. Use it to find an earlier request_id or to share a finished reel.',
+  publish_reel:
+    'Submit a finished reel (made with generate_reel) for review so it can appear in the public reelset feed. Reels are private until approved. Returns feed_status "in_review"; check get_reel_status later for "live" or "rejected" (with feed_note). Only reels you made, with status "done", can be submitted.',
   get_credits:
     'Show how many reelset credits you have left this month, how many reels that covers, and when the balance resets.',
 } as const

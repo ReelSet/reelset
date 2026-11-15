@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { ItemLink } from '@/components/admin/drawer/DrawerLink'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { activeStepKey, etaHint, stepperFor, type StageMedians } from '@/lib/admin/pipeline'
 import { Ago, Elapsed } from './Elapsed'
@@ -83,13 +83,16 @@ export function InProgressRow({
     <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-line/60 px-3 py-3 last:border-b-0 sm:grid-cols-[auto_minmax(0,1.3fr)_minmax(0,1fr)_11rem] sm:items-center">
       <Thumb src={item.thumbnail} title={item.title} />
       <div className="min-w-0">
-        <Link
+        <ItemLink
+          id={item.id}
+          title={item.title}
+          source={item.source}
+          status={item.status}
           href={detailHref}
-          scroll={false}
           className="line-clamp-2 font-medium leading-snug hover:underline"
         >
           {item.title}
-        </Link>
+        </ItemLink>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-faint">
           <span className="inline-flex items-center gap-1.5">
             <SourceDot source={item.source} />
@@ -136,13 +139,16 @@ export function RecentRow({
     <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-line/60 px-3 py-3 last:border-b-0 md:grid-cols-[auto_minmax(0,1.4fr)_9rem_8rem] md:items-start">
       <Thumb src={item.thumbnail} title={item.title} />
       <div className="min-w-0 space-y-1">
-        <Link
+        <ItemLink
+          id={item.id}
+          title={item.title}
+          source={item.source}
+          status={item.status}
           href={detailHref}
-          scroll={false}
           className="line-clamp-2 font-medium leading-snug hover:underline"
         >
           {item.title}
-        </Link>
+        </ItemLink>
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-faint">
           <span className="inline-flex items-center gap-1.5">
             <SourceDot source={item.source} />

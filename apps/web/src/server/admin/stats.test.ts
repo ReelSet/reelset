@@ -54,6 +54,7 @@ function respondEmpty(q: CompiledQuery): Record<string, unknown>[] {
   if (has(q, 'distinct profile_id) filter')) return [{ cur: '3', prev: '1' }]
   if (has(q, 'from "profile"') && has(q, 'count(*) as "n"')) return [{ n: '42' }]
   if (has(q, 'from "profile"')) return [{ day: '2026-11-15', value: '2' }]
+  if (has(q, '"publish_review"')) return [{ n: '7' }]
   if (has(q, 'from "item"')) return [{ n: '3' }]
   if (has(q, '"instagram_post"')) return [{ n: '4' }]
   if (has(q, '"credit_upgrade_request"')) return [{ n: '5' }]
@@ -85,6 +86,7 @@ describe('overviewStats', () => {
       failedInstagramPosts: 4,
       openUpgradeRequests: 5,
       openReelRequests: 6,
+      pendingFeedSubmissions: 7,
     })
     expect(out.unavailable).toEqual([])
   })

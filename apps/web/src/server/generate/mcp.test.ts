@@ -8,6 +8,7 @@ vi.mock('@reelset/core', async (orig) => {
   const actual = await orig<typeof import('@reelset/core')>()
   return { ...actual, findApiKeyByToken: vi.fn(async () => m.key) }
 })
+vi.mock('./publish', () => ({ submitToFeed: vi.fn() }))
 vi.mock('./service', () => ({
   resolveViewer: vi.fn(async (_db: unknown, u: { id: string }) => ({
     id: u.id,
@@ -21,6 +22,7 @@ vi.mock('./service', () => ({
 }))
 
 const service = await import('./service')
+const publish = await import('./publish')
 const { authenticateMcp, bearerToken } = await import('./mcp-auth')
 const tools = await import('./mcp-tools')
 
@@ -47,6 +49,7 @@ const doneDto: ReelRequestDto = {
     posterUrl: 'https://media.test/a.jpg',
     durationMs: 50000,
     visibility: 'private',
+    publish: { state: 'none', owned: true, requestedAt: null, reviewedAt: null, note: null },
   },
 }
 const credits = {
@@ -148,5 +151,44 @@ describe('mcp tools', () => {
     vi.mocked(service.getCredits).mockResolvedValue({ ...credits, unlimited: true })
     const res = await tools.getCreditsTool(ctx)
     expect(res.structuredContent).toMatchObject({ credits_left: 'unlimited' })
+  })
+
+  it('publish_reel submits for review and reports the feed status', async () => {
+    vi.mocked(publish.submitToFeed).mockResolvedValue({
+      ok: true,
+      request: {
+        ...doneDto,
+        reel: {
+          ...doneDto.reel!,
+          publish: {
+            state: 'in_review',
+            owned: true,
+            requestedAt: null,
+            reviewedAt: null,
+            note: null,
+          },
+        },
+      },
+    })
+    const res = await tools.publishReelTool(ctx, { request_id: doneDto.id })
+    expect(publish.submitToFeed).toHaveBeenCalledWith(
+      db,
+      { viewer: ctx.user, requestId: doneDto.id },
+      log,
+    )
+    expect(res.isError).toBeUndefined()
+    expect(res.structuredContent).toMatchObject({ feed_status: 'in_review' })
+  })
+
+  it('publish_reel surfaces refusals as tool errors', async () => {
+    vi.mocked(publish.submitToFeed).mockResolvedValue({
+      ok: false,
+      status: 409,
+      error: 'not_publishable',
+      message: 'This reel is already in review or live in the feed.',
+    })
+    const res = await tools.publishReelTool(ctx, { request_id: doneDto.id })
+    expect(res.isError).toBe(true)
+    expect(res.structuredContent).toMatchObject({ error: 'not_publishable' })
   })
 })

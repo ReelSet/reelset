@@ -1,17 +1,18 @@
 'use client'
 
 import type { FeedItemDto } from '@/lib/api-types'
+import { reelFromFeedItem } from '@/lib/seo/from-feed-item'
 import { ReelPanel } from './ReelPanel'
-import { useReelDetails } from './useReelDetails'
+import { useReelDetailsState } from './useReelDetails'
 
-/** Details panel for any reel on screen: TLDR, key facts, transcript and sources. */
+/** Details panel for any reel on screen: renders from the feed item at once, facts fill in when fetched. */
 export function ReelAbout({ item }: { item: FeedItemDto }) {
-  const reel = useReelDetails(item.id)
-  if (reel) return <ReelPanel key={reel.id} reel={reel} />
+  const { reel: loaded, failed } = useReelDetailsState(item.id)
   return (
-    <article className="flex flex-col gap-3 text-sm leading-relaxed text-muted">
-      <h2 className="text-lg font-semibold leading-snug tracking-tight text-fg">{item.title}</h2>
-      {item.tldr && <p className="text-fg/90">{item.tldr}</p>}
-    </article>
+    <ReelPanel
+      key={item.id}
+      reel={loaded ?? reelFromFeedItem(item)}
+      factsPending={!loaded && !failed}
+    />
   )
 }

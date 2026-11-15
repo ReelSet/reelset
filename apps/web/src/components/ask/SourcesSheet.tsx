@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import type { CitationDto, RelatedReelDto } from '@/lib/api-types'
 import { reelPath } from '@/lib/reel-url'
@@ -116,9 +117,9 @@ export function AskSourcesSheet({
             return (
               <li key={c.chunkId} ref={focus === i ? focusRef : undefined}>
                 {reel ? (
-                  <a href={reelPath({ id: reel.itemId, title: reel.title })} className={cls}>
+                  <Link href={reelPath({ id: reel.itemId, title: reel.title })} className={cls}>
                     {content}
-                  </a>
+                  </Link>
                 ) : (
                   <a href={c.url} target="_blank" rel="noopener noreferrer" className={cls}>
                     {content}

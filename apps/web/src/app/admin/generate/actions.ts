@@ -10,6 +10,7 @@ import {
   retryRequest,
   setItemVisibility,
 } from '@/server/admin/generate'
+import { approveSubmission, rejectSubmission } from '@/server/admin/publish-review'
 
 const idSchema = z.guid()
 const visibilitySchema = z.enum(['public', 'private'])
@@ -50,5 +51,21 @@ export async function dismissAction(formData: FormData): Promise<void> {
     const id = idSchema.safeParse(formData.get('id'))
     if (!id.success) return { ok: false, message: 'Invalid request id' }
     return dismissUpgrade(getDb(), { id: id.data }, log)
+  })
+}
+
+export async function approveSubmissionAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'generate-approve', async ({ log }) => {
+    const itemId = idSchema.safeParse(formData.get('itemId'))
+    if (!itemId.success) return { ok: false, message: 'Invalid item id' }
+    return approveSubmission(getDb(), { itemId: itemId.data }, log)
+  })
+}
+
+export async function rejectSubmissionAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'generate-reject', async ({ log }) => {
+    const itemId = idSchema.safeParse(formData.get('itemId'))
+    if (!itemId.success) return { ok: false, message: 'Invalid item id' }
+    return rejectSubmission(getDb(), { itemId: itemId.data, note: formData.get('note') }, log)
   })
 }

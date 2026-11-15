@@ -19,8 +19,12 @@ import {
 import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { relativeTime, type Step } from '@/lib/admin/pipeline'
+import { FeedSubmissions } from '@/components/admin/generate/FeedSubmissions'
 import { assertAdmin } from '@/server/admin/guard'
+import { listFeedSubmissions } from '@/server/admin/publish-review'
 import { getDb } from '@/server/db'
+import { mediaBaseUrl } from '@/server/env'
+import { viewerTimeZone } from '@/server/timezone'
 import { listAllRequests, listOpenUpgradeRequests } from '@/server/generate/service'
 import { routeLog } from '@/server/logger'
 import {
@@ -54,9 +58,11 @@ export default async function GeneratePage({ searchParams }: Props) {
   const now = new Date()
   const page = parsePage(sp.page, PAGE_SIZE)
   const log = routeLog('admin/generate')
-  const [rows, upgrades] = await Promise.all([
+  const [rows, upgrades, submissions, tz] = await Promise.all([
     listAllRequests(db, { limit: PAGE_SIZE + 1, offset: page.offset }, log),
     listOpenUpgradeRequests(db),
+    listFeedSubmissions(db, mediaBaseUrl()),
+    viewerTimeZone(),
   ])
   const visible = rows.slice(0, PAGE_SIZE)
   const hasMore = rows.length > PAGE_SIZE
@@ -68,7 +74,7 @@ export default async function GeneratePage({ searchParams }: Props) {
       <Flash value={sp.flash} />
       <PageHeader
         title="Generate"
-        description="Reels made from user links. Requested reels stay private until you publish them."
+        description="Reels made from user links. Requested reels stay private until you approve a feed submission or publish them."
         actions={<AutoRefresh renderedAt={now.toISOString()} />}
       />
 
@@ -87,6 +93,8 @@ export default async function GeneratePage({ searchParams }: Props) {
           </SubmitButton>
         </form>
       </Section>
+
+      <FeedSubmissions submissions={submissions} tz={tz} returnTo={returnTo} />
 
       <Section title="Requests" aside={anyOpen ? <span className="text-faint">live</span> : null}>
         {visible.length === 0 ? (

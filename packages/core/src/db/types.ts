@@ -179,6 +179,10 @@ export type Item = {
   visibility: Generated<string>
   hidden_reason: string | null
   hidden_at: Timestamp | null
+  publish_review: string | null
+  publish_requested_at: Timestamp | null
+  publish_reviewed_at: Timestamp | null
+  publish_note: string | null
   owner_id: string | null
   priority_at: Timestamp | null
   created_at: Generated<Timestamp>
@@ -234,6 +238,7 @@ export type Profile = {
   avatar_hidden: Generated<boolean>
   edit_window_at: Timestamp | null
   edit_count: Generated<number>
+  signup_notified_at: Timestamp | null
   created_at: Generated<Timestamp>
   updated_at: Generated<Timestamp>
 }

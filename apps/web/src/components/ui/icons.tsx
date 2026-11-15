@@ -215,3 +215,9 @@ export const SlidersIcon = ({ className }: P) => (
     <circle cx="9" cy="17" r="2" />
   </Svg>
 )
+export const InfoIcon = ({ className }: P) => (
+  <Svg className={className}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 11v5M12 8h.01" />
+  </Svg>
+)

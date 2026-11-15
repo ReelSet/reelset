@@ -1,9 +1,18 @@
-import type { RequestStep } from '@reelset/core'
+import type { PublishState, RequestStep } from '@reelset/core'
 
 export type GenerateStep = RequestStep
 export type GenerateStepKey = RequestStep['key']
 
 export type ReelRequestStatus = 'pending' | 'resolving' | 'processing' | 'done' | 'failed'
+
+export type PublishInfo = {
+  state: PublishState
+  /** Only the reel's owner can submit or withdraw it. */
+  owned: boolean
+  requestedAt: string | null
+  reviewedAt: string | null
+  note: string | null
+}
 
 export type GeneratedReel = {
   itemId: string
@@ -15,6 +24,7 @@ export type GeneratedReel = {
   posterUrl: string | null
   durationMs: number | null
   visibility: 'public' | 'private'
+  publish: PublishInfo
 }
 
 export type ReelRequestDto = {
@@ -51,6 +61,7 @@ export type ApiError = {
     | 'daily_limit'
     | 'not_found'
     | 'already_requested'
+    | 'not_publishable'
     | 'internal'
   message: string
 }

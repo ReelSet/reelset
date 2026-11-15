@@ -48,6 +48,14 @@ export const generate = (urls: string[]) =>
 export const listRequests = () => call<GenerateListResponse>('/api/generate')
 export const getRequest = (id: string) =>
   call<{ request: ReelRequestDto }>(`/api/generate/${encodeURIComponent(id)}`)
+export const submitToFeed = (id: string) =>
+  call<{ request: ReelRequestDto }>(`/api/generate/${encodeURIComponent(id)}/publish`, {
+    method: 'POST',
+  })
+export const withdrawFromFeed = (id: string) =>
+  call<{ request: ReelRequestDto }>(`/api/generate/${encodeURIComponent(id)}/publish`, {
+    method: 'DELETE',
+  })
 export const getCredits = () => call<CreditsDto>('/api/credits')
 export const requestCredits = (message?: string) =>
   call<unknown>('/api/credits/request', {

@@ -1,3 +1,4 @@
+import type { PublishState } from '@reelset/core'
 import { formatInZone } from '@/lib/time/zone'
 
 export function timeAgo(iso: string, now = Date.now()): string {
@@ -21,4 +22,11 @@ export function resetsLabel(iso: string, tz: string): string {
 export function friendlyError(error: string | null): string {
   if (!error) return 'Something went wrong while making this reel. Your credits were refunded.'
   return error
+}
+
+export const FEED_STATE_LABEL: Record<PublishState, string> = {
+  none: 'Private',
+  in_review: 'In review',
+  live: 'Live in the feed',
+  rejected: 'Not accepted',
 }

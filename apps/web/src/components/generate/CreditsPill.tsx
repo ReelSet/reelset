@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { BoltIcon } from '@/components/ui/icons'
 import type { CreditsDto } from '@/lib/generate/types'
 
@@ -9,7 +10,7 @@ export function CreditsPill({ credits, low }: { credits: CreditsDto; low?: boole
         credits.reelsLeft === 1 ? 'reel' : 'reels'
       }`
   return (
-    <a
+    <Link
       href="/pricing"
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition hover:bg-raised ${
         low ? 'border-warn/40 text-warn' : 'border-line text-muted'
@@ -17,6 +18,6 @@ export function CreditsPill({ credits, low }: { credits: CreditsDto; low?: boole
     >
       <BoltIcon className="h-3.5 w-3.5 text-accent" />
       {text}
-    </a>
+    </Link>
   )
 }

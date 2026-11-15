@@ -1,10 +1,12 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
 import { DEFAULT_COUNT_RULES } from '@/lib/counts'
 import { useReelViews } from './useReelViews'
+import { usePrefetchReelDetails } from './useReelDetails'
 import {
   FEEDBACK_KEY,
   emptyFeedback,
@@ -20,7 +22,7 @@ import { metaTitle } from '@/lib/seo/site'
 import { CreatePromo } from './CreatePromo'
 import { ReelAbout } from './ReelAbout'
 import { ReelCard, type ReelControls } from './ReelCard'
-import { ChevronIcon } from '@/components/ui/icons'
+import { ChevronIcon, InfoIcon } from '@/components/ui/icons'
 import { BottomTabs } from '@/components/ui/AppNav'
 import { SideRail } from '@/components/ui/SideRail'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -38,6 +40,9 @@ import { TopicPicker } from './TopicPicker'
 const PENDING_LIKE_KEY = 'reelset.pendingLike'
 const TOPICS_DISMISSED_KEY = 'reelset.topicsDismissed'
 const SWIPE_HINT_KEY = 'reelset.swipeHintSeen'
+const PANEL_CLOSED_KEY = 'reelset.detailsPanelClosed'
+const DETAILS_PANEL_ID = 'reel-details-panel'
+const PREFETCH_OFFSETS = [1, -1, 2] as const
 
 type Phase = 'loading' | 'ready' | 'error'
 
@@ -95,6 +100,7 @@ export function FeedClient({
   const [followed, setFollowed] = useState<string[]>([])
   const [menuFor, setMenuFor] = useState<FeedItemDto | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(true)
   const [showHint, setShowHint] = useState(false)
   const [mobile, setMobile] = useState(false)
   const scopeRef = useRef(scope)
@@ -317,6 +323,20 @@ export function FeedClient({
 
   useReelViews(phase === 'ready' ? items[active]?.id : undefined)
 
+  useEffect(() => {
+    setPanelOpen(readStorage(localStorage, PANEL_CLOSED_KEY) === null)
+  }, [])
+
+  const togglePanel = useCallback(() => {
+    setPanelOpen((open) => {
+      writeStorage(localStorage, PANEL_CLOSED_KEY, open ? '1' : null)
+      return !open
+    })
+  }, [])
+
+  const neighbourIds = PREFETCH_OFFSETS.flatMap((offset) => items[active + offset]?.id ?? [])
+  usePrefetchReelDetails(neighbourIds, phase === 'ready' && !mobile && panelOpen)
+
   const startedFor = useRef<string | null>(null)
   useEffect(() => {
     const current = items[active]
@@ -371,6 +391,9 @@ export function FeedClient({
           e.preventDefault()
           controls.current?.toggle()
           break
+        case 'i':
+          if (!mobile) togglePanel()
+          break
         case 'm':
           setSoundOn((on) => !on)
           break
@@ -381,7 +404,18 @@ export function FeedClient({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, active, goTo, toggleLike, sourcesFor, pickerOpen, menuFor, detailsOpen])
+  }, [
+    phase,
+    active,
+    goTo,
+    toggleLike,
+    togglePanel,
+    mobile,
+    sourcesFor,
+    pickerOpen,
+    menuFor,
+    detailsOpen,
+  ])
 
   const [offline, setOffline] = useState(false)
   useEffect(() => {
@@ -525,8 +559,12 @@ export function FeedClient({
       <aside className="hidden h-dvh min-h-0 flex-col items-start justify-end gap-6 py-10 lg:flex">
         {items[active] && (
           <div
+            id={DETAILS_PANEL_ID}
+            role="region"
+            aria-label="Reel details"
+            inert={!panelOpen}
             style={{ maskImage: FADE, WebkitMaskImage: FADE }}
-            className="no-scrollbar min-h-0 w-80 shrink overflow-y-auto pb-6"
+            className={`no-scrollbar min-h-0 w-80 shrink overflow-y-auto pb-6 transition-[opacity,translate] duration-200 ease-out motion-reduce:transition-none ${panelOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-3 opacity-0'}`}
           >
             {about && items[active].id === aboutItemId ? about : <ReelAbout item={items[active]} />}
           </div>
@@ -544,6 +582,14 @@ export function FeedClient({
             <NavButton label="Next reel" onClick={() => goTo(active + 1)}>
               <ChevronIcon className="h-5 w-5" />
             </NavButton>
+            <NavButton
+              label={panelOpen ? 'Hide details' : 'Show details'}
+              expanded={panelOpen}
+              controls={DETAILS_PANEL_ID}
+              onClick={togglePanel}
+            >
+              <InfoIcon className="h-5 w-5" />
+            </NavButton>
           </div>
         )}
         <dl className="grid shrink-0 grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs text-faint">
@@ -551,6 +597,8 @@ export function FeedClient({
           <dd>Browse</dd>
           <Kbd>Space</Kbd>
           <dd>Play / pause</dd>
+          <Kbd>I</Kbd>
+          <dd>Details</dd>
           <Kbd>M</Kbd>
           <dd>Sound</dd>
           <Kbd>L</Kbd>
@@ -590,12 +638,12 @@ export function FeedClient({
           title="No reels yet"
           body="New stories are on the way. Check back soon, or ask a question in the meantime."
           action={
-            <a
+            <Link
               href="/ask"
               className="rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
             >
               Try Ask
-            </a>
+            </Link>
           }
         />
       </div>,
@@ -652,18 +700,18 @@ export function FeedClient({
             <p className="mt-4 text-lg font-semibold tracking-tight">You are all caught up</p>
             <p className="mt-1 text-sm text-muted">Fresh reels land every hour.</p>
             <div className="mt-5 flex justify-center gap-2">
-              <a
+              <Link
                 href="/t"
                 className="inline-flex rounded-full border border-line px-5 py-2.5 text-sm font-medium text-fg transition active:scale-95"
               >
                 Browse topics
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/ask"
                 className="inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
               >
                 Ask the feed
-              </a>
+              </Link>
             </div>
           </div>
         </section>
@@ -685,11 +733,15 @@ function feedUrl(scope: FeedScope, cursor?: string | null): string {
 function NavButton({
   label,
   disabled,
+  expanded,
+  controls,
   onClick,
   children,
 }: {
   label: string
   disabled?: boolean
+  expanded?: boolean
+  controls?: string
   onClick: () => void
   children: React.ReactNode
 }) {
@@ -697,6 +749,8 @@ function NavButton({
     <button
       type="button"
       aria-label={label}
+      aria-expanded={expanded}
+      aria-controls={controls}
       disabled={disabled}
       onClick={onClick}
       className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-muted transition hover:bg-raised hover:text-fg active:scale-90 disabled:opacity-30"

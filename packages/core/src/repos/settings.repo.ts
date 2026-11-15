@@ -34,6 +34,15 @@ export const pipelinePauseSchema = z.object({
 })
 export type PipelinePause = z.infer<typeof pipelinePauseSchema>
 
+function isTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export const SETTINGS = {
   dailyReelCap: def('daily_reel_cap', z.number().int().positive(), 10),
   renderMaxInFlight: def('render_max_in_flight', z.number().int().min(1).max(100), 6),
@@ -127,6 +136,12 @@ export const SETTINGS = {
   showSaveCount: def('show_save_count', z.boolean(), false),
   saveCountThreshold: def('save_count_threshold', z.number().int().min(0), 5),
   adminEmail: def('admin_email', z.string().email(), 'admin@reelset.app'),
+  notifySignups: def('notify_signups', z.boolean(), true),
+  adminTimeZone: def(
+    'admin_time_zone',
+    z.string().refine(isTimeZone, 'Unknown IANA time zone, e.g. Asia/Kolkata'),
+    'Asia/Kolkata',
+  ),
   monthlyFreeCredits: def('monthly_free_credits', z.number().int().min(0), 1000),
   reelCreditCost: def('reel_credit_cost', z.number().int().min(1), 100),
   pipelinePaused: def('pipeline_paused', pipelinePauseSchema.nullable(), null),

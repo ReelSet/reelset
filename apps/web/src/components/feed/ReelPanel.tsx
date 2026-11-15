@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Skeleton } from '@/components/ui/Skeleton'
 import {
   FactsSection,
   ReelHeader,
@@ -13,14 +14,36 @@ import type { ReelPageData } from '@/lib/seo/types'
 
 type TabKey = 'tldr' | 'facts' | 'transcript'
 
-/** Desktop details panel: one tab at a time instead of a long scroll. Every tab stays in the DOM. */
-export function ReelPanel({ reel }: { reel: ReelPageData }) {
+const FACT_SKELETON_WIDTHS = ['w-full', 'w-11/12', 'w-4/5', 'w-full', 'w-2/3']
+
+function FactsSkeleton() {
+  return (
+    <div role="status" aria-label="Loading key facts" className="flex flex-col gap-3">
+      <Skeleton className="h-3 w-20" />
+      {FACT_SKELETON_WIDTHS.map((width, i) => (
+        <Skeleton key={i} className={`h-4 ${width}`} />
+      ))}
+    </div>
+  )
+}
+
+/** Desktop details panel: one tab at a time. `factsPending` shows a skeleton where facts will load. */
+export function ReelPanel({
+  reel,
+  factsPending = false,
+}: {
+  reel: ReelPageData
+  factsPending?: boolean
+}) {
+  const hasFacts = reel.facts.length > 0
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'tldr', label: 'TL;DR' },
-    ...(reel.facts.length > 0 ? [{ key: 'facts' as const, label: 'Facts' }] : []),
+    ...(hasFacts || factsPending ? [{ key: 'facts' as const, label: 'Facts' }] : []),
     ...(reel.transcript ? [{ key: 'transcript' as const, label: 'Transcript' }] : []),
   ]
-  const [active, setActive] = useState<TabKey>('tldr')
+  const [selected, setSelected] = useState<TabKey>('tldr')
+  const active = tabs.some((tab) => tab.key === selected) ? selected : 'tldr'
+  const setActive = setSelected
 
   return (
     <article className="flex flex-col gap-4 text-sm leading-relaxed text-muted">
@@ -45,31 +68,33 @@ export function ReelPanel({ reel }: { reel: ReelPageData }) {
           </button>
         ))}
       </div>
-      <div
-        role="tabpanel"
-        id="panel-tldr"
-        aria-labelledby="panel-tab-tldr"
-        hidden={active !== 'tldr'}
-        className="flex flex-col gap-5"
-      >
-        <TldrSection reel={reel} idPrefix="panel-" />
-        <SourcesSection reel={reel} idPrefix="panel-" />
-      </div>
-      <div
-        role="tabpanel"
-        id="panel-facts"
-        aria-labelledby="panel-tab-facts"
-        hidden={active !== 'facts'}
-      >
-        <FactsSection reel={reel} idPrefix="panel-" />
-      </div>
-      <div
-        role="tabpanel"
-        id="panel-transcript"
-        aria-labelledby="panel-tab-transcript"
-        hidden={active !== 'transcript'}
-      >
-        <TranscriptSection reel={reel} idPrefix="panel-" />
+      <div className="h-[clamp(12rem,36dvh,22rem)] overflow-y-auto overscroll-contain">
+        <div
+          role="tabpanel"
+          id="panel-tldr"
+          aria-labelledby="panel-tab-tldr"
+          hidden={active !== 'tldr'}
+          className="flex flex-col gap-5"
+        >
+          <TldrSection reel={reel} idPrefix="panel-" />
+          <SourcesSection reel={reel} idPrefix="panel-" />
+        </div>
+        <div
+          role="tabpanel"
+          id="panel-facts"
+          aria-labelledby="panel-tab-facts"
+          hidden={active !== 'facts'}
+        >
+          {factsPending ? <FactsSkeleton /> : <FactsSection reel={reel} idPrefix="panel-" />}
+        </div>
+        <div
+          role="tabpanel"
+          id="panel-transcript"
+          aria-labelledby="panel-tab-transcript"
+          hidden={active !== 'transcript'}
+        >
+          <TranscriptSection reel={reel} idPrefix="panel-" />
+        </div>
       </div>
       <TopicsNav reel={reel} />
     </article>

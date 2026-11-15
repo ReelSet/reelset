@@ -2,6 +2,7 @@ import type { Attention } from '@/server/admin/stats'
 
 export const ADMIN_ROUTES = {
   overview: '/admin',
+  users: '/admin/users',
   spend: '/admin/spend',
   ask: '/admin/ask',
   pipeline: '/admin/pipeline',
@@ -32,6 +33,7 @@ export type NavGroup = {
 
 export const OVERVIEW_TABS: readonly AdminTab[] = [
   { href: ADMIN_ROUTES.overview, label: 'Dashboard' },
+  { href: ADMIN_ROUTES.users, label: 'Users' },
   { href: ADMIN_ROUTES.spend, label: 'Spend' },
   { href: ADMIN_ROUTES.ask, label: 'Ask log' },
 ]
@@ -99,7 +101,8 @@ export type NavBadges = Partial<Record<NavBadge, number>>
 export function navBadges(attention: Attention): NavBadges {
   return {
     pipeline: attention.failedItems,
-    generate: attention.openUpgradeRequests + attention.openReelRequests,
+    generate:
+      attention.openUpgradeRequests + attention.openReelRequests + attention.pendingFeedSubmissions,
     instagram: attention.failedInstagramPosts,
   }
 }

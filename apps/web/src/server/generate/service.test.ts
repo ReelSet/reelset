@@ -41,7 +41,17 @@ vi.mock('./queries', () => ({
         r.id,
         {
           item: r.item_id
-            ? { id: r.item_id, title: 'T', status: 'rendered', visibility: 'private' }
+            ? {
+                id: r.item_id,
+                title: 'T',
+                status: 'rendered',
+                visibility: 'private',
+                owner_id: r.user_id,
+                publish_review: null,
+                publish_requested_at: null,
+                publish_reviewed_at: null,
+                publish_note: null,
+              }
             : null,
           render: r.item_id
             ? {

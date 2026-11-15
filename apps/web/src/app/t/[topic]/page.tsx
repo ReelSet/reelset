@@ -1,25 +1,26 @@
+import Link from 'next/link'
 import { parseSource } from '@reelset/core'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { cache } from 'react'
-import { EmptyFilter, ReelGrid, SourceFilter, TopicPills } from '@/components/seo/Browse'
+import { EmptyFilter, ReelGrid, TopicPills } from '@/components/seo/Browse'
+import { FilterPendingRegion, FilterTransitionProvider } from '@/components/seo/FilterTransition'
 import { JsonLd, PageChrome } from '@/components/seo/PageChrome'
+import { SourceFilter } from '@/components/seo/SourceFilter'
 import { sourceMeta } from '@/components/ui/sources'
 import { asSeenOn, relatedTopics, sourceChips, withVisibleViews } from '@/lib/seo/browse'
 import { groupTopics } from '@/lib/seo/feeds'
 import { topicJsonLd } from '@/lib/seo/json-ld'
 import { MIN_INDEXED_TOPIC_REELS, SITE_NAME } from '@/lib/seo/site'
 import { topicSlug } from '@/lib/reel-url'
-import { getDb } from '@/server/db'
-import { mediaBaseUrl } from '@/server/env'
-import { loadCountRules } from '@/server/counts'
 import { routeLog } from '@/server/logger'
 import {
-  labelsForSlug,
-  listReelSummaries,
-  listSourceCounts,
-  listTopicLabels,
-} from '@/server/seo-queries'
+  cachedCountRules,
+  cachedReelSummaries,
+  cachedSourceCounts,
+  cachedTopicLabels,
+} from '@/server/seo-cache'
+import { labelsForSlug } from '@/server/seo-queries'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,15 +42,14 @@ async function activeSource(searchParams: Props['searchParams']): Promise<string
 const getTopic = cache(async (raw: string) => {
   const slug = topicSlug(decodeURIComponent(raw))
   if (!slug) return null
-  const db = getDb()
-  const rows = await listTopicLabels(db)
+  const rows = await cachedTopicLabels(null)
   const labels = labelsForSlug(rows, slug)
   if (labels.length === 0) return null
   const group = groupTopics(rows.filter((r) => labels.includes(r.label)))[0]
   if (!group) return null
   const [reels, sourceCounts] = await Promise.all([
-    listReelSummaries(db, mediaBaseUrl(), { limit: TOPIC_PAGE_REELS, labels }),
-    listSourceCounts(db, labels),
+    cachedReelSummaries(TOPIC_PAGE_REELS, labels, null),
+    cachedSourceCounts(labels),
   ])
   routeLog('t/[topic]').info({ slug, reels: reels.length }, 'topic page loaded')
   return { slug, label: group.label, count: group.count, labels, reels, sourceCounts }
@@ -80,14 +80,10 @@ export default async function TopicPage({ params, searchParams }: Props) {
   if (raw !== topic.slug) permanentRedirect(`/t/${topic.slug}${source ? `?source=${source}` : ''}`)
 
   const path = `/t/${topic.slug}`
-  const reels = source
-    ? await listReelSummaries(getDb(), mediaBaseUrl(), {
-        limit: TOPIC_PAGE_REELS,
-        labels: topic.labels,
-        source,
-      })
-    : topic.reels
-  const rules = await loadCountRules(getDb(), routeLog('t/[topic]'))
+  const [reels, rules] = await Promise.all([
+    source ? cachedReelSummaries(TOPIC_PAGE_REELS, topic.labels, source) : topic.reels,
+    cachedCountRules(),
+  ])
   const related = relatedTopics(topic.reels, topic.slug, RELATED_TOPICS)
 
   return (
@@ -95,9 +91,9 @@ export default async function TopicPage({ params, searchParams }: Props) {
       <JsonLd data={topicJsonLd(topic.label, path, topic.reels)} />
       <section className="animate-fade-up mt-10">
         <nav aria-label="Breadcrumb" className="text-xs text-faint">
-          <a href="/t" className="transition hover:text-fg">
+          <Link href="/t" className="transition hover:text-fg">
             Topics
-          </a>
+          </Link>
           <span aria-hidden className="mx-1.5">
             /
           </span>
@@ -122,27 +118,29 @@ export default async function TopicPage({ params, searchParams }: Props) {
         )}
       </section>
 
-      <div className="mt-6">
-        <SourceFilter
-          chips={sourceChips({
-            path,
-            total: topic.count,
-            counts: topic.sourceCounts,
-            active: source,
-          })}
-        />
-      </div>
-
-      <div className="mt-6">
-        {reels.length > 0 ? (
-          <ReelGrid
-            reels={withVisibleViews(asSeenOn(reels, source), rules.views)}
-            scope={{ topic: topic.slug, source }}
+      <FilterTransitionProvider source={source}>
+        <div className="mt-6">
+          <SourceFilter
+            chips={sourceChips({
+              path,
+              total: topic.count,
+              counts: topic.sourceCounts,
+              active: source,
+            })}
           />
-        ) : (
-          <EmptyFilter label={source ? sourceMeta(source).label : ''} resetHref={path} />
-        )}
-      </div>
+        </div>
+
+        <FilterPendingRegion className="mt-6">
+          {reels.length > 0 ? (
+            <ReelGrid
+              reels={withVisibleViews(asSeenOn(reels, source), rules.views)}
+              scope={{ topic: topic.slug, source }}
+            />
+          ) : (
+            <EmptyFilter label={source ? sourceMeta(source).label : ''} resetHref={path} />
+          )}
+        </FilterPendingRegion>
+      </FilterTransitionProvider>
     </PageChrome>
   )
 }

@@ -1,7 +1,7 @@
-import { HIDDEN_REASONS, HIDDEN_REASON_LABELS } from '@reelset/core'
+import { HIDDEN_REASONS, HIDDEN_REASON_LABELS } from '@/lib/admin/hidden-reasons'
 import { hideItemsAction, unhideItemsAction } from '@/app/admin/actions'
 import { SubmitButton } from '@/components/admin/SubmitButton'
-import { button, input } from '@/components/admin/ui'
+import { button, input } from '@/components/admin/primitives'
 
 export function ReasonSelect({ form, className = '' }: { form?: string; className?: string }) {
   return (

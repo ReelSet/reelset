@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { ArrowRightIcon, EyeIcon } from '@/components/ui/icons'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { formatCount } from '@/lib/counts'
@@ -18,7 +19,7 @@ export function PosterCard({
 }) {
   const duration = clockDuration(reel.durationMs)
   return (
-    <a
+    <Link
       href={reelHref(reel, scope)}
       className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-gradient-to-b from-raised to-surface transition active:scale-[0.97]"
     >
@@ -55,7 +56,7 @@ export function PosterCard({
           </span>
         )}
       </span>
-    </a>
+    </Link>
   )
 }
 
@@ -75,40 +76,6 @@ export function ReelGrid({ reels, scope }: { reels: ReelSummary[]; scope?: FeedS
   )
 }
 
-/** Sticky row of source filters; plain links so it works without JS and crawlers can follow it. */
-export function SourceFilter({ chips, sticky = true }: { chips: SourceChip[]; sticky?: boolean }) {
-  return (
-    <nav
-      aria-label="Filter by source"
-      className={
-        sticky
-          ? 'sticky top-0 z-20 -mx-5 border-b border-line bg-bg/85 px-5 py-3 backdrop-blur-md'
-          : ''
-      }
-    >
-      <ul className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
-        {chips.map((chip) => (
-          <li key={chip.source ?? 'all'} className="shrink-0">
-            <a
-              href={chip.href}
-              aria-current={chip.active ? 'page' : undefined}
-              className={`inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-sm transition active:scale-95 ${
-                chip.active
-                  ? 'bg-fg font-medium text-bg'
-                  : 'border border-line bg-raised text-muted hover:bg-hover hover:text-fg'
-              }`}
-            >
-              {chip.source && <SourceDot source={chip.source} />}
-              {chip.source ? sourceMeta(chip.source).label : 'All'}
-              <span className="text-xs tabular-nums opacity-60">{chip.count}</span>
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  )
-}
-
 export function TopicShelf({ shelf, source }: { shelf: Shelf; source: string | null }) {
   const href = filterHref(`/t/${shelf.topic.slug}`, source)
   return (
@@ -118,20 +85,20 @@ export function TopicShelf({ shelf, source }: { shelf: Shelf; source: string | n
           id={`shelf-${shelf.topic.slug}`}
           className="flex items-baseline gap-2 text-[17px] font-semibold tracking-tight"
         >
-          <a href={href} className="transition hover:text-accent">
+          <Link href={href} className="transition hover:text-accent">
             {shelf.topic.label}
-          </a>
+          </Link>
           <span className="text-xs font-normal text-faint tabular-nums">
             {shelf.topic.count} reels
           </span>
         </h2>
-        <a
+        <Link
           href={href}
           className="inline-flex shrink-0 items-center gap-1 text-xs text-muted transition hover:text-fg"
         >
           See all
           <ArrowRightIcon className="h-3.5 w-3.5" />
-        </a>
+        </Link>
       </div>
       <ul className="no-scrollbar mt-3 grid grid-cols-2 gap-2 sm:-mx-5 sm:flex sm:snap-x sm:snap-mandatory sm:scroll-px-5 sm:overflow-x-auto sm:px-5">
         {shelf.reels.map((r, i) => (
@@ -160,13 +127,13 @@ export function TopicPills({
     <ul className="flex flex-wrap gap-2">
       {topics.map((t) => (
         <li key={t.slug}>
-          <a
+          <Link
             href={filterHref(`/t/${t.slug}`, source)}
             className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-sm text-muted transition hover:border-line-strong hover:bg-raised hover:text-fg active:scale-95"
           >
             {t.label}
             {showCounts && <span className="text-xs text-faint tabular-nums">{t.count}</span>}
-          </a>
+          </Link>
         </li>
       ))}
     </ul>
@@ -178,12 +145,12 @@ export function EmptyFilter({ label, resetHref }: { label: string; resetHref: st
     <div className="rounded-lg border border-dashed border-line px-6 py-14 text-center">
       <p className="text-sm font-medium">No {label} reels here yet</p>
       <p className="mt-1 text-sm text-muted">New stories land every hour.</p>
-      <a
+      <Link
         href={resetHref}
         className="mt-4 inline-flex rounded-full bg-fg px-4 py-2 text-sm font-medium text-bg transition active:scale-95"
       >
         Show all sources
-      </a>
+      </Link>
     </div>
   )
 }

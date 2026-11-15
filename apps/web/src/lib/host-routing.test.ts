@@ -27,6 +27,14 @@ describe('routeForHost', () => {
     }
   })
 
+  it('keeps the admin JSON API reachable on the admin host and local hosts only', () => {
+    expect(route('admin.reelset.app', '/api/admin/items/abc')).toEqual({ kind: 'next' })
+    expect(route('localhost:3000', '/api/admin/items/abc')).toEqual({ kind: 'next' })
+    expect(route('reelset.app', '/api/admin/items/abc')).toEqual({ kind: 'not_found' })
+    expect(route('www.reelset.app', '/api/admin/users/abc')).toEqual({ kind: 'not_found' })
+    expect(route('reelset.app', '/api/administrator')).toEqual({ kind: 'next' })
+  })
+
   it('matches the admin host case-insensitively and ignores the port', () => {
     expect(route('ADMIN.reelset.app:443', '/')).toEqual({ kind: 'rewrite', pathname: '/admin' })
   })

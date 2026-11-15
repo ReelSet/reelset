@@ -59,6 +59,7 @@ claude mcp add --transport http reelset https://reelset.app/api/mcp \
 | `generate_reel`   | Turn 1 to 5 public links into one reel; returns a `request_id` (100 credits) |
 | `get_reel_status` | Check a request: each step, then the reel link and MP4 download when done    |
 | `list_my_reels`   | Your recent reels and their status                                           |
+| `publish_reel`    | Submit a finished reel for review so it can appear in the public feed        |
 | `get_credits`     | Credits left this month and when they reset                                  |
 
 Then ask your agent something like _"make a reel of github.com/ollama/ollama"_.

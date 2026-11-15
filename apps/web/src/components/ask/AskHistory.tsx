@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { groupByDay, type HistoryEntry, type HistoryPage } from '@/lib/ask/history'
 import { ClockIcon } from '@/components/ui/icons'
@@ -97,12 +98,12 @@ export function AskHistory() {
         title="No questions yet"
         body="Answers you get in Ask are kept here so you can reopen them."
         action={
-          <a
+          <Link
             href="/ask"
             className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
           >
             Ask something
-          </a>
+          </Link>
         }
       />
     )
@@ -121,7 +122,7 @@ export function AskHistory() {
                 key={e.id}
                 className="animate-fade-up group flex items-start gap-1 rounded-md border border-line bg-surface transition hover:border-line-strong"
               >
-                <a href={`/ask/${e.id}`} className="min-w-0 flex-1 p-3.5 active:opacity-80">
+                <Link href={`/ask/${e.id}`} className="min-w-0 flex-1 p-3.5 active:opacity-80">
                   <span className="line-clamp-2 text-[15px] font-medium leading-snug">
                     {e.question}
                   </span>
@@ -137,7 +138,7 @@ export function AskHistory() {
                     </time>
                     {e.turns > 1 && <span>{e.turns} questions</span>}
                   </span>
-                </a>
+                </Link>
                 <div className="p-2">
                   <DeleteConversation
                     id={e.id}

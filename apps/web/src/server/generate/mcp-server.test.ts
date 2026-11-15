@@ -36,13 +36,14 @@ async function rpc(body: unknown) {
 }
 
 describe('reelset mcp server over stateless streamable http', () => {
-  it('lists the four tools', async () => {
+  it('lists the five tools', async () => {
     const out = await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
     expect(out.result?.tools?.map((t) => t.name).sort()).toEqual([
       'generate_reel',
       'get_credits',
       'get_reel_status',
       'list_my_reels',
+      'publish_reel',
     ])
   })
 })

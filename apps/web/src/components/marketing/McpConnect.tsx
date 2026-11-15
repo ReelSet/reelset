@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { CopyButton } from '@/components/generate/CopyButton'
 import { ApiKeys } from '@/components/profile/ApiKeys'
@@ -79,12 +80,12 @@ export function McpConnect({ signedIn }: { signedIn: boolean }) {
           {signedIn ? (
             <ApiKeys onToken={setToken} />
           ) : (
-            <a
+            <Link
               href="/login?next=/mcp"
               className="inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-semibold text-accent-fg transition active:scale-95"
             >
               Sign in to create a key
-            </a>
+            </Link>
           )}
         </div>
       </div>

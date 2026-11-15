@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect } from 'react'
 import { PEXELS_HOME_URL, type CreditsDto, type FeedItemDto } from '@/lib/api-types'
 import { track } from '@/lib/client/track'
@@ -106,13 +107,13 @@ export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
             {item.topics
               .filter((t) => topicSlug(t))
               .map((t) => (
-                <a
+                <Link
                   key={t}
                   href={topicPath(t)}
                   className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition hover:border-line-strong hover:text-fg"
                 >
                   {topicLabel(t)}
-                </a>
+                </Link>
               ))}
           </nav>
         )}

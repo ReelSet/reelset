@@ -12,6 +12,10 @@ import { retryItem } from '@/server/admin/commands'
 import { kickIngest } from '@/server/generate/kick'
 import { createGenerateRequest } from '@/server/generate/service'
 
+const approvePendingReview = sql<
+  string | null
+>`case when publish_review = 'pending' then 'approved' else publish_review end`
+
 export const GRANT_MAX = 100_000
 export const grantSchema = z.coerce.number().int().min(1).max(GRANT_MAX)
 
@@ -48,7 +52,10 @@ export async function setItemVisibility(
 ): Promise<CommandResult> {
   const res = await db
     .updateTable('item')
-    .set({ visibility: input.visibility })
+    .set({
+      visibility: input.visibility,
+      ...(input.visibility === 'public' ? { publish_review: approvePendingReview } : {}),
+    })
     .where('id', '=', input.itemId)
     .where('owner_id', 'is not', null)
     .executeTakeFirst()

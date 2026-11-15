@@ -1,4 +1,10 @@
-import { REEL_REQUEST_OPEN, errorFields, type Database, type Logger } from '@reelset/core'
+import {
+  REEL_REQUEST_OPEN,
+  countPendingPublish,
+  errorFields,
+  type Database,
+  type Logger,
+} from '@reelset/core'
 import { sql, type RawBuilder } from 'kysely'
 import {
   buildPeriods,
@@ -87,10 +93,11 @@ export type Attention = {
   failedInstagramPosts: number
   openUpgradeRequests: number
   openReelRequests: number
+  pendingFeedSubmissions: number
 }
 
 export async function attentionCounts(db: Database): Promise<Attention> {
-  const [items, instagram, upgrades, requests] = await Promise.all([
+  const [items, instagram, upgrades, requests, submissions] = await Promise.all([
     db
       .selectFrom('item')
       .select(db.fn.countAll<string>().as('n'))
@@ -116,12 +123,14 @@ export async function attentionCounts(db: Database): Promise<Attention> {
       .select(db.fn.countAll<string>().as('n'))
       .where('status', 'in', [...REEL_REQUEST_OPEN])
       .executeTakeFirst(),
+    countPendingPublish(db),
   ])
   return {
     failedItems: Number(items?.n ?? 0),
     failedInstagramPosts: Number(instagram?.n ?? 0),
     openUpgradeRequests: Number(upgrades?.n ?? 0),
     openReelRequests: Number(requests?.n ?? 0),
+    pendingFeedSubmissions: submissions,
   }
 }
 
@@ -139,6 +148,7 @@ const EMPTY_ATTENTION: Attention = {
   failedInstagramPosts: 0,
   openUpgradeRequests: 0,
   openReelRequests: 0,
+  pendingFeedSubmissions: 0,
 }
 
 /** One grouped query per metric, run in parallel; a failing metric degrades to zeros and is listed in `unavailable`. */

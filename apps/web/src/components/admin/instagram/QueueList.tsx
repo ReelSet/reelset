@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { ItemLink } from '@/components/admin/drawer/DrawerLink'
 import { isLostLookupPending } from '@reelset/core'
 import { Ago } from '@/components/admin/pipeline/Elapsed'
 import { cancelPostAction, deletePostAction, retryPostAction } from '@/app/admin/instagram/actions'
@@ -52,13 +52,14 @@ export function QueueList({
               {badge.label}
             </span>
             <div className="min-w-0 flex-1 basis-48">
-              <Link
+              <ItemLink
+                id={row.item_id}
+                title={row.title}
                 href={hrefFor(row.item_id)}
-                scroll={false}
                 className="line-clamp-1 font-medium hover:underline"
               >
                 {row.title}
-              </Link>
+              </ItemLink>
               <p className="text-xs text-faint">
                 {row.posted_at ? 'posted ' : 'queued '}
                 <Ago at={new Date(row.posted_at ?? row.created_at).toISOString()} />

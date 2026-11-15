@@ -188,6 +188,10 @@ model Item {
   visibility      String                     @default("public")
   hiddenReason    String?                    @map("hidden_reason")
   hiddenAt        DateTime?                  @map("hidden_at") @db.Timestamptz(6)
+  publishReview      String?                 @map("publish_review")
+  publishRequestedAt DateTime?               @map("publish_requested_at") @db.Timestamptz(6)
+  publishReviewedAt  DateTime?               @map("publish_reviewed_at") @db.Timestamptz(6)
+  publishNote        String?                 @map("publish_note")
   ownerId         String?                    @map("owner_id") @db.Uuid
   priorityAt      DateTime?                  @map("priority_at") @db.Timestamptz(6)
   createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -386,6 +390,7 @@ model Profile {
   avatarHidden   Boolean                    @default(false) @map("avatar_hidden")
   editWindowAt   DateTime?                  @map("edit_window_at") @db.Timestamptz(6)
   editCount      Int                        @default(0) @map("edit_count")
+  signupNotifiedAt DateTime?                @map("signup_notified_at") @db.Timestamptz(6)
   createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
 

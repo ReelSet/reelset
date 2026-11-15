@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { ArrowUpRightIcon } from '@/components/ui/icons'
 import { LocalTime } from '@/components/ui/LocalTime'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
@@ -127,13 +128,13 @@ export function TopicsNav({ reel }: { reel: ReelPageData }) {
   return (
     <nav aria-label="Topics" className="flex flex-wrap gap-1.5">
       {topics.map((t) => (
-        <a
+        <Link
           key={t}
           href={topicPath(t)}
           className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition hover:border-line-strong hover:text-fg"
         >
           {topicLabel(t)}
-        </a>
+        </Link>
       ))}
     </nav>
   )

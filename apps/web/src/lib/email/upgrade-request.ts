@@ -1,6 +1,7 @@
-import { escapeHtml, type EmailInput } from './resend'
+import { ADMIN_UPGRADES_URL } from './admin-links'
+import { escapeHtml, singleLine, type EmailInput } from './resend'
 
-export const ADMIN_UPGRADES_URL = 'https://admin.reelset.app/admin/generate#upgrades'
+export { ADMIN_UPGRADES_URL }
 
 export type UpgradeEmailInput = {
   adminEmail: string
@@ -14,7 +15,7 @@ export type UpgradeEmailInput = {
 export function buildUpgradeRequestEmail(input: UpgradeEmailInput): EmailInput {
   const used = `${input.usedCredits} of ${input.monthlyFree} credits used this month`
   const message = input.message?.trim() || '(no message)'
-  const subject = `Credit request from ${input.userEmail.replace(/[\r\n]+/g, ' ').slice(0, 120)}`
+  const subject = `Credit request from ${singleLine(input.userEmail)}`
   const text = [
     `${input.userEmail} asked for more credits.`,
     used,

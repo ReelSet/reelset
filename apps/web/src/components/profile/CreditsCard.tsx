@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { getCredits } from '@/components/generate/api'
 import { resetsLabel } from '@/components/generate/format'
@@ -67,12 +68,12 @@ export function CreditsCard() {
       {!c.unlimited && (
         <div className="mt-4 flex flex-wrap items-start gap-3">
           <RequestCredits label="Request more" />
-          <a
+          <Link
             href="/create"
             className="inline-flex min-h-11 items-center rounded-full px-3 text-sm text-muted hover:text-fg"
           >
             Make a reel →
-          </a>
+          </Link>
         </div>
       )}
     </div>

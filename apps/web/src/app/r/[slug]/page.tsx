@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { errorFields, parseSource } from '@reelset/core'
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
@@ -84,12 +85,12 @@ export default async function ReelRoute({ params, searchParams }: Props) {
             This reel&apos;s video has been retired. The summary, transcript and sources are below.
           </p>
           {article}
-          <a
+          <Link
             href="/"
             className="mt-10 inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition active:scale-95"
           >
             Watch today&apos;s reels
-          </a>
+          </Link>
         </div>
       </PageChrome>
     )

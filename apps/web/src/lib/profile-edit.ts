@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { avatarPath } from './avatar-path'
 
 export const NAME_MAX = 40
 export const BIO_MAX = 160
@@ -59,9 +60,7 @@ export function providerProfile(metadata: Record<string, unknown> | null | undef
   return { name, avatar: httpsUrl(m['avatar_url'] ?? m['picture']) }
 }
 
-export function avatarPath(profileId: string, updatedAt: Date | string): string {
-  return `/api/avatar/${profileId}?v=${new Date(updatedAt).getTime()}`
-}
+export { avatarPath }
 
 export function resolveIdentity(input: IdentityInput): ViewerIdentity {
   const emailName = input.email ? input.email.split('@')[0]! : null

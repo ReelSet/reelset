@@ -1,4 +1,5 @@
 import { AdminShell } from '@/components/admin/AdminShell'
+import { AdminDrawerProvider } from '@/components/admin/drawer/AdminDrawerProvider'
 import { TimeZoneProvider } from '@/components/ui/TimeZoneContext'
 import { assertAdmin } from '@/server/admin/guard'
 import { viewerTimeZone } from '@/server/timezone'
@@ -14,7 +15,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const tz = await viewerTimeZone()
   return (
     <TimeZoneProvider value={tz}>
-      <AdminShell>{children}</AdminShell>
+      <AdminDrawerProvider>
+        <AdminShell>{children}</AdminShell>
+      </AdminDrawerProvider>
     </TimeZoneProvider>
   )
 }

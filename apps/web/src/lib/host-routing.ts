@@ -5,6 +5,7 @@ export type HostRoute =
   | { kind: 'not_found' }
 
 const ADMIN_PREFIX = '/admin'
+const ADMIN_API_PREFIX = '/api/admin'
 const PASS_THROUGH_ON_ADMIN = ['/api', '/auth', '/login', '/_next']
 
 function isLocalHost(host: string): boolean {
@@ -17,7 +18,8 @@ function startsWithSegment(pathname: string, prefix: string): boolean {
 }
 
 /**
- * admin.reelset.app serves the /admin pages at its root; the main domain never serves /admin.
+ * admin.reelset.app serves the /admin pages at its root; the main domain never serves /admin or
+ * /api/admin.
  * Local hosts keep /admin reachable so development needs no extra DNS.
  */
 export function routeForHost(input: {
@@ -42,6 +44,8 @@ export function routeForHost(input: {
     }
   }
 
-  if (startsWithSegment(pathname, ADMIN_PREFIX) && !isLocalHost(host)) return { kind: 'not_found' }
+  const adminOnly =
+    startsWithSegment(pathname, ADMIN_PREFIX) || startsWithSegment(pathname, ADMIN_API_PREFIX)
+  if (adminOnly && !isLocalHost(host)) return { kind: 'not_found' }
   return { kind: 'next' }
 }

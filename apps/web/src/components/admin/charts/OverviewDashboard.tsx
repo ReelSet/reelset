@@ -1,6 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
+import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { METRICS, type MetricKey, type RangeDays } from '@/lib/admin/stats'
 import type { OverviewStats } from '@/server/admin/stats'
 import { ChartCard } from './ChartCard'
@@ -45,16 +47,25 @@ export function OverviewDashboard({ stats, range }: Props) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {METRICS.map((m) => (
-          <KpiCard
-            key={m.key}
-            meta={m}
-            series={metrics[m.key]}
-            color={METRIC_COLORS[m.key]}
-            selected={m.key === selected}
-            unavailable={stats.unavailable.includes(m.key)}
-            hint={cardHint(m.key, stats)}
-            onSelect={() => setSelected(m.key)}
-          />
+          <div key={m.key} className="flex flex-col gap-1 [&>button]:flex-1">
+            <KpiCard
+              meta={m}
+              series={metrics[m.key]}
+              color={METRIC_COLORS[m.key]}
+              selected={m.key === selected}
+              unavailable={stats.unavailable.includes(m.key)}
+              hint={cardHint(m.key, stats)}
+              onSelect={() => setSelected(m.key)}
+            />
+            {m.key === 'newUsers' && (
+              <Link
+                href={ADMIN_ROUTES.users}
+                className="px-1 text-right text-[11px] text-accent hover:underline"
+              >
+                View all users
+              </Link>
+            )}
+          </div>
         ))}
       </div>
       <MainChartCard

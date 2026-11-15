@@ -1,5 +1,4 @@
 import { Source } from '@reelset/core'
-import { z } from 'zod'
 import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { filtersToParams, parseRecentFilters } from '@/lib/admin/recent-filters'
@@ -7,22 +6,17 @@ import { Empty, Flash, Pager, Section, Toolbar } from '@/components/admin/ui'
 import { AutoRefresh } from '@/components/admin/pipeline/AutoRefresh'
 import { HealthStrip } from '@/components/admin/pipeline/HealthStrip'
 import { InProgressRow, RecentRow } from '@/components/admin/pipeline/ItemRow'
-import { ItemDrawer } from '@/components/admin/pipeline/ItemDrawer'
 import { RecentFilterBar } from '@/components/admin/pipeline/RecentFilterBar'
 import { SOURCES } from '@/components/ui/sources'
 import { assertAdmin } from '@/server/admin/guard'
-import { livePostPermalink } from '@/server/admin/instagram'
 import {
   IN_PROGRESS_LIMIT,
   healthSnapshot,
   inProgressItems,
-  itemDetail,
   recentItems,
   stageMedians,
 } from '@/server/admin/pipeline-queries'
-import { mediaBaseUrl } from '@/server/env'
 import { getDb } from '@/server/db'
-import { viewerTimeZone } from '@/server/timezone'
 import { log } from '@/server/logger'
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
@@ -36,26 +30,21 @@ export default async function PipelinePage({ searchParams }: Props) {
   const sp = await searchParams
   const db = getDb()
   const now = new Date()
-  const tz = await viewerTimeZone()
   const filters = parseRecentFilters(sp, KNOWN_SOURCES)
   const page = parsePage(sp.page, RECENT_PAGE_SIZE)
-  const itemParam = z.guid().safeParse(Array.isArray(sp.item) ? sp.item[0] : sp.item)
   const listParams = filtersToParams(filters)
 
-  const [health, progress, medians, recent, detail] = await Promise.all([
+  const [health, progress, medians, recent] = await Promise.all([
     healthSnapshot(db, log),
     inProgressItems(db),
     stageMedians(db),
     recentItems(db, filters, page),
-    itemParam.success ? itemDetail(db, itemParam.data) : Promise.resolve(null),
   ])
-  const permalink = detail ? await livePostPermalink(db, detail.item.id) : null
 
   const hrefFor = (extra: Record<string, string | undefined>) =>
     pageHref(PATH, { ...listParams, ...extra }, page.page)
-  const closeHref = hrefFor({})
+  const returnTo = hrefFor({})
   const detailHref = (id: string) => hrefFor({ item: id })
-  const returnTo = detail ? detailHref(detail.item.id) : closeHref
 
   return (
     <div>
@@ -110,19 +99,6 @@ export default async function PipelinePage({ searchParams }: Props) {
           hasMore={recent.hasMore}
         />
       </section>
-
-      {detail ? (
-        <ItemDrawer
-          detail={detail}
-          closeHref={closeHref}
-          returnTo={returnTo}
-          mediaBase={mediaBaseUrl()}
-          instagramHref={`${ADMIN_ROUTES.instagram}?item=${detail.item.id}`}
-          postedPermalink={permalink}
-          now={now}
-          tz={tz}
-        />
-      ) : null}
     </div>
   )
 }

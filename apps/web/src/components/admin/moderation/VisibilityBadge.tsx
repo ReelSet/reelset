@@ -1,4 +1,8 @@
-import { HIDDEN_REASON_LABELS, parseVisibility, type HiddenReason } from '@reelset/core'
+import {
+  HIDDEN_REASON_LABELS,
+  parseVisibilityValue,
+  type HiddenReason,
+} from '@/lib/admin/hidden-reasons'
 
 const REASONS = HIDDEN_REASON_LABELS as Record<string, string>
 
@@ -10,7 +14,7 @@ export function VisibilityBadge({
   visibility: string
   reason?: HiddenReason | string | null
 }) {
-  const value = parseVisibility(visibility)
+  const value = parseVisibilityValue(visibility)
   if (value === 'public') return null
   if (value === 'private') return <span className="text-xs text-faint">Private (requested)</span>
   const label = reason ? (REASONS[reason] ?? reason) : null

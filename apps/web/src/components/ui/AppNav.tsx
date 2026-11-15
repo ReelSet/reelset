@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
@@ -92,7 +93,7 @@ export function SideNav({ authenticated = false, avatar }: NavProps) {
       {tabs(path, authenticated).map(({ href, label, icon: Icon, match }) => {
         const active = match(path)
         return (
-          <a
+          <Link
             key={label}
             href={href}
             aria-current={active ? 'page' : undefined}
@@ -107,7 +108,7 @@ export function SideNav({ authenticated = false, avatar }: NavProps) {
               avatarClass="h-[22px] w-[22px] -mx-0.5 text-[11px]"
             />
             {label}
-          </a>
+          </Link>
         )
       })}
     </nav>
@@ -127,7 +128,7 @@ export function BottomTabs({ authenticated = false, translucent = false, avatar 
       {tabs(path, authenticated).map(({ href, label, icon: Icon, match }) => {
         const active = match(path)
         return (
-          <a
+          <Link
             key={label}
             href={href}
             aria-current={active ? 'page' : undefined}
@@ -142,7 +143,7 @@ export function BottomTabs({ authenticated = false, translucent = false, avatar 
               avatarClass="h-5 w-5 text-[10px]"
             />
             {label}
-          </a>
+          </Link>
         )
       })}
     </nav>

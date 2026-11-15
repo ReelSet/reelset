@@ -38,7 +38,8 @@ describe('navBadges', () => {
         failedInstagramPosts: 1,
         openUpgradeRequests: 3,
         openReelRequests: 4,
+        pendingFeedSubmissions: 5,
       }),
-    ).toEqual({ pipeline: 2, instagram: 1, generate: 7 })
+    ).toEqual({ pipeline: 2, instagram: 1, generate: 12 })
   })
 })
