@@ -22,6 +22,7 @@ import { buildFacts, type ItemFacts } from './facts'
 import { parseDemo, type ItemDemo } from './demo'
 import { primarySource, sourceLabel } from './plan'
 import type { BoxSampleStore } from './box-health'
+import { endSources } from './end-sources'
 
 export type ItemForRender = {
   id: string
@@ -37,6 +38,7 @@ export type ItemForRender = {
   images: ItemImage[]
   demo?: ItemDemo
   facts: ItemFacts
+  sources: string[]
 }
 
 export type RenderRow = {
@@ -142,6 +144,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
         mentionUrl: mention?.url ?? null,
         images: parseItemImages(item.images),
         demo: parseDemo(item.demo, item.canonical_url),
+        sources: endSources({ source, canonicalUrl: item.canonical_url, mentions }),
         facts: buildFacts(
           mentions.map((m) => ({
             source: m.source as Source,

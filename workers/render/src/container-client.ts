@@ -27,6 +27,7 @@ export type RenderInput = {
   sourceImageUrls: string[]
   images: ItemImage[]
   facts?: ItemFacts
+  sources?: string[]
   broll?: BrollPick[]
   demo?: ItemDemo
   director?: DirectorPayload

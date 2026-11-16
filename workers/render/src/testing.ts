@@ -32,6 +32,7 @@ export function makeItem(overrides: Partial<ItemForRender> = {}): ItemForRender 
     mentionUrl: 'https://github.com/acme/widget',
     images: [],
     facts: {},
+    sources: ['github.com/acme/widget'],
     ...overrides,
   }
 }

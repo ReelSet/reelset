@@ -109,6 +109,7 @@ try {
     sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
     images: item.images,
     facts: item.facts,
+    sources: item.sources,
     broll: broll.length > 0 ? broll : undefined,
     demo: item.demo,
     director: director ?? undefined,
