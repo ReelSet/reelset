@@ -91,7 +91,7 @@ def load_timeline_shots(job_dir: str) -> list:
 def build_filter(cues: list, duration: float) -> str:
     parts = [
         f"[0:a]aresample={SAMPLE_RATE},aformat=channel_layouts=stereo,"
-        f"loudnorm=I={VOICE_LUFS}:TP=-2:LRA=11,asplit=2[vo][sc]",
+        f"loudnorm=I={VOICE_LUFS}:TP=-2:LRA=11,apad=whole_dur={duration:.3f},asplit=2[vo][sc]",
         f"[1:a]aresample={SAMPLE_RATE},aformat=channel_layouts=stereo,"
         f"volume={BED_TRIM_DB}dB,atrim=0:{duration:.3f},"
         f"afade=t=out:st={max(0.0, duration - BED_FADE_SECONDS):.3f}:d={BED_FADE_SECONDS:.3f}[bedraw]",
