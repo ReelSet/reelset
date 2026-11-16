@@ -20,7 +20,13 @@ import { RenderJobError } from '../../workers/render/src/errors'
 import { pickBroll } from '../../workers/render/src/pexels'
 import { collectImageUrls, containerTitle, sourceImageUrls } from '../../workers/render/src/plan'
 import { createRenderStore } from '../../workers/render/src/store'
-import { fallbackEngineFor, speakableNumbers } from '../../workers/render/src/tts'
+import { generateChatterbox } from '../../workers/render/src/chatterbox'
+import {
+  audioToBase64,
+  fallbackEngineFor,
+  speakableNumbers,
+  wordsToJson,
+} from '../../workers/render/src/tts'
 
 // Usage: preview-render.ts <itemIdPrefix> <script.json> <outDir> [--boxes url1,url2] [--payload-only]
 // --payload-only writes <outDir>/<id>-payload.json for workers/render/container/tools/render_local.py
@@ -79,6 +85,20 @@ try {
   const provider = await getSetting(db, SETTINGS.ttsProvider, log)
   if (provider === 'aura2') throw new Error('tts_provider is aura2; this preview cannot match it')
   const ttsEngine = fallbackEngineFor(provider)
+  const chatterboxUrl =
+    process.env.CHATTERBOX_URL ??
+    /"CHATTERBOX_URL":\s*"([^"]+)"/.exec(
+      readFileSync(new URL('../../workers/render/wrangler.jsonc', import.meta.url), 'utf8'),
+    )?.[1]
+  const chatterboxToken = process.env.CHATTERBOX_TOKEN
+  const narration =
+    provider === 'chatterbox' && chatterboxUrl && chatterboxToken
+      ? await generateChatterbox(
+          { url: chatterboxUrl, token: chatterboxToken, fetch: (u, i) => fetch(u, i) },
+          script,
+          log,
+        )
+      : null
   const director = await loadDirectorConfig(db, log).catch(() => null)
   const broll = process.env.PEXELS_API_KEY
     ? await pickBroll(
@@ -103,7 +123,10 @@ try {
     sourceLabel: item.sourceLabel,
     imageUrls: collectImageUrls(script),
     voice: process.env.TTS_VOICE ?? DEFAULT_VOICE,
-    ttsEngine,
+    ttsEngine: narration ? undefined : ttsEngine,
+    narration: narration
+      ? { audioBase64: audioToBase64(narration.audio), words: wordsToJson(narration.words) }
+      : undefined,
     source: item.source,
     canonicalUrl: item.canonicalUrl,
     sourceImageUrls: sourceImageUrls(item.source, [item.canonicalUrl, item.mentionUrl]),
