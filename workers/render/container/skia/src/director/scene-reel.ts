@@ -1,4 +1,5 @@
 import type { Reel, Shot } from '../plan'
+import { END_CARD_MAX_S, END_CARD_MIN_S } from '../planner/lib/plates'
 import type { Screen } from '../screens/types'
 import * as K from './kit'
 import type { Scene } from './scenes'
@@ -30,6 +31,31 @@ function screenOf(scene: Scene, index: number, onError: SceneErrorSink): Screen 
   }
 }
 
+const MIN_SCENE_S = 0.5
+
+/** Cuts the model's scenes off where the planner's end card starts, so every reel ends on it. */
+function withEndCard(base: Reel, shots: Shot[]): Shot[] {
+  const card = base.shots.at(-1)
+  if (card?.show !== 'EndCard') return shots
+  const hold = Math.min(END_CARD_MAX_S, Math.max(END_CARD_MIN_S, card.t1 - card.t0))
+  const t0 = Math.max(0, base.duration - hold)
+  const kept = shots.filter((s, i) => i === 0 || s.t0 <= t0 - MIN_SCENE_S)
+  const body = kept.map((s, i) => {
+    const t1 = i === kept.length - 1 ? t0 : s.t1
+    return { ...s, index: i, t1, dur: t1 - s.t0 }
+  })
+  const end: Shot = {
+    ...card,
+    index: body.length,
+    sceneIndex: body.length,
+    t0,
+    t1: base.duration,
+    dur: base.duration - t0,
+    enter: 'up',
+  }
+  return [...body, end]
+}
+
 /** Replaces the planner's shots with the model's scenes; a throwing scene is reported and the Renderer falls back for it. */
 export function applyScenes(base: Reel, scenes: Scene[], onError: SceneErrorSink): Reel {
   const shots: Shot[] = scenes.map((scene, i) => ({
@@ -47,5 +73,5 @@ export function applyScenes(base: Reel, scenes: Scene[], onError: SceneErrorSink
     screen: screenOf(scene, i, onError),
     grade: scene.grade,
   }))
-  return { ...base, shots, headline: null }
+  return { ...base, shots: withEndCard(base, shots), headline: null }
 }

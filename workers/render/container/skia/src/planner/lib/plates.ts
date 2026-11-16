@@ -43,15 +43,28 @@ export function limitPlates(
 /** The end card is a static card: it holds this long at most, the rest goes to the shot before it. */
 export const END_CARD_MAX_S = 3
 
-/** Hands the end card's time over its cap to the shot before it, which may grow to `maxHold` seconds. */
+/** The end card holds at least this long, so its source lines can be read. */
+export const END_CARD_MIN_S = 2.5
+const PREV_MIN_S = 1
+
+/**
+ * Keeps the end card between END_CARD_MIN_S and END_CARD_MAX_S by trading frames with the shot
+ * before it: time over the cap goes to that shot (up to `maxHold` seconds), and a card that is too
+ * short starts earlier, leaving that shot at least 1 s.
+ */
 export function capEndCard(shots: TimedShot[], fps: number, maxHold = 4): TimedShot[] {
   const last = shots[shots.length - 1]
   const prev = shots[shots.length - 2]
   if (!last || last.show !== 'EndCard' || !prev || prev.show === 'EndCard') return shots
-  const extra = last.frames - Math.round(END_CARD_MAX_S * fps)
-  const room = Math.round(maxHold * fps) - prev.frames
-  const give = Math.min(extra, room)
-  if (give <= 0) return shots
+  const short = Math.round(END_CARD_MIN_S * fps) - last.frames
+  const give =
+    short > 0
+      ? -Math.min(short, Math.max(0, prev.frames - Math.round(PREV_MIN_S * fps)))
+      : Math.min(
+          last.frames - Math.round(END_CARD_MAX_S * fps),
+          Math.round(maxHold * fps) - prev.frames,
+        )
+  if (give === 0 || (short <= 0 && give < 0)) return shots
   return [
     ...shots.slice(0, -2),
     { ...prev, frames: prev.frames + give },

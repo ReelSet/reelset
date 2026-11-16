@@ -88,4 +88,16 @@ describe('capEndCard', () => {
     expect(out[0]!.frames + out[1]!.frames).toBe(260)
     expect(capEndCard([at('KeyPoint', 0, 120), at('EndCard', 120, 150)], 30)[1]!.frames).toBe(150)
   })
+
+  it('grows a 1.5 s card to 2.5 s from the shot before it', () => {
+    const out = capEndCard([at('KeyPoint', 0, 72), at('EndCard', 72, 36)], 24)
+    expect(out[1]).toMatchObject({ from: 48, frames: 60 })
+    expect(out[0]!.frames).toBe(48)
+  })
+
+  it('leaves the shot before it at least 1 s', () => {
+    const out = capEndCard([at('KeyPoint', 0, 30), at('EndCard', 30, 24)], 24)
+    expect(out[0]!.frames).toBe(24)
+    expect(out[1]).toMatchObject({ from: 24, frames: 30 })
+  })
 })
