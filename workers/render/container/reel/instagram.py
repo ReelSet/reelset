@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit
 
-from . import props, video
+from . import poster, props, video
 from .errors import RenderError
 from .proxies import parse_proxy_urls
 
@@ -310,7 +310,7 @@ def check_poster_fits(poster: Path, shape: tuple | None) -> None:
 def extract_cover_frame(path: Path, workdir: Path, shape: tuple | None) -> Path:
     """Frame near where the render takes its poster, for reels whose poster is missing or unusable."""
     cover = workdir / "frame.jpg"
-    second = props.fallback_poster_second(shape[2] if shape else None)
+    second = poster.choose_second(str(path), props.fallback_poster_second(shape[2] if shape else None))
     try:
         video.run_ffmpeg(video.build_poster_cmd(str(path), str(cover), second), str(workdir))
     except RenderError as err:
@@ -335,13 +335,13 @@ def choose_cover(
         log.warning("cover source=frame reason=no_poster_url")
         return extract_frame(path, workdir, shape)
     try:
-        poster = fetch_poster(poster_url, workdir)
-        check_poster_fits(poster, shape)
+        image = fetch_poster(poster_url, workdir)
+        check_poster_fits(image, shape)
     except InstagramError as err:
         log.warning("cover source=frame reason=%s detail=%s", err.code, err.message)
         return extract_frame(path, workdir, shape)
     log.info("cover source=poster")
-    return poster
+    return image
 
 
 def post_reel(

@@ -286,13 +286,18 @@ class FallbackFrameTests(unittest.TestCase):
         import tempfile
         from unittest import mock
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(instagram.video, "run_ffmpeg") as run:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(instagram.video, "run_ffmpeg") as run,
+            mock.patch.object(instagram.poster, "choose_second", return_value=2.75) as choose,
+        ):
             workdir = Path(tmp)
             run.side_effect = lambda cmd, cwd: (workdir / "frame.jpg").write_bytes(b"jpg")
             cover = instagram.extract_cover_frame(Path("v.mp4"), workdir, (1080, 1920, 20.0))
         self.assertEqual(cover, workdir / "frame.jpg")
+        self.assertEqual(choose.call_args[0], ("v.mp4", 3.0))
         cmd = run.call_args[0][0]
-        self.assertEqual(cmd, instagram.video.build_poster_cmd("v.mp4", str(workdir / "frame.jpg"), 3.0))
+        self.assertEqual(cmd, instagram.video.build_poster_cmd("v.mp4", str(workdir / "frame.jpg"), 2.75))
 
     def test_missing_frame_is_a_cover_error(self):
         import tempfile

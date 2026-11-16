@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable
 
 from .version import TEMPLATE_VERSION
-from . import director, images, media, mix, narrator, props, source_images, sources, timing, video, words as words_lib
+from . import director, images, media, mix, narrator, poster, props, source_images, sources, timing, video, words as words_lib
 from .cues import resolve_shots
 from .errors import RenderError
 from .validation import RenderRequest
@@ -206,9 +206,8 @@ def run_render(
         video.run_ffmpeg(video.build_faststart_cmd(raw_path, out_path), job_dir)
     os.remove(raw_path)
     poster_path = os.path.join(job_dir, "poster.jpg")
-    video.run_ffmpeg(
-        video.build_poster_cmd(out_path, poster_path, props.poster_second(spans)), job_dir
-    )
+    second = poster.choose_second(out_path, props.poster_second(spans), hook_end=spans[0][1])
+    video.run_ffmpeg(video.build_poster_cmd(out_path, poster_path, second), job_dir)
     size = video.check_output_size(out_path)
 
     credits = _credits(job_dir, assets)
