@@ -30,7 +30,8 @@ X.img(i) -> decoded DATA.images[i] (or null). X.backdrop(i) = blurred(X.img(i)).
 ## Output contract
 Return ONE \`\`\`js block: a script that defines helpers/sprites and ends with
   return [ { t0, t1, fn, cap, tone, vid, exit? }, ... ]
-- Scenes are contiguous, sorted, first t0 = 0, last t1 = DATA.duration; 6-12 scenes, each about 2-6 s, cut on narration beats (word start times).
+- Scenes are contiguous, sorted, first t0 = 0, last t1 = DATA.endCardAt; 6-12 scenes, each about 2-6 s, cut on narration beats (word start times).
+- From DATA.endCardAt to DATA.duration the engine draws the end card (the item name, its source links and a follow button) over music, after the voice ends. Do not draw your own outro or source card; your last scene is the conclusion that leads into it.
 - tone: 'ink' (dark), 'bone' (light paper) or 'lime' page: the engine colors header/captions to match.
 - vid: { clip: <index into DATA.broll>, grade: 'lime'|'warm'|'dim'|'none' } or null.
 - fn must never throw: guard every image/video (they may be null). Keep per-frame work cheap (a 1-vCPU box renders this): no per-frame mk()/createCanvas, no filter blur, shadowBlur only on sprites.

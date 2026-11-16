@@ -15,7 +15,7 @@ import {
 } from './planner'
 import { enforceVariety } from './variety'
 import { applyHook } from './hook'
-import { capEndCard, limitPlates } from './plates'
+import { capEndCard, pinEndCard, limitPlates } from './plates'
 import { finalizeShots, paceShots, stretchDemo } from './finalize'
 import { repoCardSparse, withPrimarySource } from './sources'
 import { holdFor, tableFor } from './table'
@@ -292,7 +292,7 @@ export function resolveShots(
     'pace',
     dropRepeatedClips(paceShots(stretchDemo(final, fps, props), props, fps)),
   )
-  const plated = step('plates', capEndCard(limitPlates(paced), fps))
+  const plated = step('plates', placeEndCard(limitPlates(paced), props, fps))
   return { shots: withDemoOffsets(plated, props.demo?.seconds, fps), warnings }
 }
 
@@ -500,4 +500,16 @@ export function demoOnCue(shots: TimedShot[], props: ReelProps, fps: number): Ti
     out[k]!.frames += d
   }
   return out
+}
+
+/** Seconds between the last spoken word and the end card. */
+const CARD_AFTER_VOICE_S = 0.25
+/** A reel with at least this much silence after the voice gets its end card there, over music only. */
+const SILENT_CARD_MIN_S = 2
+
+function placeEndCard(shots: TimedShot[], props: ReelProps, fps: number): TimedShot[] {
+  const voiceEnd = props.words.at(-1)?.end
+  if (voiceEnd === undefined || props.durationSeconds - voiceEnd < SILENT_CARD_MIN_S)
+    return capEndCard(shots, fps)
+  return pinEndCard(shots, fps, Math.round((voiceEnd + CARD_AFTER_VOICE_S) * fps))
 }

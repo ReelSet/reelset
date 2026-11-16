@@ -15,10 +15,14 @@ describe('endSources', () => {
         m('https://arstechnica.com/c'),
       ],
     })
-    expect(got).toEqual(['theverge.com', 'news.ycombinator.com', 'reddit.com'])
+    expect(got).toEqual([
+      'theverge.com/a',
+      'news.ycombinator.com/item?id=1',
+      'reddit.com/r/x/comments/1',
+    ])
   })
 
-  it('github canonical shows owner/repo', () => {
+  it('shows the full link without scheme, www or a trailing slash', () => {
     const got = endSources({
       source: 'github',
       canonicalUrl: 'https://github.com/acme/tool/',
@@ -33,17 +37,25 @@ describe('endSources', () => {
       canonicalUrl: 'https://example.com/post',
       mentions: [m(null), m('not a url'), m('https://www.example.com/other')],
     })
-    expect(got).toEqual(['example.com'])
+    expect(got).toEqual(['example.com/post'])
   })
 
-  it('truncates long labels to 48 chars', () => {
-    const repo = `acme/${'x'.repeat(60)}`
+  it('drops tracking params and keeps the rest of the query', () => {
     const [label] = endSources({
-      source: 'github',
-      canonicalUrl: `https://github.com/${repo}`,
+      source: 'news',
+      canonicalUrl: 'https://qwen.ai/blog?id=qwen4-max&utm_source=x&fbclid=1',
       mentions: [],
     })
-    expect(label).toHaveLength(48)
+    expect(label).toBe('qwen.ai/blog?id=qwen4-max')
+  })
+
+  it('truncates very long links', () => {
+    const [label] = endSources({
+      source: 'news',
+      canonicalUrl: `https://example.com/${'x'.repeat(200)}`,
+      mentions: [],
+    })
+    expect(label).toHaveLength(120)
     expect(label!.endsWith('…')).toBe(true)
   })
 })

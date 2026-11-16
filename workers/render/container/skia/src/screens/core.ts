@@ -3,7 +3,17 @@ import { endName, endSourceLines, endSubtitle } from '@plan/lib/endcard'
 import { displayStat } from '@plan/lib/stat-format'
 import { typeset } from '@plan/lib/typeset'
 import { chip } from '../chrome/marks'
-import { card, fit, fitBlock, measure, riseLines, rrect, text, type Ctx } from '../engine/draw'
+import {
+  card,
+  clip,
+  fit,
+  fitBlock,
+  measure,
+  riseLines,
+  rrect,
+  text,
+  type Ctx,
+} from '../engine/draw'
 import { COL, CONTENT_TOP, H, L, R, W, ZONE_BOTTOM, eb, eo, pr, prop } from '../engine/kit'
 import type { Still } from '../engine/media'
 import { coverDraw, page, zone } from './page'
@@ -384,7 +394,8 @@ export const StatSlam: Screen = {
 /** Outro: the item name big, its subtitle, source chip, the reel's sources, and a follow pill. */
 const SOURCES_LABEL = 'Sources'
 const SOURCES_NOTE = 'Sources in the caption'
-const SOURCE_SIZE = 36
+const SOURCE_SIZE = 26
+const SOURCE_MIN_SIZE = 20
 const SOURCE_LH = 1.25
 const NOTE_SIZE = 30
 const NAME_MAX_SIZES = [130, 110, 92, 76]
@@ -397,9 +408,16 @@ export const EndCard: Screen = {
     const z = zone(a)
     const name = typeset(endName(ctx))
     const sub = typeset(endSubtitle(ctx))
-    const sources = endSourceLines(ctx)
+    const links = endSourceLines(ctx)
+    const { sources, size: sourceSize } = a.memo('sources', () => {
+      const size = Math.min(
+        SOURCE_SIZE,
+        ...links.map((l) => fit(l, 'bold', z.w, SOURCE_SIZE, SOURCE_MIN_SIZE)),
+      )
+      return { sources: links.map((l) => clip(l, 'bold', size, z.w)), size }
+    })
     const sourcesH = sources.length
-      ? NOTE_SIZE + 18 + sources.length * SOURCE_SIZE * SOURCE_LH + 22 + NOTE_SIZE + 44
+      ? NOTE_SIZE + 18 + sources.length * sourceSize * SOURCE_LH + 22 + NOTE_SIZE + 44
       : 0
     const subLay = a.memo('sub', () =>
       sub ? fitBlock(sub, 'bold', z.w, 160, { max: 48, min: 30, lh: 1.15, maxLines: 3 }) : null,
@@ -443,11 +461,11 @@ export const EndCard: Screen = {
     if (sources.length) {
       riseLines(c, [SOURCES_LABEL], z.x, y, 'bold', NOTE_SIZE, COL.lime, t, 0.5)
       y += NOTE_SIZE + 18
-      riseLines(c, sources, z.x, y, 'bold', SOURCE_SIZE, 'rgba(246,244,238,0.85)', t, 0.55, {
+      riseLines(c, sources, z.x, y, 'bold', sourceSize, 'rgba(246,244,238,0.85)', t, 0.55, {
         lh: SOURCE_LH,
         step: 0.05,
       })
-      y += sources.length * SOURCE_SIZE * SOURCE_LH + 22
+      y += sources.length * sourceSize * SOURCE_LH + 22
       riseLines(c, [SOURCES_NOTE], z.x, y, 'bold', NOTE_SIZE, 'rgba(246,244,238,0.6)', t, 0.75)
       y += NOTE_SIZE + 44
     }

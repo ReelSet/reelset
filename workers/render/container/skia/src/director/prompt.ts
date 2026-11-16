@@ -1,6 +1,7 @@
 import type { Reel } from '../plan'
 import { API_DOC } from './api-doc'
 import type { DirectorConfig } from './config'
+import { endCardAt } from './scene-reel'
 
 const EXAMPLE_NOTE =
   'A hand-made reel about a different item (Gemini 4 Carbon pricing), written against this same kit (its imports are your globals; gemini() and iconPart() are not available to you). Learn the craft from it; do not copy its content.'
@@ -15,6 +16,7 @@ export function dataOf(reel: Reel) {
     domain: p.domain,
     headline: p.headline ?? null,
     duration: +p.durationSeconds.toFixed(2),
+    endCardAt: +endCardAt(reel).toFixed(2),
     narration: p.scenes.map((s) => ({
       kind: s.kind,
       start: +s.start.toFixed(2),

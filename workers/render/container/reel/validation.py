@@ -396,17 +396,15 @@ MAX_CLAIMS = 12
 
 
 MAX_SOURCES = 3
-MAX_SOURCE_CHARS = 48
+MAX_SOURCE_CHARS = 120
 
 
 def _validate_sources(raw) -> list:
-    """End-card source labels: up to 3 short hosts like github.com/owner/repo."""
-    if raw is None:
+    """End-card source links without the scheme, like qwen.ai/blog?id=x; bad entries are dropped."""
+    if not isinstance(raw, list):
         return []
-    ok = isinstance(raw, list) and len(raw) <= MAX_SOURCES
-    if not ok or not all(isinstance(s, str) and 0 < len(s.strip()) <= MAX_SOURCE_CHARS for s in raw):
-        _bad("sources must be up to 3 short labels")
-    return [s.strip() for s in raw]
+    links = [s.strip() for s in raw if isinstance(s, str) and 0 < len(s.strip()) <= MAX_SOURCE_CHARS]
+    return links[:MAX_SOURCES]
 
 
 def _validate_claims(raw) -> list:

@@ -1,7 +1,8 @@
 import type { Source } from '@reelset/core'
 
 export const END_SOURCES_MAX = 3
-export const END_SOURCE_MAX_CHARS = 48
+export const END_SOURCE_MAX_CHARS = 120
+const TRACKING_PARAM = /^(utm_\w+|fbclid|gclid|ref|ref_src)$/i
 
 type Input = {
   source: Source | null
@@ -19,12 +20,16 @@ function parse(url: string | null): URL | null {
 }
 
 function label(url: URL): string {
+  for (const key of [...url.searchParams.keys()]) {
+    if (TRACKING_PARAM.test(key)) url.searchParams.delete(key)
+  }
   const host = url.hostname.replace(/^www\./, '')
-  const full = host === 'github.com' ? host + url.pathname.replace(/\/+$/, '') : host
+  const path = url.pathname.replace(/\/+$/, '')
+  const full = `${host}${path}${url.search}`
   return full.length <= END_SOURCE_MAX_CHARS ? full : `${full.slice(0, END_SOURCE_MAX_CHARS - 1)}…`
 }
 
-/** The end card's source lines: the canonical link first, then other mention sites, one per host. */
+/** The end card's source links: the canonical link first, then other mention links, one per host. */
 export function endSources(input: Input): string[] {
   const hosts = new Set<string>()
   const out: string[] = []

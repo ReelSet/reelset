@@ -14,6 +14,7 @@ AUDIO_DIR = os.environ.get("REEL_AUDIO_DIR", os.path.join(os.path.dirname(__file
 SAMPLE_RATE = 48000
 VOICE_LUFS = -16.0
 BED_TRIM_DB = 2.0
+BED_FADE_SECONDS = 1.0
 TARGET_LUFS = -14.0
 TARGET_TP = -1.5
 MAX_CUES = 40
@@ -92,7 +93,8 @@ def build_filter(cues: list, duration: float) -> str:
         f"[0:a]aresample={SAMPLE_RATE},aformat=channel_layouts=stereo,"
         f"loudnorm=I={VOICE_LUFS}:TP=-2:LRA=11,asplit=2[vo][sc]",
         f"[1:a]aresample={SAMPLE_RATE},aformat=channel_layouts=stereo,"
-        f"volume={BED_TRIM_DB}dB,atrim=0:{duration:.3f}[bedraw]",
+        f"volume={BED_TRIM_DB}dB,atrim=0:{duration:.3f},"
+        f"afade=t=out:st={max(0.0, duration - BED_FADE_SECONDS):.3f}:d={BED_FADE_SECONDS:.3f}[bedraw]",
         f"[bedraw][sc]{DUCK}[bed]",
     ]
     labels = ["[vo]", "[bed]"]

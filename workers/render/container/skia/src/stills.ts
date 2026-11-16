@@ -83,7 +83,9 @@ export async function reviewSheetJpeg(
   for (const [i, abs] of times.entries()) {
     await withStill(reel, assets, abs, (frame) => {
       const shot = reel.shots.find((s) => abs >= s.t0 && abs < s.t1) ?? reel.shots.at(-1)!
-      sheet.add(i, frame, `scene ${shot.index} t=${abs.toFixed(2)}s`)
+      const name =
+        shot.show === 'EndCard' && !shot.screen ? 'end card (engine)' : `scene ${shot.index}`
+      sheet.add(i, frame, `${name} t=${abs.toFixed(2)}s`)
     })
     onTile?.(i + 1, times.length)
   }

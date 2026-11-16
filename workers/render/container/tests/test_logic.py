@@ -129,8 +129,8 @@ class TimingTests(unittest.TestCase):
         self.assertEqual(timing.choose_rate(5000), "+50%")
 
     def test_refit_rate_brings_measured_audio_under_cap(self):
-        self.assertEqual(timing.refit_rate("+0%", 110.0), "+12%")
-        self.assertEqual(timing.refit_rate("+10%", 110.0), "+23%")
+        self.assertEqual(timing.refit_rate("+0%", 110.0), "+16%")
+        self.assertEqual(timing.refit_rate("+10%", 110.0), "+27%")
         self.assertIsNone(timing.refit_rate("+0%", 200.0))
 
 
@@ -269,3 +269,12 @@ class TtsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EndCardTimingTests(unittest.TestCase):
+    def test_video_leaves_a_silent_end_card_after_the_voice(self):
+        self.assertAlmostEqual(
+            timing.total_video_seconds(40.0), 40.0 + timing.TAIL_SECONDS + timing.END_CARD_SECONDS
+        )
+        self.assertEqual(timing.END_CARD_SECONDS, 3.0)
+

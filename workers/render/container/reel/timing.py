@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 MAX_VIDEO_SECONDS = 100.0
 TAIL_SECONDS = 0.5
+# The end card holds this long after the voice ends, over music only.
+END_CARD_SECONDS = 3.0
 CHARS_PER_SECOND = 14.5
 MAX_RATE_PERCENT = 50
 MAX_REFIT_RATE_PERCENT = 80
@@ -33,7 +35,7 @@ def refit_rate(rate: str, measured_seconds: float) -> str | None:
     The character-based estimate in choose_rate is only a guess; real pace varies with numbers,
     identifiers and punctuation, so the pipeline measures and retries once with this.
     """
-    target = MAX_VIDEO_SECONDS - TAIL_SECONDS - REFIT_HEADROOM_SECONDS
+    target = MAX_VIDEO_SECONDS - TAIL_SECONDS - END_CARD_SECONDS - REFIT_HEADROOM_SECONDS
     speed = (1 + int(rate.rstrip("%")) / 100) * measured_seconds / target
     percent = math.ceil((speed - 1) * 100)
     return f"+{percent}%" if percent <= MAX_REFIT_RATE_PERCENT else None
@@ -99,4 +101,4 @@ def allocate_segments(segments: list, words: list, total_seconds: float) -> list
 
 
 def total_video_seconds(audio_seconds: float) -> float:
-    return audio_seconds + TAIL_SECONDS
+    return audio_seconds + TAIL_SECONDS + END_CARD_SECONDS

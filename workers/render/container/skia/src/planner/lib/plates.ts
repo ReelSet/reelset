@@ -71,3 +71,21 @@ export function capEndCard(shots: TimedShot[], fps: number, maxHold = 4): TimedS
     { ...last, from: last.from + give, frames: last.frames - give },
   ]
 }
+
+/**
+ * Starts the end card at `fromFrame` (just after the voice ends) by moving its boundary with the
+ * shot before it, which keeps at least 1 s. The card then runs to the end of the reel.
+ */
+export function pinEndCard(shots: TimedShot[], fps: number, fromFrame: number): TimedShot[] {
+  const last = shots[shots.length - 1]
+  const prev = shots[shots.length - 2]
+  if (!last || last.show !== 'EndCard' || !prev || prev.show === 'EndCard') return shots
+  const end = last.from + last.frames
+  const from = Math.min(Math.max(fromFrame, prev.from + Math.round(PREV_MIN_S * fps)), end - 1)
+  if (from === last.from) return shots
+  return [
+    ...shots.slice(0, -2),
+    { ...prev, frames: from - prev.from },
+    { ...last, from, frames: end - from },
+  ]
+}

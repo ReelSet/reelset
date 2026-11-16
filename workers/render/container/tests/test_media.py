@@ -263,10 +263,17 @@ class PropsMediaTests(unittest.TestCase):
         out = self._props({**good_payload(), "sources": ["a.com", "b.com"]})
         self.assertEqual(out["sources"], ["a.com", "b.com"])
 
-    def test_sources_reject_bad_values(self):
-        for bad in (["a", "b", "c", "d"], ["a.com", 7], ["x" * 60], [""], "a.com"):
-            with self.assertRaises(RenderError):
-                validation.validate_render_request({**good_payload(), "sources": bad})
+    def test_sources_accept_long_links(self):
+        link = "qwen.ai/blog?id=" + "x" * 100
+        self.assertEqual(validation.validate_render_request({**good_payload(), "sources": [link]}).sources, [link])
+
+    def test_sources_drop_bad_values_instead_of_failing(self):
+        def sources(raw):
+            return validation.validate_render_request({**good_payload(), "sources": raw}).sources
+
+        self.assertEqual(sources(["a", "b", "c", "d"]), ["a", "b", "c"])
+        self.assertEqual(sources(["a.com", 7, "x" * 200, "", " b.com "]), ["a.com", "b.com"])
+        self.assertEqual(sources("a.com"), [])
 
     def test_beat_key_points_reach_the_scenes(self):
         payload = good_payload()

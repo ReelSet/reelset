@@ -60,6 +60,10 @@ class PlanTests(unittest.TestCase):
         many = [{"t": 1 + i * 0.5} for i in range(100)]
         self.assertLessEqual(len(mix.plan_sfx(spans, many, True)), mix.MAX_CUES)
 
+    def test_bed_fades_out_at_the_end(self):
+        f = mix.build_filter([], 20.0)
+        self.assertIn(f"afade=t=out:st={20.0 - mix.BED_FADE_SECONDS:.3f}:d={mix.BED_FADE_SECONDS:.3f}", f)
+
     def test_bed_variant_is_stable(self):
         self.assertEqual(mix.bed_variant("abc"), mix.bed_variant("abc"))
         self.assertIn(mix.bed_variant("xyz"), range(mix.BED_VARIANTS))

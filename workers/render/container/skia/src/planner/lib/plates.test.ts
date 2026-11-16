@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { capEndCard, limitPlates, MAX_PLATES, isPlated } from './plates'
+import { capEndCard, limitPlates, MAX_PLATES, isPlated, pinEndCard } from './plates'
 import { fillShare, MIN_FILL } from './fill'
 import type { TimedShot } from './types'
 
@@ -99,5 +99,39 @@ describe('capEndCard', () => {
     const out = capEndCard([at('KeyPoint', 0, 30), at('EndCard', 30, 24)], 24)
     expect(out[0]!.frames).toBe(24)
     expect(out[1]).toMatchObject({ from: 24, frames: 30 })
+  })
+})
+
+describe('pinEndCard', () => {
+  const at = (show: TimedShot['show'], from: number, frames: number): TimedShot => ({
+    from,
+    frames,
+    show,
+    props: {},
+    sceneIndex: 1,
+    origin: 'planned',
+  })
+
+  it('starts the card at the given frame, after the voice', () => {
+    const out = pinEndCard(
+      [at('KeyPoint', 0, 100), at('KeyPoint', 100, 60), at('EndCard', 160, 40)],
+      24,
+      130,
+    )
+    expect(out[1]).toMatchObject({ from: 100, frames: 30 })
+    expect(out[2]).toMatchObject({ from: 130, frames: 70 })
+  })
+
+  it('keeps the shot before the card at least 1 s', () => {
+    const out = pinEndCard([at('KeyPoint', 0, 100), at('EndCard', 100, 100)], 24, 110)
+    expect(out[0]!.frames).toBe(110)
+    const tight = pinEndCard([at('KeyPoint', 0, 30), at('EndCard', 30, 100)], 24, 10)
+    expect(tight[0]!.frames).toBe(24)
+    expect(tight[1]).toMatchObject({ from: 24, frames: 106 })
+  })
+
+  it('leaves shots without an end card alone', () => {
+    const shots = [at('KeyPoint', 0, 100)]
+    expect(pinEndCard(shots, 24, 50)).toBe(shots)
   })
 })

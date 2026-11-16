@@ -35,8 +35,8 @@ import {
 // payload the render worker builds (facts, b-roll, demo, director, voice), and saves the MP4 and
 // poster locally. Reads the database, writes nothing to it or to R2, and removes the job from the
 // box afterwards. <script.json> is a reel script, or a regen-scripts --out file (uses .content.script).
-// Only the container voice engines are covered (tts_provider kokoro or edge); Aura narration is
-// synthesized inside the worker and is not reproduced here.
+// Voices: kokoro and edge run in the container; chatterbox is fetched from Modal like production
+// (needs CHATTERBOX_TOKEN). Aura narration is synthesized inside the worker and is not reproduced.
 const args = process.argv.slice(2)
 const boxesAt = args.indexOf('--boxes')
 const boxesArg = boxesAt >= 0 ? args.splice(boxesAt, 2)[1] : undefined
@@ -91,6 +91,8 @@ try {
       readFileSync(new URL('../../workers/render/wrangler.jsonc', import.meta.url), 'utf8'),
     )?.[1]
   const chatterboxToken = process.env.CHATTERBOX_TOKEN
+  if (provider === 'chatterbox' && (!chatterboxUrl || !chatterboxToken))
+    log.warn('tts_provider is chatterbox but CHATTERBOX_TOKEN or URL is missing; using kokoro')
   const narration =
     provider === 'chatterbox' && chatterboxUrl && chatterboxToken
       ? await generateChatterbox(
