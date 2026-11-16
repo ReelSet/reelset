@@ -259,6 +259,19 @@ export function judgeVerdict(decision: { verdict: GateVerdict; decidedBy: string
   return decision.decidedBy === 'explore' ? oppositeGateVerdict(decision.verdict) : decision.verdict
 }
 
+/**
+ * Whether the newest automatic decision clears an item for Instagram auto posting; mirrors
+ * PASSES_GATE_SQL in instagram-post.repo. A label wins, and an unlabelled explore row never passes.
+ */
+export function passesGateForAutoPost(decision: {
+  verdict: GateVerdict
+  decidedBy: string
+  label: GateLabel | null
+}): boolean {
+  if (decision.label) return correctGateVerdict(decision.verdict, decision.label) === 'reel'
+  return decision.decidedBy !== 'explore' && decision.verdict === 'reel'
+}
+
 /** Whether an admin's review says the judge's own verdict was right; labels are about the stored outcome, so explore rows invert. */
 export function judgeWasRight(decision: {
   verdict: GateVerdict

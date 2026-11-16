@@ -9,7 +9,11 @@ export type GridReel = {
   source: string
   poster_key: string | null
   post_status: string | null
+  ig_views?: number | null
+  ig_likes?: number | null
 }
+
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
 export function ReelGrid({
   reels,
@@ -54,6 +58,12 @@ export function ReelGrid({
                 >
                   {badge.label}
                 </span>
+                {reel.ig_views != null ? (
+                  <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white backdrop-blur">
+                    {compact.format(reel.ig_views)} views
+                    {reel.ig_likes ? ` · ${compact.format(reel.ig_likes)} likes` : ''}
+                  </span>
+                ) : null}
               </span>
               <span className="block px-2 py-1.5">
                 <span className="line-clamp-2 text-xs leading-snug">{reel.title}</span>

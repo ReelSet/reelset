@@ -19,6 +19,7 @@ import {
   gateWeightsSchema,
   oppositeGateVerdict,
   parseGateSignals,
+  passesGateForAutoPost,
   shouldExplore,
   type GateConfig,
   type GateSignals,
@@ -152,6 +153,31 @@ describe('correctGateVerdict', () => {
     expect(correctGateVerdict('source_only', 'disagree')).toBe('reel')
     expect(oppositeGateVerdict('reel')).toBe('source_only')
     expect(oppositeGateVerdict('source_only')).toBe('reel')
+  })
+})
+
+describe('passesGateForAutoPost', () => {
+  const pass = (
+    verdict: 'reel' | 'source_only',
+    decidedBy: string,
+    label: 'agree' | 'disagree' | null,
+  ) => passesGateForAutoPost({ verdict, decidedBy, label })
+
+  it('passes an unlabelled reel verdict from a rule or the model', () => {
+    expect(pass('reel', 'model', null)).toBe(true)
+    expect(pass('reel', 'rule', null)).toBe(true)
+    expect(pass('source_only', 'model', null)).toBe(false)
+  })
+
+  it('never passes an unlabelled explore row, the judge said no to it', () => {
+    expect(pass('reel', 'explore', null)).toBe(false)
+  })
+
+  it('lets the admin label win', () => {
+    expect(pass('source_only', 'model', 'disagree')).toBe(true)
+    expect(pass('reel', 'model', 'disagree')).toBe(false)
+    expect(pass('reel', 'explore', 'agree')).toBe(true)
+    expect(pass('reel', 'explore', 'disagree')).toBe(false)
   })
 })
 

@@ -18,6 +18,8 @@ import {
   REELS_PAGE_SIZE,
   composerReel,
   postQueue,
+  failedPostCount,
+  failedPosts,
   lastPostedAt,
   publishedReels,
   readAccount,
@@ -49,16 +51,27 @@ export default async function InstagramPage({ searchParams }: Props) {
   const mediaBase = mediaBaseUrl()
 
   const publisher = await readPublisher(db, routeLog('admin/instagram'))
-  const [account, otherAccount, checkError, reels, rawQueue, lastPosted, composer] =
-    await Promise.all([
-      readAccount(db, publisher),
-      publisher === 'official' ? readUnofficialAccount(db) : readOfficialAccount(db),
-      readCheckError(db),
-      publishedReels(db, page.offset),
-      postQueue(db),
-      lastPostedAt(db),
-      itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
-    ])
+  const [
+    account,
+    otherAccount,
+    checkError,
+    reels,
+    rawQueue,
+    failed,
+    failedTotal,
+    lastPosted,
+    composer,
+  ] = await Promise.all([
+    readAccount(db, publisher),
+    publisher === 'official' ? readUnofficialAccount(db) : readOfficialAccount(db),
+    readCheckError(db),
+    publishedReels(db, page.offset),
+    postQueue(db),
+    failedPosts(db),
+    failedPostCount(db),
+    lastPostedAt(db),
+    itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
+  ])
   const queuedOldestFirst = rawQueue.filter((r) => r.status === 'queued').reverse()
   const etas = queuedPostEtas(queuedOldestFirst.length, lastPosted, now)
   const etaById = new Map(queuedOldestFirst.map((r, i) => [r.id, etas[i] ?? null]))
@@ -151,7 +164,7 @@ export default async function InstagramPage({ searchParams }: Props) {
         </section>
       ) : null}
 
-      <Section title={`Queue and history · ${queue.length}`}>
+      <Section title={`Queue and posted · ${queue.length}`}>
         {insightsMissing ? (
           <p className="mb-2 max-w-prose text-xs text-faint">{INSIGHTS_PERMISSION_NOTE}</p>
         ) : null}
@@ -166,6 +179,23 @@ export default async function InstagramPage({ searchParams }: Props) {
           />
         )}
       </Section>
+
+      {failed.length > 0 ? (
+        <details className="mb-9 [&[open]>summary]:mb-3">
+          <summary className="cursor-pointer text-[13px] font-medium text-muted hover:text-fg">
+            Failed · {failedTotal}
+            {failedTotal > failed.length ? (
+              <span className="font-normal text-faint"> (newest {failed.length} shown)</span>
+            ) : null}
+          </summary>
+          <QueueList
+            rows={failed}
+            now={now}
+            returnTo={returnTo}
+            hrefFor={(id) => `${ADMIN_ROUTES.pipeline}?item=${id}`}
+          />
+        </details>
+      ) : null}
 
       <Section title="Finished reels">
         {reels.rows.length === 0 ? (

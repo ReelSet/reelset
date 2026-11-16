@@ -21,6 +21,8 @@ export type QueueRow = {
   like_count: number | null
   comments_count: number | null
   view_count: number | null
+  shares?: number | null
+  saves?: number | null
   stats_at: Date | string | null
   etaAt?: Date | null
 }

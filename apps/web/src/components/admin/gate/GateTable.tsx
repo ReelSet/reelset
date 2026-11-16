@@ -43,8 +43,13 @@ function Outcome({ outcome }: { outcome: GateOutcome | undefined }) {
   if (!outcome) return null
   return (
     <div className="whitespace-nowrap text-xs tabular-nums text-muted">
+      {outcome.igViews === null ? null : (
+        <div className="text-fg">
+          IG {outcome.igViews.toLocaleString('en-US')} views · {outcome.igLikes ?? 0} likes
+        </div>
+      )}
       <div>
-        {outcome.views.toLocaleString('en-US')} views · {outcome.likes} likes
+        App {outcome.views.toLocaleString('en-US')} views · {outcome.likes} likes
       </div>
       {outcome.avgWatchRatio === null ? null : (
         <div className="text-faint">{fmtPct(outcome.avgWatchRatio)} watched on average</div>

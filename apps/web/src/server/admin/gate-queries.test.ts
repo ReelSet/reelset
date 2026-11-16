@@ -181,14 +181,29 @@ describe('gate counts', () => {
 describe('gateOutcomes', () => {
   it('asks only about live reels and skips the query for an empty page', async () => {
     const { db, queries } = scriptedDb(() => [
-      { id: 'i1', view_count: 120, likes: '4', avg_watch_ratio: 0.62 },
+      { id: 'i1', view_count: 120, likes: '4', avg_watch_ratio: 0.62, ig_views: 152, ig_likes: 1 },
       { id: 'i2', view_count: 0, likes: '0', avg_watch_ratio: null },
     ])
     expect(await gateOutcomes(db, [])).toEqual(new Map())
     expect(queries).toHaveLength(0)
     const outcomes = await gateOutcomes(db, ['i1', 'i2', 'i1'])
-    expect(outcomes.get('i1')).toEqual({ views: 120, likes: 4, avgWatchRatio: 0.62 })
-    expect(outcomes.get('i2')).toEqual({ views: 0, likes: 0, avgWatchRatio: null })
+    expect(outcomes.get('i1')).toEqual({
+      views: 120,
+      likes: 4,
+      avgWatchRatio: 0.62,
+      igViews: 152,
+      igLikes: 1,
+    })
+    expect(outcomes.get('i2')).toEqual({
+      views: 0,
+      likes: 0,
+      avgWatchRatio: null,
+      igViews: null,
+      igLikes: null,
+    })
+    expect(queries[0]!.sql).toMatch(
+      /from instagram_post p where p\.item_id = item\.id\s+and p\.status = 'posted'/,
+    )
     expect(queries).toHaveLength(1)
     expect(queries[0]!.parameters).toEqual(expect.arrayContaining(['i1', 'i2', 'rendered']))
     expect(queries[0]!.parameters.filter((p) => p === 'i1')).toHaveLength(1)

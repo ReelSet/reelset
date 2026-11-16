@@ -133,7 +133,18 @@ export async function gateAwaitingReview(db: Database): Promise<number> {
   return Number(row?.n ?? 0)
 }
 
-export type GateOutcome = { views: number; likes: number; avgWatchRatio: number | null }
+export type GateOutcome = {
+  views: number
+  likes: number
+  avgWatchRatio: number | null
+  /** Null until the reel is posted and the hourly sync has read it. */
+  igViews: number | null
+  igLikes: number | null
+}
+
+const igPosted = (column: string) =>
+  sql`(select p.${sql.raw(column)} from instagram_post p where p.item_id = item.id
+    and p.status = 'posted' order by p.posted_at desc nulls last limit 1)`
 
 /** How the reels among these items performed; items without a live reel are absent from the map. */
 export async function gateOutcomes(
@@ -151,6 +162,8 @@ export async function gateOutcomes(
       sql<number | null>`(select avg((e.meta->>'watchRatio')::float) from event e
         where e.item_id = item.id and e.name = ${EventName.reel_complete}::event_name
           and jsonb_typeof(e.meta->'watchRatio') = 'number')`.as('avg_watch_ratio'),
+      sql<number | null>`${igPosted('view_count')}`.as('ig_views'),
+      sql<number | null>`${igPosted('like_count')}`.as('ig_likes'),
     ])
     .where('item.id', 'in', ids)
     .where('item.status', '=', ItemStatus.rendered)
@@ -162,6 +175,8 @@ export async function gateOutcomes(
         views: row.view_count,
         likes: Number(row.likes),
         avgWatchRatio: row.avg_watch_ratio === null ? null : Number(row.avg_watch_ratio),
+        igViews: row.ig_views ?? null,
+        igLikes: row.ig_likes ?? null,
       },
     ]),
   )

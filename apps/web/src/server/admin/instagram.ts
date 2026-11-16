@@ -22,7 +22,8 @@ import { validateQueueRequest } from '@/lib/instagram/caption'
 import type { CommandResult } from '@/server/admin/commands'
 
 export const REELS_PAGE_SIZE = 24
-export const QUEUE_LIMIT = 40
+export const QUEUE_LIMIT = 60
+export const FAILED_LIMIT = 20
 const UNIQUE_VIOLATION = '23505'
 const STALE_PREVIEW_MESSAGE =
   'This reel was re-rendered after you opened it. Reload and check the preview, then queue again.'
@@ -83,6 +84,8 @@ export async function publishedReels(db: Database, offset: number) {
       sql<string | null>`${latestDone('poster_key')}`.as('poster_key'),
       sql<string | null>`${livePost('status')}`.as('post_status'),
       sql<string | null>`${livePost('permalink')}`.as('permalink'),
+      sql<number | null>`${livePost('view_count')}`.as('ig_views'),
+      sql<number | null>`${livePost('like_count')}`.as('ig_likes'),
     ])
     .where('item.status', '=', 'rendered')
     .where('item.visibility', '<>', 'hidden')
@@ -128,7 +131,29 @@ export async function composerReel(db: Database, itemId: string) {
   return { ...row, video_key: row.video_key, draftCaption: draft }
 }
 
-export async function postQueue(db: Database) {
+/** Queued, posting and posted rows; failed rows live in `failedPosts` so they cannot push live posts off the page. */
+export const postQueue = (db: Database) =>
+  queueQuery(db)
+    .where('instagram_post.status', '!=', InstagramPostStatus.failed)
+    .limit(QUEUE_LIMIT)
+    .execute()
+
+export const failedPosts = (db: Database) =>
+  queueQuery(db)
+    .where('instagram_post.status', '=', InstagramPostStatus.failed)
+    .limit(FAILED_LIMIT)
+    .execute()
+
+export async function failedPostCount(db: Database): Promise<number> {
+  const row = await db
+    .selectFrom('instagram_post')
+    .select((eb) => eb.fn.countAll<string>().as('n'))
+    .where('status', '=', InstagramPostStatus.failed)
+    .executeTakeFirst()
+  return Number(row?.n ?? 0)
+}
+
+function queueQuery(db: Database) {
   return db
     .selectFrom('instagram_post')
     .innerJoin('item', 'item.id', 'instagram_post.item_id')
@@ -147,14 +172,14 @@ export async function postQueue(db: Database) {
       'instagram_post.like_count',
       'instagram_post.comments_count',
       'instagram_post.view_count',
+      'instagram_post.shares',
+      'instagram_post.saves',
       'instagram_post.stats_at',
       sql<string | null>`(select r.poster_key from render r where r.item_id = instagram_post.item_id
         and r.video_key = instagram_post.video_key limit 1)`.as('poster_key'),
     ])
     .where('instagram_post.status', '!=', InstagramPostStatus.deleted)
     .orderBy('instagram_post.created_at', 'desc')
-    .limit(QUEUE_LIMIT)
-    .execute()
 }
 
 export async function lastPostedAt(db: Database): Promise<Date | null> {

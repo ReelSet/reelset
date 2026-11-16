@@ -374,6 +374,7 @@ export {
   isSupersededGateInstructions,
   judgeVerdict,
   judgeWasRight,
+  passesGateForAutoPost,
   gateCallBudget,
   gateCallCostUsd,
   gateConfigHash,

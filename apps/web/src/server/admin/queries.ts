@@ -71,17 +71,32 @@ export const ITEM_SORT_KEYS = [
   'source',
   'status',
   'score',
+  'gate',
+  'ig_views',
+  'ig_likes',
   'views',
   'likes',
   'attempts',
   'changed',
 ] as const
 export type ItemSortKey = (typeof ITEM_SORT_KEYS)[number]
+// The post the item's Instagram numbers come from: its newest live one.
+const igPost = (column: string) =>
+  sql`(select p.${sql.raw(column)} from instagram_post p where p.item_id = item.id
+    and p.status = 'posted' order by p.posted_at desc nulls last limit 1)`
+// The decision that counts for auto posting: the newest automatic one (manual checks are analysis only).
+const gateDecision = (column: string) =>
+  sql`(select d.${sql.raw(column)} from gate_decision d where d.item_id = item.id
+    and d.trigger = 'auto' order by d.created_at desc, d.id desc limit 1)`
+
 const ITEM_SORT: Record<ItemSortKey, RawBuilder<unknown>> = {
   title: ref('item.title'),
   source: itemSource,
   status: ref('item.status'),
   score: ref('item.score'),
+  gate: gateDecision('score'),
+  ig_views: igPost('view_count'),
+  ig_likes: igPost('like_count'),
   views: ref('item.view_count'),
   likes: sql`(select count(*) from "like" l where l.item_id = item.id)`,
   attempts: ref('item.attempts'),
@@ -120,6 +135,14 @@ export async function listItems(
       'hidden_at',
       itemSource.as('source'),
       sql<string>`(select count(*) from "like" l where l.item_id = item.id)`.as('like_count'),
+      sql<number | null>`${igPost('view_count')}`.as('ig_views'),
+      sql<number | null>`${igPost('like_count')}`.as('ig_likes'),
+      sql<number | null>`${igPost('comments_count')}`.as('ig_comments'),
+      sql<string | null>`${igPost('permalink')}`.as('ig_permalink'),
+      sql<number | null>`${gateDecision('score')}`.as('gate_score'),
+      sql<string | null>`${gateDecision('verdict')}`.as('gate_verdict'),
+      sql<string | null>`${gateDecision('decided_by')}`.as('gate_decided_by'),
+      sql<string | null>`${gateDecision('label')}`.as('gate_label'),
     ])
   if (filters.visibility) query = query.where('visibility', '=', filters.visibility)
   if (filters.ids) query = query.where('id', 'in', filters.ids.length ? [...filters.ids] : [NO_ID])

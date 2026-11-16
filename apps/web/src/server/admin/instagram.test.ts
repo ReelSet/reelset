@@ -12,7 +12,10 @@ import {
 import { describe, expect, it } from 'vitest'
 import { dummyDb } from '@/test/dummy-db'
 import {
+  FAILED_LIMIT,
+  QUEUE_LIMIT,
   composerReel,
+  failedPosts,
   postQueue,
   queueInstagramPost,
   retryFailedPost,
@@ -75,6 +78,17 @@ describe('instagram render selection', () => {
     const t = scriptedDb(() => [])
     await postQueue(t.db)
     expect(t.queries[0]?.sql).toMatch(/r\.video_key = instagram_post\.video_key/)
+  })
+
+  it('keeps failed posts in their own list so they cannot push live posts off the page', async () => {
+    const t = scriptedDb(() => [])
+    await postQueue(t.db)
+    await failedPosts(t.db)
+    const [live, failed] = t.queries
+    expect(live?.sql).toMatch(/"instagram_post"\."status" != \$\d/)
+    expect(live?.parameters).toEqual(expect.arrayContaining(['deleted', 'failed', QUEUE_LIMIT]))
+    expect(failed?.sql).toMatch(/"instagram_post"\."status" = \$\d/)
+    expect(failed?.parameters).toEqual(expect.arrayContaining(['failed', FAILED_LIMIT]))
   })
 })
 

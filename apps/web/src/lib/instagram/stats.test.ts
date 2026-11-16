@@ -17,4 +17,13 @@ describe('statsParts', () => {
     ])
     expect(statsParts({ view_count: null, like_count: null, comments_count: null })).toEqual([])
   })
+
+  it('adds shares and saves only when there are some', () => {
+    expect(
+      statsParts({ view_count: 38, like_count: 0, comments_count: 0, shares: 2, saves: 1 }),
+    ).toEqual(['38 views', '0 likes', '0 comments', '2 shares', '1 save'])
+    expect(
+      statsParts({ view_count: 38, like_count: 0, comments_count: 0, shares: 0, saves: null }),
+    ).toEqual(['38 views', '0 likes', '0 comments'])
+  })
 })

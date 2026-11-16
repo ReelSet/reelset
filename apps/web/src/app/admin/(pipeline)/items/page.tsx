@@ -31,6 +31,7 @@ import { BULK_FORM_ID, BulkHideBar } from '@/components/admin/moderation/BulkHid
 import { HideControls } from '@/components/admin/moderation/HideControls'
 import { SelectAllCheckbox } from '@/components/admin/moderation/SelectAllCheckbox'
 import { VisibilityBadge } from '@/components/admin/moderation/VisibilityBadge'
+import { Dash, GateCell, IgViews } from '@/components/admin/items/ItemStatCells'
 import { SourceDot } from '@/components/ui/sources'
 import { assertAdmin } from '@/server/admin/guard'
 import { viewerTimeZone } from '@/server/timezone'
@@ -56,8 +57,11 @@ const COLUMNS: SortColumn<ItemSortKey>[] = [
   { key: 'source', label: 'Source', firstDir: 'asc' },
   { key: 'status', label: 'Status', firstDir: 'asc' },
   { key: 'score', label: 'Score' },
-  { key: 'views', label: 'Views' },
-  { key: 'likes', label: 'Likes' },
+  { key: 'gate', label: 'Gate' },
+  { key: 'ig_views', label: 'IG views' },
+  { key: 'ig_likes', label: 'IG likes' },
+  { key: 'views', label: 'App views' },
+  { key: 'likes', label: 'App likes' },
   { key: 'attempts', label: 'Attempts' },
   { key: 'changed', label: 'Changed' },
 ]
@@ -115,7 +119,7 @@ export default async function ItemsPage({ searchParams }: Props) {
     <div>
       <Flash value={sp.flash} />
       <Toolbar
-        hint={`Every item the pipeline has seen. Select one to open its timeline, or tick rows to hide them. ${zoneHint(tz)}`}
+        hint={`Every item the pipeline has seen. Select one to open its timeline, or tick rows to hide them. Gate shows the newest automatic score (green = it may be auto posted). IG numbers come from the hourly Instagram sync; App numbers are from the reelset feed. ${zoneHint(tz)}`}
       />
       <div className="mb-5 flex flex-col gap-3">
         <form method="get" action={ADMIN_ROUTES.items} className="flex gap-2">
@@ -234,6 +238,22 @@ export default async function ItemsPage({ searchParams }: Props) {
                     <Status value={i.status} />
                   </td>
                   <td className={`${td} tabular-nums`}>{i.score.toFixed(1)}</td>
+                  <td className={td}>
+                    <GateCell
+                      score={i.gate_score}
+                      verdict={i.gate_verdict}
+                      decidedBy={i.gate_decided_by}
+                      label={i.gate_label}
+                    />
+                  </td>
+                  <td className={`${td} tabular-nums`}>
+                    <IgViews
+                      views={i.ig_views}
+                      comments={i.ig_comments}
+                      permalink={i.ig_permalink}
+                    />
+                  </td>
+                  <td className={`${td} tabular-nums`}>{i.ig_likes ?? <Dash />}</td>
                   <td className={`${td} tabular-nums`}>{i.view_count}</td>
                   <td className={`${td} tabular-nums`}>{Number(i.like_count)}</td>
                   <td className={`${td} tabular-nums`}>{i.attempts}</td>

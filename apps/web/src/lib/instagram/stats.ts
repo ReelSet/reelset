@@ -2,6 +2,8 @@ export type PostStats = {
   like_count: number | null
   comments_count: number | null
   view_count: number | null
+  shares?: number | null
+  saves?: number | null
 }
 
 export const INSIGHTS_PERMISSION_NOTE =
@@ -18,5 +20,7 @@ export function statsParts(stats: PostStats): string[] {
     part(stats.view_count, 'view', 'views'),
     part(stats.like_count, 'like', 'likes'),
     part(stats.comments_count, 'comment', 'comments'),
+    stats.shares ? part(stats.shares, 'share', 'shares') : null,
+    stats.saves ? part(stats.saves, 'save', 'saves') : null,
   ].filter((p): p is string => p !== null)
 }
