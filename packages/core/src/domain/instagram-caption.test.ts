@@ -41,6 +41,20 @@ describe('buildCaption', () => {
     const caption = buildCaption({ ...base, hook: 'a'.repeat(3000) })
     expect(caption.length).toBeLessThanOrEqual(INSTAGRAM_CAPTION_MAX_CHARS)
   })
+
+  it('keeps Source when the caption is too long', () => {
+    const input = {
+      ...base,
+      canonicalUrl: 'https://x.com/a',
+      credits: [{ kind: 'stock' as const, creator: 'Ana' }],
+    }
+    for (const size of [2150, 2190, 3000]) {
+      const caption = buildCaption({ ...input, hook: 'a'.repeat(size) })
+      expect(caption).toContain('Source: https://x.com/a')
+      expect(caption.length).toBeLessThanOrEqual(INSTAGRAM_CAPTION_MAX_CHARS)
+    }
+    expect(buildCaption({ ...input, hook: 'a'.repeat(2150) })).toContain('#reelset')
+  })
 })
 
 describe('topicHashtags', () => {

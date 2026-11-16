@@ -39,16 +39,24 @@ function creditLines(credits: readonly CaptionCredit[]): string[] {
 /** The default Instagram caption for a reel: hook, source, credits, hashtags. */
 export function buildCaption(input: CaptionInput): string {
   const lead = (input.hook ?? input.tldr ?? input.title).trim()
-  const blocks = [
-    lead,
-    `Source: ${input.canonicalUrl}`,
-    creditLines(input.credits).join('\n'),
-    [...topicHashtags(input.topics), ...BRAND_HASHTAGS].join(' '),
-  ].filter((b) => b.length > 0)
-  const caption = blocks.join('\n\n')
-  return caption.length <= INSTAGRAM_CAPTION_MAX_CHARS
-    ? caption
-    : blocks.slice(0, 1).concat(blocks.slice(-1)).join('\n\n').slice(0, INSTAGRAM_CAPTION_MAX_CHARS)
+  const source = `Source: ${input.canonicalUrl}`
+  const credits = creditLines(input.credits).join('\n')
+  const tags = [...topicHashtags(input.topics), ...BRAND_HASHTAGS].join(' ')
+  const join = (blocks: string[]) => blocks.filter((b) => b.length > 0).join('\n\n')
+  // When it is too long, credits go first and the source line is never dropped.
+  for (const tail of [
+    [source, credits, tags],
+    [source, tags],
+    [source, BRAND_HASHTAGS.join(' ')],
+  ]) {
+    const caption = join([lead, ...tail])
+    if (caption.length <= INSTAGRAM_CAPTION_MAX_CHARS) return caption
+  }
+  const room = INSTAGRAM_CAPTION_MAX_CHARS - source.length - 2
+  return join([lead.slice(0, Math.max(0, room)).trim(), source]).slice(
+    0,
+    INSTAGRAM_CAPTION_MAX_CHARS,
+  )
 }
 
 const captionCreditsSchema = z.array(
