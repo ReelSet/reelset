@@ -1,4 +1,4 @@
-import { GATE_DECIDERS, GATE_VERDICTS, SOURCES } from '@reelset/core'
+import { GATE_DECIDERS, GATE_TRIGGERS, GATE_VERDICTS, SOURCES } from '@reelset/core'
 import Link from 'next/link'
 import { Chips, button, buttonPrimary, input } from '@/components/admin/ui'
 import { sourceMeta } from '@/components/ui/sources'
@@ -9,7 +9,7 @@ import {
   GATE_SEARCH_MAX_CHARS,
   type GateFilters,
 } from '@/lib/admin/gate'
-import { DECIDER_LABELS, VERDICT_LABELS } from '@/lib/admin/gate-view'
+import { DECIDER_LABELS, TRIGGER_LABELS, VERDICT_LABELS } from '@/lib/admin/gate-view'
 import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { pageHref } from '@/lib/admin/pagination'
 import type { GateReviewCounts } from '@/server/admin/gate-queries'
@@ -25,7 +25,7 @@ type Props = {
 function isFiltered(filters: GateFilters): boolean {
   return (
     filters.review !== DEFAULT_GATE_REVIEW ||
-    !!(filters.verdict || filters.decidedBy || filters.source || filters.q)
+    !!(filters.verdict || filters.decidedBy || filters.source || filters.trigger || filters.q)
   )
 }
 
@@ -83,6 +83,17 @@ export function GateFilterBar({ filters, params, counts }: Props) {
             key: decider,
             label: DECIDER_LABELS[decider] ?? decider,
             href: href({ by: decider }),
+          })),
+        ]}
+      />
+      <Chips
+        active={filters.trigger}
+        items={[
+          { key: 'all', label: 'Automatic and manual', href: href({ trigger: undefined }) },
+          ...GATE_TRIGGERS.map((trigger) => ({
+            key: trigger,
+            label: TRIGGER_LABELS[trigger] ?? trigger,
+            href: href({ trigger }),
           })),
         ]}
       />

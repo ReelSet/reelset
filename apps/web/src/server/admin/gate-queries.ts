@@ -67,6 +67,7 @@ export async function listGateDecisions(
   if (filters.verdict) query = query.where('gate_decision.verdict', '=', filters.verdict)
   if (filters.decidedBy) query = query.where('gate_decision.decided_by', '=', filters.decidedBy)
   if (filters.source) query = query.where(sql<boolean>`${itemSource} = ${filters.source}`)
+  if (filters.trigger) query = query.where('gate_decision.trigger', '=', filters.trigger)
   if (filters.q) query = query.where('item.title', 'ilike', `%${filters.q.replace(/[%_\\]/g, '')}%`)
   const rows = await query
     .orderBy(GATE_SORT[sort.key], dirOf(sort))
@@ -92,8 +93,15 @@ export async function listGateDecisions(
   }
 }
 
-export type GateReviewCounts = { pending: number; agreed: number; disagreed: number; all: number }
+export type GateReviewCounts = {
+  pending: number
+  agreed: number
+  disagreed: number
+  all: number
+  manual: number
+}
 
+/** Sizes of the review tabs over every decision, on-demand ones included (they are reviewable too), plus how many were on demand. */
 export async function gateReviewCounts(db: Database): Promise<GateReviewCounts> {
   const row = await db
     .selectFrom('gate_decision')
@@ -102,6 +110,7 @@ export async function gateReviewCounts(db: Database): Promise<GateReviewCounts> 
       sql<string>`count(*) filter (where label = 'agree')`.as('agreed'),
       sql<string>`count(*) filter (where label = 'disagree')`.as('disagreed'),
       sql<string>`count(*)`.as('all'),
+      sql<string>`count(*) filter (where trigger = 'manual')`.as('manual'),
     ])
     .executeTakeFirst()
   return {
@@ -109,6 +118,7 @@ export async function gateReviewCounts(db: Database): Promise<GateReviewCounts> 
     agreed: Number(row?.agreed ?? 0),
     disagreed: Number(row?.disagreed ?? 0),
     all: Number(row?.all ?? 0),
+    manual: Number(row?.manual ?? 0),
   }
 }
 
@@ -182,7 +192,7 @@ export async function gateSourceReview(
       select d.verdict, d.label, d.decided_by, ${itemSource} as source
       from gate_decision d
       join item on item.id = d.item_id
-      where d.created_at >= ${opts.since}
+      where d.created_at >= ${opts.since} and d.trigger = 'auto'
     ) decided
     group by source
     order by decided desc, source
@@ -206,7 +216,7 @@ export async function gateDailyTrend(
     select to_char(date_trunc('day', created_at at time zone ${opts.tz}), 'YYYY-MM-DD') as day,
       verdict, count(*)::int as decisions
     from gate_decision
-    where created_at >= (${firstDay}::date)::timestamp at time zone ${opts.tz}
+    where created_at >= (${firstDay}::date)::timestamp at time zone ${opts.tz} and trigger = 'auto'
     group by 1, 2
   `.execute(db)
   return gateTrendPoints(
@@ -244,7 +254,7 @@ export async function gateOverview(
 
 const labelSchema = z.enum(GATE_LABELS)
 
-/** The newest judgements that carry model signals, for re-scoring under other settings without a model call. */
+/** The newest pipeline judgements that carry model signals (on-demand checks of old reels are left out so they cannot skew tuning), for re-scoring under other settings without a model call. */
 export async function recentJudgedDecisions(
   db: Database,
   opts: { limit: number; labelledOnly?: boolean },
@@ -261,6 +271,7 @@ export async function recentJudgedDecisions(
       itemSource.as('source'),
     ])
     .where('gate_decision.decided_by', 'in', JUDGED_BY)
+    .where('gate_decision.trigger', '=', 'auto')
     .where('gate_decision.score', 'is not', null)
   if (opts.labelledOnly) query = query.where('gate_decision.label', 'is not', null)
   const rows = await query

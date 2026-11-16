@@ -37,6 +37,7 @@ const row = (patch: Partial<GateDecisionRow> = {}): GateDecisionRow => ({
   rule: null,
   mode: 'shadow',
   applied: false,
+  trigger: 'auto',
   model: 'claude-haiku-5-5',
   prompt_version: 'gate-v1',
   config_hash: 'abc',
@@ -57,6 +58,7 @@ describe('parseGateFilters', () => {
       verdict: null,
       decidedBy: null,
       source: null,
+      trigger: null,
       q: null,
     })
   })
@@ -82,7 +84,14 @@ describe('parseGateFilters', () => {
   })
 
   it('round-trips through URL params and omits the defaults', () => {
-    const sp = { review: 'all', verdict: 'source_only', by: 'model', source: 'hn', q: 'rust' }
+    const sp = {
+      review: 'all',
+      verdict: 'source_only',
+      by: 'model',
+      source: 'hn',
+      trigger: 'manual',
+      q: 'rust',
+    }
     expect(gateFilterParams(parseGateFilters(sp))).toEqual(sp)
     expect(Object.values(gateFilterParams(parseGateFilters({}))).filter(Boolean)).toEqual([])
   })
@@ -294,6 +303,13 @@ describe('applied note', () => {
     expect(note({ mode: 'live', applied: false, verdict: 'source_only' })).toBe(
       'Not applied: requested by a user',
     )
+  })
+
+  it('marks a manual judgement as analysis only', () => {
+    const view = toGateView(row({ trigger: 'manual', mode: 'shadow', applied: false }))!
+    expect(view.manual).toBe(true)
+    expect(view.appliedNote).toBe('Not applied: manual check, analysis only')
+    expect(toGateView(row())!.manual).toBe(false)
   })
 
   it('names shadow mode as the reason otherwise', () => {

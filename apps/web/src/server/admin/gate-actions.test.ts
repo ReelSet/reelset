@@ -16,6 +16,7 @@ const commands = {
   testGateTuning: vi.fn(),
   thresholdSuggestion: vi.fn(),
 }
+const judging = { judgeItemNow: vi.fn(), checkLink: vi.fn() }
 const loadGateQueue = vi.fn()
 const gateReviewCounts = vi.fn()
 
@@ -29,6 +30,7 @@ vi.mock('@/server/logger', () => {
 })
 vi.mock('@/server/timezone', () => ({ viewerTimeZone: async () => 'UTC' }))
 vi.mock('@/server/admin/gate', () => commands)
+vi.mock('@/server/admin/gate-judge', () => judging)
 vi.mock('@/server/admin/gate-queries', () => ({ loadGateQueue, gateReviewCounts }))
 
 const actions = await import('@/app/admin/(pipeline)/gate/actions')
@@ -69,6 +71,8 @@ describe('gate actions: admin guard', () => {
       ...FLASH_ACTIONS.map(([action]) => action),
       'saveGateSettingsAction',
       'testGateTuningAction',
+      'judgeItemNowAction',
+      'checkGateLinkAction',
     ]
     expect(Object.keys(actions).sort()).toEqual(tested.sort())
   })
@@ -88,6 +92,34 @@ describe('gate actions: admin guard', () => {
     await expect(actions.testGateTuningAction(null, form({}))).rejects.toThrow('NOT_FOUND')
     expect(commands.saveGateSettings).not.toHaveBeenCalled()
     expect(commands.testGateTuning).not.toHaveBeenCalled()
+  })
+})
+
+describe('judge on demand: guard and wiring', () => {
+  it('runs nothing for a non-admin', async () => {
+    assertAdmin.mockRejectedValue(DENIED)
+    await expect(actions.judgeItemNowAction(form({ itemId: 'i1' }))).rejects.toThrow('NOT_FOUND')
+    await expect(actions.checkGateLinkAction(null, form({ link: 'x' }))).rejects.toThrow(
+      'NOT_FOUND',
+    )
+    expect(judging.judgeItemNow).not.toHaveBeenCalled()
+    expect(judging.checkLink).not.toHaveBeenCalled()
+  })
+
+  it('judges the posted item and flashes the result', async () => {
+    judging.judgeItemNow.mockResolvedValue({ ok: true, message: 'Gate says Reel' })
+    await expect(
+      actions.judgeItemNowAction(form({ itemId: 'i1', returnTo: '/admin/items' })),
+    ).rejects.toThrow('REDIRECT:/admin/items?flash=ok%3AGate+says+Reel')
+    expect(judging.judgeItemNow).toHaveBeenCalledWith({ itemId: 'i1' }, expect.anything())
+  })
+
+  it('returns the link check result to the form', async () => {
+    const result = { kind: 'not_found', message: 'This source is not in reelset yet.' }
+    judging.checkLink.mockResolvedValue(result)
+    const link = 'https://example.com/a'
+    expect(await actions.checkGateLinkAction(null, form({ link }))).toBe(result)
+    expect(judging.checkLink).toHaveBeenCalledWith({ fake: 'db' }, link, expect.anything())
   })
 })
 

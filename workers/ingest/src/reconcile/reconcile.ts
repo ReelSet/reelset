@@ -311,7 +311,7 @@ async function primarySources(
 
 type FoundCandidate = { id: string; score: number }
 
-/** Found items an admin sent back with "make a reel anyway" (their latest gate decision). A failed lookup yields none, so admission carries on as usual. */
+/** Found items an admin sent back with "make a reel anyway" (their latest gate decision, manual judgements aside). A failed lookup yields none, so admission carries on as usual. */
 async function overriddenFound(db: Database, log: Logger): Promise<FoundCandidate[]> {
   try {
     const { rows } = await sql<FoundCandidate>`
@@ -323,7 +323,7 @@ async function overriddenFound(db: Database, log: Logger): Promise<FoundCandidat
         and (
           select d.decided_by = 'admin' and d.verdict = 'reel'
           from gate_decision d
-          where d.item_id = item.id
+          where d.item_id = item.id and d.trigger = 'auto'
           order by d.created_at desc, d.id desc
           limit 1
         )

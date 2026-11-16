@@ -13,6 +13,7 @@ import {
   testGateTuning,
   type GateDryRun,
 } from '@/server/admin/gate'
+import { checkLink, judgeItemNow, type LinkCheck } from '@/server/admin/gate-judge'
 import { assertAdmin } from '@/server/admin/guard'
 import { runAdminAction, runAdminFormAction, type AdminFormState } from '@/server/admin/run'
 import { getDb } from '@/server/db'
@@ -74,4 +75,19 @@ export async function testGateTuningAction(
   const admin = await assertAdmin()
   const log = routeLog('admin/gate-dry-run').child({ adminId: admin.id })
   return testGateTuning(getDb(), gateFormFields(formData), log)
+}
+
+export async function judgeItemNowAction(formData: FormData): Promise<void> {
+  await runAdminAction(formData, 'gate-judge-now', async ({ log }) =>
+    judgeItemNow({ itemId: formData.get('itemId') }, log),
+  )
+}
+
+export async function checkGateLinkAction(
+  _previous: LinkCheck | null,
+  formData: FormData,
+): Promise<LinkCheck> {
+  const admin = await assertAdmin()
+  const log = routeLog('admin/gate-check-link').child({ adminId: admin.id })
+  return checkLink(getDb(), formData.get('link'), log)
 }

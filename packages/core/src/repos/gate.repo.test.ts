@@ -15,6 +15,7 @@ import {
   gateStats,
   labelGateDecision,
   latestGateDecision,
+  latestGateJudgement,
   listGateExamples,
   loadGateConfig,
   recordGateDecision,
@@ -77,7 +78,23 @@ describe('recordGateDecision', () => {
       'gate-v1',
       'abc123def456',
       0.0007,
+      'auto',
     ])
+  })
+
+  it('stores a manual judgement as such and refuses to mark one applied', async () => {
+    const { db, statements } = capture()
+    await recordGateDecision(db, modelDecision({ trigger: 'manual' }), log)
+    expect(statements[0]!.sql).toContain('"trigger"')
+    expect(statements[0]!.params.at(-1)).toBe('manual')
+    await expect(
+      recordGateDecision(
+        db,
+        modelDecision({ trigger: 'manual', mode: 'live', applied: true }),
+        log,
+      ),
+    ).rejects.toBeInstanceOf(ZodError)
+    expect(statements).toHaveLength(1)
   })
 
   it('stores a rule decision with no score, signals, model or cost', async () => {
@@ -112,6 +129,7 @@ describe('recordGateDecision', () => {
       'gate-v1',
       'abc123def456',
       0,
+      'auto',
     ])
   })
 
@@ -163,9 +181,18 @@ describe('latestGateDecision', () => {
     const { db, statements } = capture([{ id: 'd2' }])
     expect(await latestGateDecision(db, 'i1')).toEqual({ id: 'd2' })
     expect(statements[0]!.sql).toMatch(
+      /where "item_id" = \$1 and "trigger" = \$2 order by "created_at" desc, "id" desc limit \$3/,
+    )
+    expect(statements[0]!.params).toEqual(['i1', 'auto', 1])
+  })
+
+  it('latestGateJudgement reads the newest row of any trigger, manual ones included', async () => {
+    const { db, statements } = capture([{ id: 'd3', trigger: 'manual' }])
+    expect(await latestGateJudgement(db, 'i1')).toEqual({ id: 'd3', trigger: 'manual' })
+    expect(statements[0]!.sql).toMatch(
       /where "item_id" = \$1 order by "created_at" desc, "id" desc limit \$2/,
     )
-    expect(statements[0]!.params).toEqual(['i1', 1])
+    expect(statements[0]!.sql).not.toContain('"trigger"')
   })
 
   it('is null for an item that was never judged', async () => {
@@ -419,10 +446,23 @@ describe('gateStats', () => {
     const stats = await gateStats(db, { since })
     expect(stats).toMatchObject({ total: 3, labelled: 2, agreementRate: 1, costUsd: 0.002 })
     const { sql, params } = statements[0]!
-    expect(sql).toContain('where d.created_at >= $1')
+    expect(sql).toContain('where d.created_at >= $1 and d.trigger = $2')
     expect(sql).toContain('group by verdict, decided_by, source')
     expect(sql).toContain("count(*) filter (where label = 'agree')")
-    expect(params).toEqual([since])
+    expect(params).toEqual([since, 'auto'])
+  })
+
+  it('counts manual judgements only when asked for them', async () => {
+    const since = new Date('2026-11-01T00:00:00Z')
+    const { db, statements } = capture([])
+    await gateStats(db, { since, trigger: 'manual' })
+    expect(statements[0]!.params).toEqual([since, 'manual'])
+  })
+
+  it('still reads labelled manual judgements as examples', async () => {
+    const { db, statements } = capture([])
+    await listGateExamples(db, { limit: 4 })
+    expect(statements[0]!.sql).not.toContain('trigger')
   })
 })
 

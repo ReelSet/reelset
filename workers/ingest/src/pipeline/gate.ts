@@ -21,6 +21,7 @@ import {
   type GateDecisionInput,
   type GateDecisionMode,
   type GateDecisionRow,
+  type GateTrigger,
   type GateVerdict,
   type Logger,
 } from '@reelset/core'
@@ -38,7 +39,13 @@ export type GateDeps = {
   totalTimeoutMs?: number
 }
 
-export type GateContext = { db: Database; log: Logger; gate: GateDeps }
+export type GateContext = {
+  db: Database
+  log: Logger
+  gate: GateDeps
+  /** What started the judgement, recorded with the spend; the pipeline is `auto`. */
+  trigger?: GateTrigger
+}
 
 export type GateItem = GateSubject & {
   itemId: string
@@ -118,7 +125,7 @@ export function retryBlocker(input: {
   return null
 }
 
-type DecisionDraft = Omit<
+export type DecisionDraft = Omit<
   GateDecisionInput,
   'itemId' | 'mode' | 'applied' | 'promptVersion' | 'configHash'
 >
@@ -134,7 +141,7 @@ export function exemptReason(
 
 /** An admin's "make a reel anyway" is the item's latest word and must not be judged away again. */
 export function isAdminReelOverride(latest: GateDecisionRow | null): boolean {
-  return latest?.decided_by === 'admin' && latest.verdict === 'reel'
+  return latest?.decided_by === 'admin' && latest.verdict === 'reel' && latest.trigger !== 'manual'
 }
 
 /** The decision already made in this pass under the same settings, so a redelivery neither pays for nor records a second one. */
@@ -143,6 +150,7 @@ export function reusableDecision(
   current: { configHash: string; mode: GateDecisionMode; since: Date | null },
 ): GateDecisionRow | null {
   if (!latest || !current.since || latest.decided_by === 'admin') return null
+  if (latest.trigger === 'manual') return null
   const sameSettings =
     latest.mode === current.mode &&
     latest.config_hash === current.configHash &&
@@ -184,6 +192,7 @@ async function callJudge(
       costUsd,
       meta: {
         purpose: 'gate',
+        trigger: ctx.trigger ?? 'auto',
         model: config.model,
         provider: LLM_PROVIDER,
         itemId: item.itemId,
@@ -235,7 +244,8 @@ async function askJudge(
   throw new GateJudgeError(`gate answer malformed after ${GATE_JUDGE_ATTEMPTS} calls: ${reason}`)
 }
 
-async function draftDecision(
+/** Settles one item by its source rule or by asking the judge; throws when the judge cannot answer. Records spend but no decision. */
+export async function draftDecision(
   ctx: GateContext,
   item: GateItem,
   config: GateConfig,

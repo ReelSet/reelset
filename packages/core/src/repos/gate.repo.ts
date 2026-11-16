@@ -8,6 +8,7 @@ import {
   GATE_LABELS,
   GATE_PROMPT_VERSION,
   GATE_SCORE_MAX,
+  GATE_TRIGGERS,
   GATE_VERDICTS,
   correctGateVerdict,
   gateLabelReasonSchema,
@@ -19,6 +20,7 @@ import {
   type GateLabel,
   type GateLabelReason,
   type GateSignals,
+  type GateTrigger,
   type GateVerdict,
 } from '../domain/gate'
 import type { Logger } from '../lib/logger'
@@ -48,6 +50,8 @@ export type GateDecisionInput = {
   promptVersion?: string
   configHash: string
   costUsd?: number
+  /** Defaults to `auto`; `manual` marks an on-demand judgement that must never be applied. */
+  trigger?: GateTrigger
 }
 
 function shortPhrases(phrases: readonly string[]): string[] {
@@ -89,10 +93,15 @@ const decisionInputSchema = z
     promptVersion: z.string().min(1).default(GATE_PROMPT_VERSION),
     configHash: z.string().min(1),
     costUsd: z.number().min(0).default(0),
+    trigger: z.enum(GATE_TRIGGERS).default('auto'),
   })
   .refine((decision) => decision.decidedBy !== 'rule' || decision.rule !== null, {
     message: 'a rule decision must name the rule that fired',
     path: ['rule'],
+  })
+  .refine((decision) => decision.trigger !== 'manual' || !decision.applied, {
+    message: 'a manual judgement is never applied',
+    path: ['applied'],
   })
 
 /** Stores one judgement and returns the row; throws a ZodError on an input the table would reject. */
@@ -120,6 +129,7 @@ export async function recordGateDecision(
       prompt_version: decision.promptVersion,
       config_hash: decision.configHash,
       cost_usd: decision.costUsd,
+      trigger: decision.trigger,
     })
     .returningAll()
     .executeTakeFirstOrThrow()
@@ -133,14 +143,32 @@ export async function recordGateDecision(
       rule: decision.rule,
       mode: decision.mode,
       applied: decision.applied,
+      trigger: decision.trigger,
     },
     'gate decision recorded',
   )
   return row
 }
 
-/** The item's current decision (its newest row), or null when it was never judged. */
+/** The item's current decision (its newest pipeline or admin row), or null when it was never judged. Manual judgements are analysis only and never count. */
 export async function latestGateDecision(
+  db: Database,
+  itemId: string,
+): Promise<GateDecisionRow | null> {
+  const row = await db
+    .selectFrom('gate_decision')
+    .selectAll()
+    .where('item_id', '=', itemId)
+    .where('trigger', '=', 'auto')
+    .orderBy('created_at', 'desc')
+    .orderBy('id', 'desc')
+    .limit(1)
+    .executeTakeFirst()
+  return row ?? null
+}
+
+/** The newest judgement of any kind for an item, manual ones included: what to show when someone asks "what did the gate think of this". */
+export async function latestGateJudgement(
   db: Database,
   itemId: string,
 ): Promise<GateDecisionRow | null> {
@@ -399,8 +427,12 @@ export function summarizeGateStats(rows: readonly GateStatsRow[]): GateStats {
   return stats
 }
 
-/** Counts every decision made since `since` (re-judgements included) by verdict, decider and source, with review agreement and judge spend. */
-export async function gateStats(db: Database, opts: { since: Date }): Promise<GateStats> {
+/** Counts every decision made since `since` (re-judgements included) by verdict, decider and source, with review agreement and judge spend. Covers one trigger at a time, the pipeline's `auto` rows unless asked for `manual`, so on-demand judgements never mix into the automatic numbers. */
+export async function gateStats(
+  db: Database,
+  opts: { since: Date; trigger?: GateTrigger },
+): Promise<GateStats> {
+  const trigger = opts.trigger ?? 'auto'
   const { rows } = await sql<GateStatsRow>`
     select verdict, decided_by, source,
       count(*)::int as decisions,
@@ -411,7 +443,7 @@ export async function gateStats(db: Database, opts: { since: Date }): Promise<Ga
       select d.verdict, d.decided_by, d.label, d.cost_usd, ${itemSource} as source
       from gate_decision d
       join item on item.id = d.item_id
-      where d.created_at >= ${opts.since}
+      where d.created_at >= ${opts.since} and d.trigger = ${trigger}
     ) decided
     group by verdict, decided_by, source
   `.execute(db)

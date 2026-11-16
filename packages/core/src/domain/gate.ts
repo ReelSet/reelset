@@ -19,6 +19,10 @@ export type GateVerdict = z.infer<typeof gateVerdictSchema>
 export const GATE_DECIDERS = ['rule', 'model', 'explore', 'admin'] as const
 export type GateDecidedBy = (typeof GATE_DECIDERS)[number]
 
+/** How a judgement came about: `auto` rows belong to the pipeline (admin overrides included), `manual` rows are on-demand analysis that never acts on the item. */
+export const GATE_TRIGGERS = ['auto', 'manual'] as const
+export type GateTrigger = (typeof GATE_TRIGGERS)[number]
+
 export const GATE_LABELS = ['agree', 'disagree'] as const
 export type GateLabel = (typeof GATE_LABELS)[number]
 

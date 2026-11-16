@@ -201,9 +201,13 @@ function Body({ data, returnTo }: { data: ItemDrawerData; returnTo: string }) {
           className="mx-auto aspect-[9/16] max-h-[56vh] rounded-md border border-line bg-black"
         />
       ) : null}
-      {data.gate ? (
-        <GateDrawerBlock gate={data.gate} itemStatus={item.status} returnTo={returnTo} tz={tz} />
-      ) : null}
+      <GateDrawerBlock
+        gate={data.gate}
+        itemId={item.id}
+        itemStatus={item.status}
+        returnTo={returnTo}
+        tz={tz}
+      />
       <Block title="Timeline">
         <Gantt timeline={buildTimeline(data.events)} />
       </Block>

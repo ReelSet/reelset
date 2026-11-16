@@ -6,6 +6,7 @@ import {
   GATE_SCORE_MAX,
   GATE_SIGNALS,
   GATE_SIGNAL_MAX,
+  GATE_TRIGGERS,
   GATE_VERDICTS,
   SOURCES,
   gateLabelReasonSchema,
@@ -16,6 +17,7 @@ import {
   type GateDecidedBy,
   type GateDecisionRow,
   type GateLabelReason,
+  type GateTrigger,
   type GateVerdict,
   type Source,
 } from '@reelset/core'
@@ -51,6 +53,7 @@ export type GateFilters = {
   verdict: GateVerdict | null
   decidedBy: GateDecidedBy | null
   source: Source | null
+  trigger: GateTrigger | null
   q: string | null
 }
 
@@ -66,6 +69,7 @@ export function parseGateFilters(sp: SearchParams): GateFilters {
     verdict: oneOf(GATE_VERDICTS, first(sp.verdict)),
     decidedBy: oneOf(GATE_DECIDERS, first(sp.by)),
     source: oneOf(SOURCES, first(sp.source)),
+    trigger: oneOf(GATE_TRIGGERS, first(sp.trigger)),
     q: first(sp.q)?.trim().slice(0, GATE_SEARCH_MAX_CHARS) || null,
   }
 }
@@ -76,6 +80,7 @@ export function gateFilterParams(filters: GateFilters): Record<string, string | 
     verdict: filters.verdict ?? undefined,
     by: filters.decidedBy ?? undefined,
     source: filters.source ?? undefined,
+    trigger: filters.trigger ?? undefined,
     q: filters.q ?? undefined,
   }
 }
@@ -119,6 +124,7 @@ export function isDisagreeReasonFor(verdict: GateVerdict, reason: GateLabelReaso
 }
 
 const EXPLORE_DECIDER: GateDecidedBy = 'explore'
+const MANUAL_TRIGGER: GateTrigger = 'manual'
 
 /** SQL twin of core's judgeWasRight over a gate_decision row; null (not counted) while the row is unlabelled. */
 export const JUDGE_WAS_RIGHT_SQL = `(label = 'agree') <> (decided_by = '${EXPLORE_DECIDER}')`
@@ -135,10 +141,11 @@ const DISAGREE_PROMPTS: Record<GateVerdict, string> = {
 
 // A live "source only" that was not applied means a user asked for this item just before it settled, so it was made anyway.
 function appliedNote(
-  row: Pick<GateDecisionRow, 'applied' | 'mode'>,
+  row: Pick<GateDecisionRow, 'applied' | 'mode' | 'trigger'>,
   verdict: GateVerdict,
 ): string | null {
   if (row.applied) return null
+  if (row.trigger === MANUAL_TRIGGER) return 'Not applied: manual check, analysis only'
   if (row.mode !== 'live') return 'Not applied: shadow mode'
   return verdict === 'source_only' ? 'Not applied: requested by a user' : 'Not applied'
 }
@@ -160,6 +167,7 @@ export function toGateView(row: GateDecisionRow): GateView | null {
     verdict: verdict.data,
     judgeVerdict: judgeVerdict({ verdict: verdict.data, decidedBy: row.decided_by }),
     explored: row.decided_by === EXPLORE_DECIDER,
+    manual: row.trigger === MANUAL_TRIGGER,
     reviewQuestion: REVIEW_QUESTIONS[verdict.data],
     disagreePrompt: DISAGREE_PROMPTS[verdict.data],
     score: row.score === null ? null : Number(row.score),

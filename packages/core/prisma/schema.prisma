@@ -628,6 +628,7 @@ model GateDecision {
   promptVersion String    @map("prompt_version")
   configHash    String    @map("config_hash")
   costUsd       Float     @default(0) @map("cost_usd") @db.Real
+  trigger       String    @default("auto")
   label         String?
   labelReason   String?   @map("label_reason")
   labelNote     String?   @map("label_note")

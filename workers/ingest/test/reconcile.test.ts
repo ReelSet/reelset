@@ -221,6 +221,7 @@ describe('reconcile', () => {
       expect(lookup.sql).toContain("item.status = 'found'")
       expect(lookup.sql).toContain('item.queued_at is null')
       expect(lookup.sql).toContain("d.decided_by = 'admin' and d.verdict = 'reel'")
+      expect(lookup.sql).toContain("where d.item_id = item.id and d.trigger = 'auto'")
     })
 
     it('admits an overridden item ahead of higher-scored ordinary items when one slot is left', async () => {

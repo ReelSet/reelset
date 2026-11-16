@@ -4,6 +4,8 @@ import {
   DECIDER_LABELS,
   EXPLORED_HINT,
   EXPLORED_TAG,
+  MANUAL_HINT,
+  MANUAL_TAG,
   VERDICT_LABELS,
   fmtGateScore,
   type GateSignalView,
@@ -23,13 +25,22 @@ export function VerdictPill({ verdict }: { verdict: GateVerdict }) {
 }
 
 /** What the judge said, and for an explore row that the item was made into a reel anyway. */
-export function VerdictSummary({ gate }: { gate: Pick<GateView, 'judgeVerdict' | 'explored'> }) {
+export function VerdictSummary({
+  gate,
+}: {
+  gate: Pick<GateView, 'judgeVerdict' | 'explored' | 'manual'>
+}) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <VerdictPill verdict={gate.judgeVerdict} />
       {gate.explored ? (
         <span title={EXPLORED_HINT} className={`${PILL} border-info/30 bg-info/10 text-info`}>
           {EXPLORED_TAG}
+        </span>
+      ) : null}
+      {gate.manual ? (
+        <span title={MANUAL_HINT} className={`${PILL} border-warn/30 bg-warn/10 text-warn`}>
+          {MANUAL_TAG}
         </span>
       ) : null}
     </span>

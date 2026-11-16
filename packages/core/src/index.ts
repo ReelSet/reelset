@@ -342,6 +342,7 @@ export {
   GATE_SIGNAL_KEYS,
   GATE_SIGNAL_MAX,
   GATE_SOURCE_RULE_MODES,
+  GATE_TRIGGERS,
   GATE_VERDICTS,
   GATE_WEIGHT_MAX,
   applySourceRule,
@@ -376,6 +377,7 @@ export {
   type GateSourceRule,
   type GateSourceRuleMode,
   type GateSourceRules,
+  type GateTrigger,
   type GateVerdict,
   type GateWeights,
 } from './domain/gate'
@@ -389,6 +391,7 @@ export {
   gateStats,
   labelGateDecision,
   latestGateDecision,
+  latestGateJudgement,
   listGateExamples,
   loadGateConfig,
   recordGateDecision,

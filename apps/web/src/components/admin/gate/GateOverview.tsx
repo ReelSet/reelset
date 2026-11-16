@@ -70,6 +70,11 @@ export function GateOverview({ overview, tz }: { overview: Overview; tz: string 
         />
         <Stat label="Gate spend" value={fmtUsd(stats.costUsd)} />
       </div>
+      <p className="text-xs text-faint">
+        These numbers cover automatic decisions only. Manual checks so far:{' '}
+        <span className="tabular-nums text-muted">{counts.manual.toLocaleString('en-US')}</span>{' '}
+        (analysis only, listed in the queue with a Manual tag; the review counts include them).
+      </p>
       {stats.total > 0 ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <SourceTable sources={sources} />

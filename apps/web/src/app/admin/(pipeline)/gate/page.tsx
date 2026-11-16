@@ -1,6 +1,7 @@
 import { loadGateConfig } from '@reelset/core'
 import Link from 'next/link'
 import { GateFilterBar } from '@/components/admin/gate/GateFilterBar'
+import { GateLinkCheck } from '@/components/admin/gate/GateLinkCheck'
 import { GateKeyboard } from '@/components/admin/gate/GateKeyboard'
 import { GateModeBanner } from '@/components/admin/gate/GateModeBanner'
 import { GateOverview } from '@/components/admin/gate/GateOverview'
@@ -32,6 +33,8 @@ import { routeLog } from '@/server/logger'
 import { viewerTimeZone } from '@/server/timezone'
 
 export const metadata = { title: 'Gate' }
+// "Check a link" waits up to a minute for the ingest worker's judge.
+export const maxDuration = 90
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
 type Params = Record<string, string | undefined>
@@ -112,15 +115,18 @@ export default async function GatePage({ searchParams }: Props) {
           </div>
         }
       />
+      <GateLinkCheck />
       {queue ? <GateOverview overview={queue.overview} tz={tz} /> : null}
       <GateFilterBar filters={filters} params={params} counts={queue?.overview.counts ?? null} />
       {!queue ? (
         <Empty>{GATE_TABLE_MISSING}</Empty>
       ) : rows.length === 0 ? (
         <Empty>
-          {filters.review === 'pending' && queue.overview.counts.pending === 0
-            ? 'Nothing left to review. Every decision has a label.'
-            : 'No decisions match these filters'}
+          {queue.overview.counts.all === 0
+            ? 'No decisions have been recorded yet.'
+            : filters.review === 'pending' && queue.overview.counts.pending === 0
+              ? 'Nothing left to review. Every decision has a label.'
+              : 'No decisions match these filters'}
         </Empty>
       ) : (
         <>

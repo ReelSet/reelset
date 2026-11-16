@@ -32,6 +32,7 @@ const decision = (n: number, patch: Record<string, unknown> = {}) => ({
   rule: null,
   mode: 'shadow',
   applied: false,
+  trigger: 'auto',
   model: 'claude-haiku-5-5',
   prompt_version: 'gate-v1',
   config_hash: 'h',
@@ -116,18 +117,56 @@ describe('listGateDecisions', () => {
   })
 })
 
+describe('manual judgements', () => {
+  it('lists manual rows with a tag unless a trigger filter is chosen', async () => {
+    const { db } = scriptedDb(() => [decision(1, { trigger: 'manual' })])
+    const out = await listGateDecisions(db, PAGE, NO_FILTERS, DEFAULT_GATE_SORT)
+    expect(out.rows[0]?.gate).toMatchObject({ manual: true })
+    expect((await listSql(NO_FILTERS)).sql).not.toContain('"trigger"')
+    const manualOnly = await listSql(parseGateFilters({ review: 'all', trigger: 'manual' }))
+    expect(manualOnly.sql).toContain('"gate_decision"."trigger" = $')
+    expect(manualOnly.parameters).toContain('manual')
+  })
+
+  it('keeps manual rows out of the overview numbers, the trend and the tuning sample', async () => {
+    const { db, queries } = scriptedDb(respondOverview)
+    await gateOverview(db, { rangeDays: 7, tz: 'UTC', now: NOW })
+    await recentJudgedDecisions(db, { limit: 10 })
+    const stats = queries.find((q) => sqlHas(q, 'group by verdict, decided_by, source'))!
+    expect(stats.sql).toContain('d.trigger = $')
+    expect(stats.parameters).toContain('auto')
+    expect(queries.find((q) => sqlHas(q, 'group by source'))!.sql).toContain("d.trigger = 'auto'")
+    expect(queries.find((q) => sqlHas(q, 'date_trunc'))!.sql).toContain("trigger = 'auto'")
+    const sample = queries.at(-1)!
+    expect(sample.sql).toContain('"gate_decision"."trigger" = $')
+    expect(sample.parameters).toContain('auto')
+  })
+})
+
 describe('gate counts', () => {
   it('counts the review tabs in one query', async () => {
     const { db, queries } = scriptedDb(() => [
-      { pending: '12', agreed: '5', disagreed: '2', all: '20' },
+      { pending: '12', agreed: '5', disagreed: '2', all: '20', manual: '3' },
     ])
-    expect(await gateReviewCounts(db)).toEqual({ pending: 12, agreed: 5, disagreed: 2, all: 20 })
+    expect(await gateReviewCounts(db)).toEqual({
+      pending: 12,
+      agreed: 5,
+      disagreed: 2,
+      all: 20,
+      manual: 3,
+    })
     expect(queries).toHaveLength(1)
   })
 
   it('reads zero from an empty table', async () => {
     const { db } = scriptedDb(() => [])
-    expect(await gateReviewCounts(db)).toEqual({ pending: 0, agreed: 0, disagreed: 0, all: 0 })
+    expect(await gateReviewCounts(db)).toEqual({
+      pending: 0,
+      agreed: 0,
+      disagreed: 0,
+      all: 0,
+      manual: 0,
+    })
     expect(await gateAwaitingReview(db)).toBe(0)
   })
 

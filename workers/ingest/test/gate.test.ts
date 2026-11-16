@@ -145,6 +145,7 @@ describe('reusableDecision', () => {
     expect(reusableDecision(decisionRow({ mode: 'shadow' }), current)).toBeNull()
     expect(reusableDecision(decisionRow({ prompt_version: 'gate-v0' }), current)).toBeNull()
     expect(reusableDecision(decisionRow({ decided_by: 'admin' }), current)).toBeNull()
+    expect(reusableDecision(decisionRow({ trigger: 'manual' }), current)).toBeNull()
     expect(reusableDecision(decisionRow({}), { ...current, since: null })).toBeNull()
     expect(reusableDecision(null, current)).toBeNull()
   })
@@ -203,6 +204,42 @@ describe('runGate', () => {
     expect(await runGate(t.ctx, gateItem())).toEqual({ kind: 'skipped', reason: 'admin_override' })
     expect(t.judge).not.toHaveBeenCalled()
     expect(t.world.recorded).toHaveLength(0)
+  })
+
+  it('still skips for an older admin override when a newer manual judgement exists', async () => {
+    const t = setup(
+      makeGateWorld({
+        history: [
+          decisionRow({ id: 'dec-admin', decided_by: 'admin', verdict: 'reel', score: null }),
+          decisionRow({ id: 'dec-manual', trigger: 'manual', mode: 'shadow', applied: false }),
+        ],
+      }),
+    )
+    expect(await runGate(t.ctx, gateItem())).toEqual({ kind: 'skipped', reason: 'admin_override' })
+    expect(t.fake.find('from "gate_decision"')[0]!.params).toContain('auto')
+    expect(t.judge).not.toHaveBeenCalled()
+  })
+
+  it('never reuses a manual judgement as the decision of a pass', async () => {
+    const since = new Date(Date.now() - 60_000)
+    const world = makeGateWorld({
+      latest: decisionRow({
+        id: 'dec-manual',
+        trigger: 'manual',
+        verdict: 'reel',
+        created_at: new Date(),
+      }),
+    })
+    const t = setup(world, [judgeAnswer(2)])
+    const result = await runGate(t.ctx, gateItem({ inStatusSince: since }))
+    expect(result).toMatchObject({ kind: 'decided', decisionId: 'dec-1', verdict: 'source_only' })
+    expect(t.generate).toHaveBeenCalledTimes(1)
+    expect(world.recorded[0]).toMatchObject({ trigger: 'auto', applied: true })
+  })
+
+  it('does not take a manual row for an admin override', () => {
+    const manualAdmin = decisionRow({ decided_by: 'admin', verdict: 'reel', trigger: 'manual' })
+    expect(isAdminReelOverride(manualAdmin)).toBe(false)
   })
 
   it('judges again after an admin decision that is not a reel override', async () => {

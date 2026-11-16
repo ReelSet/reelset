@@ -1,4 +1,4 @@
-import { errorFields, latestGateDecision, reelScriptSchema } from '@reelset/core'
+import { errorFields, latestGateJudgement, reelScriptSchema } from '@reelset/core'
 import type { Database, GateDecisionRow, Logger } from '@reelset/core'
 import { toGateView } from '@/lib/admin/gate'
 import { suggestRetryStage } from '@/lib/admin/retry-stage'
@@ -95,7 +95,7 @@ async function gateDecisionOrNull(
   log: Logger,
 ): Promise<GateDecisionRow | null> {
   try {
-    return await latestGateDecision(db, itemId)
+    return await latestGateJudgement(db, itemId)
   } catch (err) {
     log.warn({ ...errorFields(err), itemId }, 'gate decision unavailable for the item drawer')
     return null

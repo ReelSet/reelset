@@ -7,6 +7,8 @@ import { hasAnyWatermark } from './ingest/repo'
 import { runIngest } from './ingest/run'
 import { createClaudeClient } from './pipeline/claude'
 import { handleMessage } from './pipeline/consumer'
+import type { GateDeps } from './pipeline/gate'
+import { MANUAL_JUDGE_PATH, handleManualJudge } from './pipeline/gate-manual'
 import { createEmbedder } from './pipeline/gemini'
 import { LLM_PROVIDER, createLlm, loadLlmModels } from './pipeline/llm'
 import { createClaudeVetter, createDbVetCache, downloadForVet } from './pipeline/image-vet'
@@ -35,6 +37,18 @@ async function withDb<T>(
     return await fn(handle.db)
   } finally {
     await handle.close()
+  }
+}
+
+function gateDeps(env: Env, log: Logger): GateDeps {
+  return {
+    judge: (model, effort) =>
+      createClaudeClient(env.CLAUDE_API_KEY ?? '', model, log, {
+        effort,
+        maxOutputTokens: GATE_MAX_OUTPUT_TOKENS,
+        timeoutMs: GATE_CALL_TIMEOUT_MS,
+        maxRetries: GATE_SDK_RETRIES,
+      }),
   }
 }
 
@@ -111,6 +125,12 @@ export default {
       )
       return Response.json({ started: url.pathname }, { status: 202 })
     }
+    if (url.pathname === MANUAL_JUDGE_PATH) {
+      if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
+      return withDb(env, log, (db) =>
+        handleManualJudge(request, { db, log, gate: gateDeps(env, log) }),
+      )
+    }
     if (url.pathname === '/internal/selfcheck')
       return Response.json(await runSelfcheck(env.RENDER, log))
     const run =
@@ -177,15 +197,7 @@ export default {
           cache: createDbVetCache(db),
         },
         promptImage: downloadForVet,
-        gate: {
-          judge: (model, effort) =>
-            createClaudeClient(env.CLAUDE_API_KEY ?? '', model, log, {
-              effort,
-              maxOutputTokens: GATE_MAX_OUTPUT_TOKENS,
-              timeoutMs: GATE_CALL_TIMEOUT_MS,
-              maxRetries: GATE_SDK_RETRIES,
-            }),
-        },
+        gate: gateDeps(env, log),
       }
       log.info({ size: batch.messages.length }, 'ingest-items batch start')
       for (const message of batch.messages) await handleMessage(deps, message)

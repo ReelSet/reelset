@@ -10,6 +10,8 @@ export type GateWorld = {
   /** app_setting rows by key, for example { gate_mode: 'live' }. */
   settings: Record<string, unknown>
   latest: Row | null
+  /** Older decision rows, oldest first, for tests that need more than one. */
+  history?: Row[]
   examples: Row[]
   recorded: Row[]
   /** A query containing this fragment throws, to simulate a database failure. */
@@ -49,7 +51,15 @@ export function gateQueries(world: GateWorld) {
       return [row]
     }
     if (q.sql.includes('from "gate_decision"')) {
-      const latest = world.recorded.at(-1) ?? world.latest
+      const rows = [
+        ...(world.history ?? []),
+        ...(world.latest ? [world.latest] : []),
+        ...world.recorded,
+      ]
+      const visible = q.sql.includes('"trigger" =')
+        ? rows.filter((row) => (row.trigger ?? 'auto') === 'auto')
+        : rows
+      const latest = visible.at(-1)
       return latest ? [latest] : []
     }
     return undefined

@@ -129,6 +129,7 @@ export type GateDecision = {
   prompt_version: string
   config_hash: string
   cost_usd: Generated<number>
+  trigger: Generated<string>
   label: string | null
   label_reason: string | null
   label_note: string | null

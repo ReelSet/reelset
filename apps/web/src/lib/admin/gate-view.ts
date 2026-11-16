@@ -10,6 +10,7 @@ export type GateView = {
   verdict: GateVerdict
   judgeVerdict: GateVerdict
   explored: boolean
+  manual: boolean
   reviewQuestion: string
   disagreePrompt: string
   score: number | null
@@ -72,6 +73,14 @@ export const GATE_MIGRATION = '20261118000000_gate_decision'
 export const GATE_TABLE_MISSING = `The database migration ${GATE_MIGRATION} has not been applied to this database, so there is no gate data to show. (If it has been applied, the query failed; see the server logs.)`
 
 export const GATE_MIGRATION_FIRST = `Apply the migration ${GATE_MIGRATION} before deploying the ingest worker. The code needs the "source_only" item status to exist in the database in every mode, including Shadow and Off.`
+
+export const MANUAL_TAG = 'Manual'
+export const MANUAL_HINT =
+  'An admin asked the gate to judge this item on demand. It is for analysis only and changed nothing about the item or its reel.'
+export const JUDGE_NOW_NOTE =
+  'For analysis only: it records what the gate thinks of this item today and changes nothing about the item or its reel. It can take up to a minute and costs one model call.'
+
+export const TRIGGER_LABELS: Record<string, string> = { auto: 'Automatic', manual: 'Manual' }
 
 export const EXPLORED_TAG = 'Explored: made anyway'
 export const EXPLORED_HINT =
