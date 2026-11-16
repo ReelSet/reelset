@@ -140,6 +140,8 @@ export type ReelProps = {
   headline?: string
   /** The script's sourced claims (text only), used to word key points and ground stat labels. */
   claims?: string[]
+  /** Up to 3 short source labels for the end card, main link first. */
+  sources?: string[]
   facts?: ItemFacts
   cover?: string
   images?: ReelImage[]

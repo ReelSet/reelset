@@ -33,6 +33,7 @@ export type ReelCtx = {
   source: Source
   sourceLabel: string
   domain: string
+  sources: string[]
   facts: ItemFacts
   images: ReelImage[]
   hook: string
@@ -116,6 +117,7 @@ export function buildReel(input: ReelProps): Reel {
     source: props.source,
     sourceLabel: props.sourceLabel,
     domain: props.domain,
+    sources: props.sources ?? [],
     facts: props.facts ?? {},
     images: props.images ?? [],
     demo: props.demo,

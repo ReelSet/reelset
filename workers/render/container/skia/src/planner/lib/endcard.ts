@@ -8,6 +8,7 @@ export type EndCtx = {
   headline?: string
   facts: ItemFacts
   demo?: ReelDemo
+  sources?: string[]
 }
 
 const sentence = (t: string) => t.replace(/^(\p{Ll})/u, (c) => c.toUpperCase())
@@ -39,6 +40,14 @@ export function endSource(ctx: EndCtx): string {
   const repo = r?.owner && r.name ? `${r.owner}/${r.name}` : ctx.demo?.repo
   if (ctx.source === 'github' && repo) return `github.com/${repo}`
   return ctx.domain
+}
+
+/** The end card's source lines: the payload's sources, else the one `endSource` line. */
+export function endSourceLines(ctx: EndCtx): string[] {
+  const listed = (ctx.sources ?? []).map((s) => s.trim()).filter(Boolean)
+  if (listed.length) return listed
+  const one = endSource(ctx)
+  return one ? [one] : []
 }
 
 /**

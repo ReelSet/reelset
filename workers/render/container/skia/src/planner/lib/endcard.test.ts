@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { endName, endSource, endSubtitle, type EndCtx } from './endcard'
+import { endName, endSource, endSourceLines, endSubtitle, type EndCtx } from './endcard'
 
 const base: EndCtx = { title: 'x', source: 'github', domain: 'github.com', facts: {} }
 
@@ -52,5 +52,15 @@ describe('end card', () => {
     expect(
       endSubtitle({ ...base, source: 'hn', title: 'a new way to cache', headline: 'Caching' }),
     ).toBe('A new way to cache')
+  })
+
+  it('uses props sources when present', () => {
+    expect(endSourceLines({ ...base, sources: ['a.com', '', 'b.com'] })).toEqual(['a.com', 'b.com'])
+  })
+
+  it('falls back to the single endSource', () => {
+    const ctx: EndCtx = { ...base, facts: { repo: { owner: 'o', name: 'r' } } }
+    expect(endSourceLines(ctx)).toEqual(['github.com/o/r'])
+    expect(endSourceLines({ ...ctx, sources: [] })).toEqual(['github.com/o/r'])
   })
 })

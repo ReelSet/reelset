@@ -1,5 +1,5 @@
 import { accentIndex } from '@plan/lib/emphasis'
-import { endName, endSubtitle } from '@plan/lib/endcard'
+import { endName, endSourceLines, endSubtitle } from '@plan/lib/endcard'
 import { displayStat } from '@plan/lib/stat-format'
 import { typeset } from '@plan/lib/typeset'
 import { chip } from '../chrome/marks'
@@ -381,7 +381,14 @@ export const StatSlam: Screen = {
   },
 }
 
-/** Outro: the item name big, its subtitle, source chip, and a follow pill. */
+/** Outro: the item name big, its subtitle, source chip, the reel's sources, and a follow pill. */
+const SOURCES_LABEL = 'Sources'
+const SOURCES_NOTE = 'Sources in the caption'
+const SOURCE_SIZE = 36
+const SOURCE_LH = 1.25
+const NOTE_SIZE = 30
+const NAME_MAX_SIZES = [130, 110, 92, 76]
+
 export const EndCard: Screen = {
   captions: () => true,
   draw(a) {
@@ -390,18 +397,31 @@ export const EndCard: Screen = {
     const z = zone(a)
     const name = typeset(endName(ctx))
     const sub = typeset(endSubtitle(ctx))
-    const lay = a.memo('name', () =>
-      fitBlock(name, 'display', z.w, 360, { max: 130, min: 56, lh: 1.0, ls: -0.035, maxLines: 3 }),
-    )
+    const sources = endSourceLines(ctx)
+    const sourcesH = sources.length
+      ? NOTE_SIZE + 18 + sources.length * SOURCE_SIZE * SOURCE_LH + 22 + NOTE_SIZE + 44
+      : 0
     const subLay = a.memo('sub', () =>
       sub ? fitBlock(sub, 'bold', z.w, 160, { max: 48, min: 30, lh: 1.15, maxLines: 3 }) : null,
     )
-    const blockH =
-      120 +
-      lay.lines.length * lay.size +
-      (subLay ? subLay.lines.length * subLay.size * 1.15 + 40 : 0) +
-      160
-    let y = z.y + (z.h - blockH) / 2
+    const subH = subLay ? subLay.lines.length * subLay.size * 1.15 + 40 : 0
+    const heightOf = (l: { lines: string[]; size: number }) =>
+      120 + l.lines.length * l.size + 40 + subH + sourcesH + 120
+    const lay = a.memo('name', () => {
+      let best = null as ReturnType<typeof fitBlock> | null
+      for (const max of NAME_MAX_SIZES) {
+        best = fitBlock(name, 'display', z.w, 360, {
+          max,
+          min: 56,
+          lh: 1.0,
+          ls: -0.035,
+          maxLines: 3,
+        })
+        if (heightOf(best) <= z.h) break
+      }
+      return best!
+    })
+    let y = z.y + Math.max(0, (z.h - heightOf(lay)) / 2)
     const p = eo(pr(t, 0, 0.5))
     c.save()
     c.globalAlpha = p
@@ -418,9 +438,20 @@ export const EndCard: Screen = {
         lh: 1.15,
         step: 0.03,
       })
-      y += subLay.lines.length * subLay.size * 1.15 + 40
+      y += subH
     }
-    const q = eb(pr(t, 0.7, 0.4), 1.8)
+    if (sources.length) {
+      riseLines(c, [SOURCES_LABEL], z.x, y, 'bold', NOTE_SIZE, COL.lime, t, 0.5)
+      y += NOTE_SIZE + 18
+      riseLines(c, sources, z.x, y, 'bold', SOURCE_SIZE, 'rgba(246,244,238,0.85)', t, 0.55, {
+        lh: SOURCE_LH,
+        step: 0.05,
+      })
+      y += sources.length * SOURCE_SIZE * SOURCE_LH + 22
+      riseLines(c, [SOURCES_NOTE], z.x, y, 'bold', NOTE_SIZE, 'rgba(246,244,238,0.6)', t, 0.75)
+      y += NOTE_SIZE + 44
+    }
+    const q = eb(pr(t, 0.9, 0.4), 1.8)
     if (q > 0) {
       const label = 'Follow @reelset_app'
       const w = measure(label, 'bold', 40) + 80
