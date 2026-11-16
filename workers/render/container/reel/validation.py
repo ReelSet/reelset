@@ -74,6 +74,7 @@ class RenderRequest:
     demo: dict | None = None
     claims: list = field(default_factory=list)
     director: dict | None = None
+    sources: list = field(default_factory=list)
 
     def narration_segments(self) -> list:
         return [self.hook, *[b.text for b in self.beats], self.outro]
@@ -312,6 +313,7 @@ def validate_render_request(payload) -> RenderRequest:
         demo=_validate_demo(payload.get("demo")),
         claims=_validate_claims(script.get("claims")),
         director=_validate_director(payload.get("director")),
+        sources=_validate_sources(payload.get("sources")),
     )
 
 
@@ -391,6 +393,20 @@ def _validate_director(raw) -> dict | None:
 
 
 MAX_CLAIMS = 12
+
+
+MAX_SOURCES = 3
+MAX_SOURCE_CHARS = 48
+
+
+def _validate_sources(raw) -> list:
+    """End-card source labels: up to 3 short hosts like github.com/owner/repo."""
+    if raw is None:
+        return []
+    ok = isinstance(raw, list) and len(raw) <= MAX_SOURCES
+    if not ok or not all(isinstance(s, str) and 0 < len(s.strip()) <= MAX_SOURCE_CHARS for s in raw):
+        _bad("sources must be up to 3 short labels")
+    return [s.strip() for s in raw]
 
 
 def _validate_claims(raw) -> list:

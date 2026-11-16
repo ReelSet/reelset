@@ -247,6 +247,27 @@ class PropsMediaTests(unittest.TestCase):
         self.assertEqual(out["images"][0]["caption"], "Fig 1")
         self.assertEqual(out["images"][0]["focus"], {"x": 0.3, "y": 0.4})
 
+    def _props(self, payload):
+        req = validation.validate_render_request(payload)
+        from reel.timing import Word, allocate_segments
+
+        words = [Word(w, i * 0.4, i * 0.4 + 0.3) for i, w in enumerate(req.narration_text().split())]
+        spans = allocate_segments(req.narration_segments(), words, words[-1].end + 0.2)
+        return props.build_props(req, words, spans, 12.0, {"audio": "narration.mp3"})
+
+    def test_sources_default_to_empty(self):
+        self.assertEqual(validation.validate_render_request(good_payload()).sources, [])
+        self.assertNotIn("sources", self._props(good_payload()))
+
+    def test_sources_pass_into_props(self):
+        out = self._props({**good_payload(), "sources": ["a.com", "b.com"]})
+        self.assertEqual(out["sources"], ["a.com", "b.com"])
+
+    def test_sources_reject_bad_values(self):
+        for bad in (["a", "b", "c", "d"], ["a.com", 7], ["x" * 60], [""], "a.com"):
+            with self.assertRaises(RenderError):
+                validation.validate_render_request({**good_payload(), "sources": bad})
+
     def test_beat_key_points_reach_the_scenes(self):
         payload = good_payload()
         beats = payload["script"]["beats"]

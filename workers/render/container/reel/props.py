@@ -60,6 +60,8 @@ def build_props(
         props["facts"] = req.facts
     if req.claims:
         props["claims"] = req.claims
+    if req.sources:
+        props["sources"] = list(req.sources)
     if assets.get("cover"):
         props["cover"] = f"job/{assets['cover']}"
     if assets.get("images"):
