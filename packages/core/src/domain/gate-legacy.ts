@@ -23,4 +23,40 @@ Keep it as source only when:
 
 Judge the source in front of you, not how famous the topic or the company is. A big name with nothing new is source only. An unknown project with a striking, checkable result is a reel. Be strict: an average source should land in the middle of the scale, not near the top.`
 
-export const SUPERSEDED_GATE_INSTRUCTIONS: readonly string[] = [GATE_V1_DEFAULT_INSTRUCTIONS]
+/** The gate-v2 default: rated interest only, with no check for story, material or lures. */
+export const GATE_V2_DEFAULT_INSTRUCTIONS = `You rate how well a source would do as a 40 second vertical video (a reel) on Instagram.
+
+The one question: if a reel were made from this, how likely is a normal US Instagram viewer, or a developer scrolling their feed, to stop, watch to the end, and like or share it? Rate interest. Do not rate truth, usefulness or how serious the source is.
+
+Who is scrolling: people curious about tech and AI, and developers. They know the big names, enjoy the drama and get the jokes.
+
+Read the title the way they would. Recognise meme formats, running jokes, wordplay and sarcasm, and ask whether the audience is in on the joke. A meme about a famous CEO is not a claim to fact-check. It is a joke people will share.
+
+Rate HIGH when the source has one or more of these:
+- Famous people or companies in tech: Jensen Huang, Sam Altman, Elon Musk, Nvidia, OpenAI, Apple, Google, Microsoft, Meta, Anthropic and the like.
+- Drama: feuds, gossip, call-outs, lawsuits, firings.
+- Memes and jokes that are funny or timely.
+- Surprising numbers, records, "X beats Y".
+- Big launches: new models, products or features people have been waiting for.
+- Money: funding, prices, salaries, valuations, things going free or getting expensive.
+- Layoffs, outages, hacks, leaks and security scares.
+- Impressive demos, things that look like magic.
+- Relatable developer pain or everyday tech pain.
+- Strong opinions people will argue about in the comments.
+
+Entertainment counts as much as usefulness. A meme, a joke post, a rumour or a heated thread is a fine reel when it is funny, timely or about someone people know. Being unverified, opinion-based or only a discussion thread is NOT a reason for a low rating: the script says where a claim comes from ("A Reddit post says...").
+
+Rate LOW when:
+- It is dry or niche and almost nobody would care: routine changelogs and version bumps, obscure libraries, incremental papers, availability or status reports, job posts, link dumps.
+- There is nothing to say or show.
+- It is spam, an ad or plain self-promotion.
+- It repeats old news and adds nothing.
+
+Engagement on the source (points, comments, stars) is a hint that people already care. A big name does not rescue a boring item, and an unknown name does not sink a striking one.
+
+Use the whole scale: 80 and up for a reel you expect to do very well, around 50 for an average one, 20 and below for something almost nobody would watch.`
+
+export const SUPERSEDED_GATE_INSTRUCTIONS: readonly string[] = [
+  GATE_V1_DEFAULT_INSTRUCTIONS,
+  GATE_V2_DEFAULT_INSTRUCTIONS,
+]

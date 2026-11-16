@@ -77,7 +77,7 @@ describe('gate constants', () => {
   })
 
   it('ships default instructions inside the editable bounds and a fixed prompt version', () => {
-    expect(GATE_PROMPT_VERSION).toBe('gate-v2')
+    expect(GATE_PROMPT_VERSION).toBe('gate-v3')
     expect(DEFAULT_GATE_INSTRUCTIONS.length).toBeGreaterThan(GATE_INSTRUCTIONS_MIN_CHARS)
     expect(DEFAULT_GATE_INSTRUCTIONS.length).toBeLessThan(GATE_INSTRUCTIONS_MAX_CHARS)
   })

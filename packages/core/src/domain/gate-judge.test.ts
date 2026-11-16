@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GATE_V1_DEFAULT_INSTRUCTIONS } from './gate-legacy'
+import { GATE_V1_DEFAULT_INSTRUCTIONS, GATE_V2_DEFAULT_INSTRUCTIONS } from './gate-legacy'
 import {
   GATE_EVIDENCE_MAX_CHARS,
   GATE_EVIDENCE_MIN_CHARS,
@@ -51,13 +51,14 @@ describe('gateCallBudget', () => {
     expect(haiku.minCostUsd).toBeLessThan(0.001)
   })
 
-  it('gives Sonnet a shorter excerpt that keeps the call under the cap', () => {
-    const sonnet = budget('claude-sonnet-5-5')
+  it('gives Sonnet a shorter excerpt that keeps the call under a slightly higher cap', () => {
+    expect(budget('claude-sonnet-5-5').fits).toBe(false)
+    const sonnet = budget('claude-sonnet-5-5', 0.012)
     expect(sonnet.fits).toBe(true)
     expect(sonnet.evidenceChars).toBeGreaterThanOrEqual(GATE_EVIDENCE_MIN_CHARS)
     expect(sonnet.evidenceChars).toBeLessThan(GATE_EVIDENCE_MAX_CHARS)
     const cost = gateCallCostUsd('claude-sonnet-5-5', fixedPromptChars + sonnet.evidenceChars)
-    expect(cost).toBeLessThanOrEqual(0.01)
+    expect(cost).toBeLessThanOrEqual(0.012)
   })
 
   it('says Opus does not fit the default cap, and fits a larger one', () => {
@@ -73,7 +74,17 @@ describe('gateCallBudget', () => {
   })
 })
 
-describe('gate-v2 defaults', () => {
+describe('gate-v3 defaults', () => {
+  it('rates story: surprise, stake, material and trust, with hard ceilings', () => {
+    for (const phrase of ['The surprise', 'The story', 'The material', 'Hard ceilings', 'a lure'])
+      expect(DEFAULT_GATE_INSTRUCTIONS).toContain(phrase)
+  })
+
+  it('treats an untouched saved copy of the v2 default as superseded', () => {
+    expect(isSupersededGateInstructions(GATE_V2_DEFAULT_INSTRUCTIONS)).toBe(true)
+    expect(currentGateInstructions(GATE_V2_DEFAULT_INSTRUCTIONS)).toBe(DEFAULT_GATE_INSTRUCTIONS)
+  })
+
   it('rates engagement: big names, drama and memes high, and does not punish unverified threads', () => {
     for (const phrase of [
       'Jensen Huang',

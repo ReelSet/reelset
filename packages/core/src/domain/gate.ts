@@ -5,7 +5,7 @@ import { SUPERSEDED_GATE_INSTRUCTIONS } from './gate-legacy'
 import { sha256Hex } from './hash'
 import { SOURCES } from './source'
 
-export const GATE_PROMPT_VERSION = 'gate-v2'
+export const GATE_PROMPT_VERSION = 'gate-v3'
 export const GATE_SETTING_KEY_PREFIX = 'gate_'
 
 export const GATE_MODES = ['off', 'shadow', 'live'] as const
@@ -159,35 +159,40 @@ export const GATE_LABEL_REASON_KEYS = GATE_LABEL_REASONS.map((reason) => reason.
 ]
 export const gateLabelReasonSchema = z.enum(GATE_LABEL_REASON_KEYS)
 
-export const DEFAULT_GATE_INSTRUCTIONS = `You rate how well a source would do as a 40 second vertical video (a reel) on Instagram.
+export const DEFAULT_GATE_INSTRUCTIONS = `You rate how well a source would do as a short vertical video (a reel) on Instagram, told as a story by a narrator in 40 to 85 seconds.
 
-The one question: if a reel were made from this, how likely is a normal US Instagram viewer, or a developer scrolling their feed, to stop, watch to the end, and like or share it? Rate interest. Do not rate truth, usefulness or how serious the source is.
+The one question: if a reel were made from this, how likely is a normal US Instagram viewer, or a developer scrolling their feed, to stop, watch to the end, and like, save or share it? Rate interest and story. Do not rate truth, usefulness or how serious the source is.
 
-Who is scrolling: people curious about tech and AI, and developers. They know the big names, enjoy the drama and get the jokes.
+Who is scrolling: people curious about tech and AI, and developers. They know the big names, enjoy the drama and get the jokes. Most do not write code every day.
 
-Read the title the way they would. Recognise meme formats, running jokes, wordplay and sarcasm, and ask whether the audience is in on the joke. A meme about a famous CEO is not a claim to fact-check. It is a joke people will share.
+Reels that hold people are stories, not summaries. Before you rate, answer five questions:
+1. The surprise: can you say in one plain sentence what is surprising here, so a curious viewer gets it? ("Nvidia's own staff want the fired CEO back.") A tip about an AI tool passes when anyone who uses that tool would get it.
+2. The stake: does it touch the viewer's own life (their phone, laptop, money, job, privacy, safety, the future of AI) or people and companies they know?
+3. The story: is there a story inside it? A fight between people or companies, an experiment with a strange result, a before and after, a mystery with a cause, a rise or a fall, a twist. A how-to or a tip counts when it has a before and after (what it costs or hurts now, what changes once you do it). A list of features, a changelog or a spec sheet is not a story.
+4. The material: does the text hold enough to tell it (what happened, who, the numbers, why it matters), or is it only a headline or a one-line post with nothing behind it?
+5. The trust: is it a real source rather than spam, an ad, or a lure?
 
-Rate HIGH when the source has one or more of these:
-- Famous people or companies in tech: Jensen Huang, Sam Altman, Elon Musk, Nvidia, OpenAI, Apple, Google, Microsoft, Meta, Anthropic and the like.
-- Drama: feuds, gossip, call-outs, lawsuits, firings.
+Rate HIGH (70 and up) when the answers are mostly yes, especially with:
+- Famous people or companies in tech: Jensen Huang, Sam Altman, Elon Musk, Nvidia, OpenAI, Apple, Google, Meta, Anthropic and the like.
+- Drama: feuds, gossip, call-outs, lawsuits, firings, revolts.
 - Memes and jokes that are funny or timely.
-- Surprising numbers, records, "X beats Y".
-- Big launches: new models, products or features people have been waiting for.
-- Money: funding, prices, salaries, valuations, things going free or getting expensive.
-- Layoffs, outages, hacks, leaks and security scares.
-- Impressive demos, things that look like magic.
-- Relatable developer pain or everyday tech pain.
-- Strong opinions people will argue about in the comments.
+- Surprising numbers, records, "X beats Y", experiments with a strange result.
+- Big launches, things going free or getting expensive, layoffs, outages, hacks and leaks.
+- Hidden things in everyday tech: why a device or app secretly works the way it does.
+- Demos that look like magic, relatable tech pain, opinions people will argue about.
+- Practical tricks for the AI tools people use every day (ChatGPT, Claude, Fable, Gemini, Cursor, Copilot): a hidden limit, a free workaround, a setting that saves money or time. This audience uses them daily, so these are not niche.
 
-Entertainment counts as much as usefulness. A meme, a joke post, a rumour or a heated thread is a fine reel when it is funny, timely or about someone people know. Being unverified, opinion-based or only a discussion thread is NOT a reason for a low rating: the script says where a claim comes from ("A Reddit post says...").
+Entertainment counts as much as usefulness: a meme, a rumour or a heated thread is a fine reel when it is funny, timely or about someone people know. Being unverified, opinion-based or only a discussion thread is NOT a reason for a low rating: the script says where a claim comes from ("A Reddit post says...").
 
-Rate LOW when:
-- It is dry or niche and almost nobody would care: routine changelogs and version bumps, obscure libraries, incremental papers, availability or status reports, job posts, link dumps.
-- There is nothing to say or show.
-- It is spam, an ad or plain self-promotion.
-- It repeats old news and adds nothing.
+Hard ceilings, whatever else is true:
+- No surprise you can say in one plain sentence, or it needs specialist background to follow: at most 35. People who use ChatGPT, Claude, Fable or Cursor every day are this audience, not specialists.
+- The text is only a headline or a link with nothing to tell: at most 40. Breaking news about a big name or company is the exception: a headline that states the event ("X resigns", "Y buys Z", "Z is down") already says what happened, so a short source or a thread of reactions is enough material.
+- Only one small group of specialists would care (an obscure library, a niche protocol, an incremental paper, a hobby radio feed): at most 30.
+- A lure or low trust: an unknown account using a big brand's name, a repo or post that pushes a download from a file host, spam, an ad or plain self-promotion: at most 15.
 
-Engagement on the source (points, comments, stars) is a hint that people already care. A big name does not rescue a boring item, and an unknown name does not sink a striking one.
+Rate LOW when it is a routine changelog or version bump, an availability or status report, a job post, a link dump, an essay or opinion with no event behind it, or old news repeated with nothing new.
+
+Engagement on the source (points, comments, stars) is a hint that people already care. A big name does not rescue a boring item, and an unknown name does not sink a striking story.
 
 Use the whole scale: 80 and up for a reel you expect to do very well, around 50 for an average one, 20 and below for something almost nobody would watch.`
 

@@ -57,7 +57,7 @@ export class ManualJudgeError extends Error {
   }
 }
 
-async function loadGateItem(db: Database, itemId: string): Promise<GateItem> {
+export async function loadGateItem(db: Database, itemId: string): Promise<GateItem> {
   const item = await db
     .selectFrom('item')
     .select(['id', 'title', 'kind', 'canonical_key', 'score', 'images', 'demo'])

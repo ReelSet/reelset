@@ -286,7 +286,7 @@ describe('runGate', () => {
     })
     const t = setup(world, [judgeAnswer(61)])
     expect(await runGate(t.ctx, gateItem())).toMatchObject({ verdict: 'reel', score: 61 })
-    expect(world.recorded[0]).toMatchObject({ score: 61, signals: '{}', prompt_version: 'gate-v2' })
+    expect(world.recorded[0]).toMatchObject({ score: 61, signals: '{}', prompt_version: 'gate-v3' })
   })
 
   it('rejects an item the judge scores below the threshold and records the spend as gate llm spend', async () => {
