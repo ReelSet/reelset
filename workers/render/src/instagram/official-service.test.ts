@@ -12,7 +12,7 @@ import { OfficialApiError, type OfficialClient } from './official-client'
 import {
   CONTAINER_POLL_BUDGET_MS,
   MAX_TRANSIENT_ATTEMPTS,
-  OFFICIAL_DELETE_MESSAGE,
+  UNOFFICIAL_DELETE_MESSAGE,
   checkOfficialAccount,
   connectOfficialAccount,
   disconnectOfficialAccount,
@@ -31,14 +31,21 @@ const RAW_TOKEN = 'IGAAtesttokenvalue1234567890'
 const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString()
 const ahead = (ms: number) => new Date(NOW.getTime() + ms).toISOString()
 
+const SCOPES = ['instagram_basic', 'instagram_content_publish', 'business_management']
+const inspected = (expiresAt: Date | null, scopes = SCOPES) =>
+  vi.fn(async () => ({ valid: true, expiresAt, scopes }))
+
 const TOKEN: StoredToken = {
   accessToken: RAW_TOKEN,
   userId: OFFICIAL_ME.userId,
   username: OFFICIAL_ME.username,
+  clientBusinessId: 'biz1',
   savedAt: ago(2 * DAY),
-  refreshedAt: ago(2 * DAY),
-  expiresAt: ahead(58 * DAY),
+  refreshedAt: null,
+  expiresAt: null,
   expiryKnown: true,
+  scopes: SCOPES,
+  checkedAt: ago(2 * DAY),
   refreshAttemptAt: null,
   expiryAlertAt: null,
 }
@@ -80,6 +87,7 @@ async function setup(
     official?: Partial<OfficialClient>
     publisher?: InstagramPublisher
     aiLabel?: boolean
+    preferredUsername?: string
   } = {},
 ) {
   let now = NOW.getTime()
@@ -133,6 +141,7 @@ async function setup(
       now += ms
     }),
     official: client,
+    preferredUsername: opts.preferredUsername ?? null,
     publisher: async () => opts.publisher ?? 'official',
     aiLabel: async () => opts.aiLabel ?? false,
     alert,
@@ -152,31 +161,119 @@ async function setup(
 }
 
 describe('connectOfficialAccount', () => {
-  it('validates the token with /me and saves it encrypted with the account', async () => {
+  const other = { userId: '222', username: 'someone_else' }
+
+  it('finds the assigned account and saves the token encrypted with the business id', async () => {
     const t = await setup({ token: null, account: null })
     const account = await connectOfficialAccount(t.deps, RAW_TOKEN)
-    expect(t.client.getAccount).toHaveBeenCalledWith(RAW_TOKEN)
+    expect(t.client.listAccounts).toHaveBeenCalledWith(RAW_TOKEN)
     expect(account).toMatchObject({
       state: 'connected',
       username: 'reelset_app',
       publisher: 'official',
-      tokenExpiresAt: ahead(60 * DAY),
+      tokenExpiresAt: null,
     })
+    expect(account.message).toMatch(/META_APP_ID/)
     expect(t.official.token()).not.toContain(RAW_TOKEN)
     expect(await t.savedToken()).toMatchObject({
       accessToken: RAW_TOKEN,
       userId: OFFICIAL_ME.userId,
+      clientBusinessId: 'biz1',
       expiryKnown: false,
-      refreshedAt: null,
+      expiresAt: null,
     })
-    expect(t.official.account()?.state).toBe('connected')
+    expect(t.client.inspectToken).not.toHaveBeenCalled()
   })
 
-  it('does not save a token Instagram rejects', async () => {
+  it('reads the expiry at connect when the Meta app secrets are set', async () => {
+    const expires = new Date(NOW.getTime() + 40 * DAY)
     const t = await setup({
       token: null,
       account: null,
-      official: { getAccount: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
+      official: { canManageTokens: true, inspectToken: inspected(expires) },
+    })
+    const account = await connectOfficialAccount(t.deps, RAW_TOKEN)
+    expect(account).toMatchObject({ tokenExpiresAt: expires.toISOString(), message: null })
+    expect(await t.savedToken()).toMatchObject({ expiryKnown: true, scopes: SCOPES })
+  })
+
+  it('says so when the token never expires', async () => {
+    const t = await setup({
+      token: null,
+      account: null,
+      official: { canManageTokens: true },
+    })
+    expect((await connectOfficialAccount(t.deps, RAW_TOKEN)).message).toBe(
+      'This token does not expire.',
+    )
+  })
+
+  it('refuses a token without the publish permission', async () => {
+    const t = await setup({
+      token: null,
+      account: null,
+      official: { canManageTokens: true, inspectToken: inspected(null, ['instagram_basic']) },
+    })
+    const account = await connectOfficialAccount(t.deps, RAW_TOKEN)
+    expect(account.state).toBe('needs_login')
+    expect(account.message).toMatch(/instagram_content_publish/)
+    expect(t.store.saveOfficialToken).not.toHaveBeenCalled()
+  })
+
+  it('still saves the token when the business id cannot be read', async () => {
+    const t = await setup({
+      token: null,
+      account: null,
+      official: { getClientBusinessId: vi.fn(async () => Promise.reject(apiError('transient'))) },
+    })
+    expect((await connectOfficialAccount(t.deps, RAW_TOKEN)).state).toBe('connected')
+    expect((await t.savedToken())?.clientBusinessId).toBeNull()
+  })
+
+  it('picks the IG_USERNAME account when the token covers several', async () => {
+    const t = await setup({
+      token: null,
+      account: null,
+      preferredUsername: '@Reelset_App',
+      official: { listAccounts: vi.fn(async () => [other, OFFICIAL_ME]) },
+    })
+    expect((await connectOfficialAccount(t.deps, RAW_TOKEN)).username).toBe('reelset_app')
+    expect((await t.savedToken())?.userId).toBe(OFFICIAL_ME.userId)
+  })
+
+  it('lists the usernames when it cannot tell which of several accounts to use', async () => {
+    const accounts = { listAccounts: vi.fn(async () => [other, OFFICIAL_ME]) }
+    const unset = await setup({ token: null, account: null, official: accounts })
+    const a = await connectOfficialAccount(unset.deps, RAW_TOKEN)
+    expect(a.state).toBe('needs_login')
+    expect(a.message).toMatch(/@someone_else, @reelset_app/)
+    expect(a.message).toMatch(/IG_USERNAME/)
+    expect(unset.store.saveOfficialToken).not.toHaveBeenCalled()
+    const wrong = await setup({
+      token: null,
+      account: null,
+      official: accounts,
+      preferredUsername: 'third',
+    })
+    expect((await connectOfficialAccount(wrong.deps, RAW_TOKEN)).message).toMatch(/not @third/)
+  })
+
+  it('explains a token with no Instagram account assigned', async () => {
+    const t = await setup({
+      token: null,
+      account: null,
+      official: { listAccounts: vi.fn(async () => []) },
+    })
+    const account = await connectOfficialAccount(t.deps, RAW_TOKEN)
+    expect(account.state).toBe('needs_login')
+    expect(account.message).toMatch(/no Instagram account assigned/)
+  })
+
+  it('does not save a token Meta rejects', async () => {
+    const t = await setup({
+      token: null,
+      account: null,
+      official: { listAccounts: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
     })
     const account = await connectOfficialAccount(t.deps, RAW_TOKEN)
     expect(account.state).toBe('needs_login')
@@ -187,9 +284,9 @@ describe('connectOfficialAccount', () => {
 
   it('keeps a working token and its record when a replacement is rejected', async () => {
     const t = await setup({
-      official: { getAccount: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
+      official: { listAccounts: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
     })
-    const account = await connectOfficialAccount(t.deps, 'IGAAanotherbadtoken000000000')
+    const account = await connectOfficialAccount(t.deps, 'EAAGanotherbadtoken000000000')
     expect(account.state).toBe('needs_login')
     expect(t.official.account()?.state).toBe('connected')
     expect((await t.savedToken())?.accessToken).toBe(RAW_TOKEN)
@@ -204,26 +301,35 @@ describe('connectOfficialAccount', () => {
 })
 
 describe('checkOfficialAccount and disconnect', () => {
-  it('reports no token as disconnected without calling Instagram', async () => {
+  it('reports no token as disconnected without calling Meta', async () => {
     const t = await setup({ token: null, account: null })
     expect((await checkOfficialAccount(t.deps)).state).toBe('disconnected')
-    expect(t.client.getAccount).not.toHaveBeenCalled()
+    expect(t.client.listAccounts).not.toHaveBeenCalled()
   })
 
-  it('turns an expired token into needs_login and a restricted account into challenge', async () => {
+  it('turns a dead token into needs_login and a restricted account into challenge', async () => {
     const expired = await setup({
-      official: { getAccount: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
+      official: { listAccounts: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
     })
     expect((await checkOfficialAccount(expired.deps)).state).toBe('needs_login')
     const restricted = await setup({
-      official: { getAccount: vi.fn(async () => Promise.reject(apiError('account_restricted'))) },
+      official: {
+        listAccounts: vi.fn(async () => Promise.reject(apiError('account_restricted'))),
+      },
     })
     expect((await checkOfficialAccount(restricted.deps)).state).toBe('challenge')
   })
 
-  it('leaves the state unknown when Instagram cannot be reached', async () => {
+  it('asks for a new token when the account is no longer shared with it', async () => {
+    const t = await setup({ official: { listAccounts: vi.fn(async () => []) } })
+    const account = await checkOfficialAccount(t.deps)
+    expect(account.state).toBe('needs_login')
+    expect(account.message).toMatch(/no longer shared/)
+  })
+
+  it('leaves the state unknown when Meta cannot be reached', async () => {
     const t = await setup({
-      official: { getAccount: vi.fn(async () => Promise.reject(apiError('network', false))) },
+      official: { listAccounts: vi.fn(async () => Promise.reject(apiError('network', false))) },
     })
     expect((await checkOfficialAccount(t.deps)).state).toBe('unknown')
   })
@@ -238,91 +344,155 @@ describe('checkOfficialAccount and disconnect', () => {
 })
 
 describe('refreshOfficialToken', () => {
-  it('does nothing without a token', async () => {
-    const t = await setup({ token: null })
-    expect(await refreshOfficialToken(t.deps)).toBe('no_token')
+  const expiring = (days: number): StoredToken => ({ ...TOKEN, expiresAt: ahead(days * DAY) })
+  const alerts = (t: Awaited<ReturnType<typeof setup>>, key: string) =>
+    t.alert.mock.calls.filter(([a]) => a.key === key)
+
+  it('does nothing without a token, and at most once a day with one', async () => {
+    const none = await setup({ token: null })
+    expect(await refreshOfficialToken(none.deps)).toBe('no_token')
+    const fresh = await setup({ token: { ...TOKEN, checkedAt: ago(DAY - 60_000) } })
+    expect(await refreshOfficialToken(fresh.deps)).toBe('not_due')
+    expect(fresh.client.listAccounts).not.toHaveBeenCalled()
   })
 
-  it('leaves a token younger than 24 hours alone, even a freshly pasted one', async () => {
-    const t = await setup({
-      token: { ...TOKEN, savedAt: ago(DAY - 60_000), refreshedAt: null, expiryKnown: false },
-    })
+  it('only health-checks the token when the Meta app secrets are missing', async () => {
+    const t = await setup({ token: { ...TOKEN, expiryKnown: false, scopes: null } })
+    expect(await refreshOfficialToken(t.deps)).toBe('checked')
+    expect(t.client.listAccounts).toHaveBeenCalledOnce()
+    expect(t.client.inspectToken).not.toHaveBeenCalled()
+    expect(t.client.refreshToken).not.toHaveBeenCalled()
+    expect(t.alert).not.toHaveBeenCalled()
+    expect((await t.savedToken())?.checkedAt).toBe(NOW.toISOString())
     expect(await refreshOfficialToken(t.deps)).toBe('not_due')
+  })
+
+  it('is a no-op beyond the daily check for a token that never expires', async () => {
+    const t = await setup({ official: { canManageTokens: true } })
+    expect(await refreshOfficialToken(t.deps)).toBe('checked')
+    expect(t.client.refreshToken).not.toHaveBeenCalled()
+    expect(t.alert).not.toHaveBeenCalled()
+    expect(t.official.account()?.message).toBe('This token does not expire.')
+  })
+
+  it('learns the expiry on the daily check and leaves a token with time left alone', async () => {
+    const expires = new Date(NOW.getTime() + 40 * DAY)
+    const t = await setup({
+      token: { ...TOKEN, expiryKnown: false },
+      official: { canManageTokens: true, inspectToken: inspected(expires) },
+    })
+    expect(await refreshOfficialToken(t.deps)).toBe('checked')
+    expect(await t.savedToken()).toMatchObject({
+      expiresAt: expires.toISOString(),
+      expiryKnown: true,
+    })
+    expect(t.official.account()?.tokenExpiresAt).toBe(expires.toISOString())
     expect(t.client.refreshToken).not.toHaveBeenCalled()
   })
 
-  it('refreshes a pasted token once it is a day old, which reveals its real expiry', async () => {
+  it('replaces a token within 14 days of expiry and records the new expiry', async () => {
+    const next = new Date(NOW.getTime() + 60 * DAY)
+    const answers = [new Date(NOW.getTime() + 10 * DAY), next]
     const t = await setup({
-      token: { ...TOKEN, savedAt: ago(DAY + 60_000), refreshedAt: null, expiryKnown: false },
+      token: expiring(10),
+      official: {
+        canManageTokens: true,
+        inspectToken: vi.fn(async () => ({
+          valid: true,
+          expiresAt: answers.shift()!,
+          scopes: SCOPES,
+        })),
+      },
     })
     expect(await refreshOfficialToken(t.deps)).toBe('refreshed')
-    expect(t.client.refreshToken).toHaveBeenCalledWith(RAW_TOKEN)
+    expect(t.client.refreshToken).toHaveBeenCalledWith(RAW_TOKEN, 'biz1')
+    expect(t.client.inspectToken).toHaveBeenLastCalledWith('fresh-token')
     expect(await t.savedToken()).toMatchObject({
       accessToken: 'fresh-token',
       refreshedAt: NOW.toISOString(),
-      expiresAt: ahead(5_184_000_000),
-      expiryKnown: true,
+      expiresAt: next.toISOString(),
     })
-    expect(t.official.account()?.tokenExpiresAt).toBe(ahead(5_184_000_000))
     expect(t.alert).not.toHaveBeenCalled()
   })
 
-  it('refreshes a known token only after 7 days', async () => {
-    const young = await setup({ token: { ...TOKEN, refreshedAt: ago(6 * DAY) } })
-    expect(await refreshOfficialToken(young.deps)).toBe('not_due')
-    const old = await setup({ token: { ...TOKEN, refreshedAt: ago(7 * DAY + 1) } })
-    expect(await refreshOfficialToken(old.deps)).toBe('refreshed')
-  })
-
-  it('alerts when a refresh fails and waits 6 hours before trying again', async () => {
+  it('keeps the old token and alerts when the replacement fails', async () => {
     const t = await setup({
-      token: { ...TOKEN, refreshedAt: ago(8 * DAY) },
-      official: { refreshToken: vi.fn(async () => Promise.reject(apiError('transient'))) },
+      token: expiring(10),
+      official: {
+        canManageTokens: true,
+        inspectToken: inspected(new Date(NOW.getTime() + 10 * DAY)),
+        refreshToken: vi.fn(async () => Promise.reject(apiError('permission'))),
+      },
     })
     expect(await refreshOfficialToken(t.deps)).toBe('failed')
-    expect(t.alert).toHaveBeenCalledWith(
-      expect.objectContaining({ key: 'instagram_token_refresh_failed' }),
-    )
+    expect(alerts(t, 'instagram_token_refresh_failed')).toHaveLength(1)
+    expect(alerts(t, 'instagram_token_expiring')).toHaveLength(0)
     expect((await t.savedToken())?.accessToken).toBe(RAW_TOKEN)
-    t.advance(5 * 60_000)
-    expect(await refreshOfficialToken(t.deps)).toBe('not_due')
-    expect(t.client.refreshToken).toHaveBeenCalledTimes(1)
-    t.advance(6 * 60 * 60_000)
-    expect(await refreshOfficialToken(t.deps)).toBe('failed')
-    expect(t.client.refreshToken).toHaveBeenCalledTimes(2)
+    expect(t.official.account()?.state).toBe('connected')
   })
 
-  it('marks the account needs_login when the refresh says the token is dead', async () => {
+  it('warns once a day near expiry and names why it cannot refresh', async () => {
+    const soon = new Date(NOW.getTime() + 5 * DAY)
     const t = await setup({
-      token: { ...TOKEN, refreshedAt: ago(8 * DAY) },
-      official: { refreshToken: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
+      token: expiring(5),
+      official: {
+        canManageTokens: true,
+        inspectToken: inspected(soon, ['instagram_basic', 'instagram_content_publish']),
+      },
     })
-    await refreshOfficialToken(t.deps)
-    expect(t.official.account()?.state).toBe('needs_login')
-  })
-
-  it('alerts once a day while the token is within 7 days of expiry', async () => {
-    const t = await setup({
-      token: { ...TOKEN, refreshedAt: ago(54 * DAY), expiresAt: ahead(6 * DAY) },
-      official: { refreshToken: vi.fn(async () => Promise.reject(apiError('transient'))) },
-    })
-    await refreshOfficialToken(t.deps)
-    const expiring = () => t.alert.mock.calls.filter(([a]) => a.key === 'instagram_token_expiring')
-    expect(expiring()).toHaveLength(1)
+    expect(await refreshOfficialToken(t.deps)).toBe('checked')
+    expect(t.client.refreshToken).not.toHaveBeenCalled()
+    const [first] = alerts(t, 'instagram_token_expiring')
+    expect(first?.[0].message).toMatch(/lacks the business_management permission/)
     t.advance(5 * 60_000)
     await refreshOfficialToken(t.deps)
-    expect(expiring()).toHaveLength(1)
+    expect(alerts(t, 'instagram_token_expiring')).toHaveLength(1)
     t.advance(DAY)
     await refreshOfficialToken(t.deps)
-    expect(expiring()).toHaveLength(2)
+    expect(alerts(t, 'instagram_token_expiring')).toHaveLength(2)
   })
 
-  it('does not warn about expiry after a successful refresh', async () => {
+  it('does not try to refresh without a client business id', async () => {
     const t = await setup({
-      token: { ...TOKEN, refreshedAt: ago(54 * DAY), expiresAt: ahead(6 * DAY) },
+      token: { ...expiring(5), clientBusinessId: null },
+      official: {
+        canManageTokens: true,
+        inspectToken: inspected(new Date(NOW.getTime() + 5 * DAY)),
+      },
     })
-    expect(await refreshOfficialToken(t.deps)).toBe('refreshed')
+    await refreshOfficialToken(t.deps)
+    expect(t.client.refreshToken).not.toHaveBeenCalled()
+    expect(alerts(t, 'instagram_token_expiring')[0]?.[0].message).toMatch(/client business id/)
+  })
+
+  it('marks the account needs_login and alerts when the token has died', async () => {
+    const dead = await setup({
+      official: {
+        canManageTokens: true,
+        inspectToken: vi.fn(async () => ({ valid: false, expiresAt: null, scopes: [] })),
+      },
+    })
+    expect(await refreshOfficialToken(dead.deps)).toBe('failed')
+    expect(dead.official.account()?.state).toBe('needs_login')
+    expect(alerts(dead, 'instagram_token_refresh_failed')).toHaveLength(1)
+    expect(await refreshOfficialToken(dead.deps)).toBe('not_due')
+
+    const noSecrets = await setup({
+      official: { listAccounts: vi.fn(async () => Promise.reject(apiError('token_invalid'))) },
+    })
+    expect(await refreshOfficialToken(noSecrets.deps)).toBe('failed')
+    expect(noSecrets.official.account()?.state).toBe('needs_login')
+  })
+
+  it('tries again on the next tick when the check could not reach Meta', async () => {
+    const t = await setup({
+      official: { listAccounts: vi.fn(async () => Promise.reject(apiError('network', false))) },
+    })
+    expect(await refreshOfficialToken(t.deps)).toBe('failed')
     expect(t.alert).not.toHaveBeenCalled()
+    expect(t.official.account()?.state).toBe('connected')
+    expect(await refreshOfficialToken(t.deps)).toBe('failed')
+    expect(t.client.listAccounts).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -570,11 +740,40 @@ describe('runInstagramQueue with the official publisher', () => {
     expect(last.store.markFailed).toHaveBeenCalled()
   })
 
-  it('refuses a delete in plain words and leaves the post as posted', async () => {
-    const t = await setup({ del: { ...POST, id: 'p5', media_pk: 'm5' } })
-    expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'delete', postId: 'p5', ok: false })
-    expect(t.store.restoreAfterDeleteFailure).toHaveBeenCalledWith('p5', OFFICIAL_DELETE_MESSAGE)
+  it('deletes a reel it posted itself', async () => {
+    const t = await setup({
+      del: { ...POST, id: 'p5', media_pk: 'm5' },
+      containers: { p5: 'c5' },
+    })
+    expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'delete', postId: 'p5', ok: true })
+    expect(t.client.deleteMedia).toHaveBeenCalledWith(RAW_TOKEN, 'm5')
+    expect(t.store.markDeleted).toHaveBeenCalledWith('p5')
     expect(t.store.claimPost).not.toHaveBeenCalled()
+  })
+
+  it('keeps the post and passes on Meta’s reason when the delete is refused', async () => {
+    const t = await setup({
+      del: { ...POST, id: 'p5', media_pk: 'm5' },
+      containers: { p5: 'c5' },
+      official: {
+        deleteMedia: vi.fn(async () =>
+          Promise.reject(apiError('permission', true, 'Requires instagram_manage_contents.')),
+        ),
+      },
+    })
+    expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'delete', postId: 'p5', ok: false })
+    expect(t.store.markDeleted).not.toHaveBeenCalled()
+    expect(t.store.restoreAfterDeleteFailure).toHaveBeenCalledWith(
+      'p5',
+      expect.stringMatching(/Requires instagram_manage_contents\..*Instagram app/),
+    )
+  })
+
+  it('does not try to delete a reel the unofficial publisher posted', async () => {
+    const t = await setup({ del: { ...POST, id: 'p5', media_pk: '3712' } })
+    expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'delete', postId: 'p5', ok: false })
+    expect(t.client.deleteMedia).not.toHaveBeenCalled()
+    expect(t.store.restoreAfterDeleteFailure).toHaveBeenCalledWith('p5', UNOFFICIAL_DELETE_MESSAGE)
   })
 })
 

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Deploys the render worker (no Docker: renders run on the box) with the Instagram secrets, RENDER_BOX_TOKEN and CHATTERBOX_TOKEN from .env.local (never printed, temp file removed).
+# Deploys the render worker (no Docker: renders run on the box) with the Instagram secrets (plus the optional META_APP_ID / META_APP_SECRET), RENDER_BOX_TOKEN and CHATTERBOX_TOKEN from .env.local (never printed, temp file removed).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 unset CLOUDFLARE_API_TOKEN
@@ -12,7 +12,7 @@ for line in open('.env.local'):
     if '=' in line and not line.startswith('#'):
         key, _, value = line.rstrip('\n').partition('=')
         env[key.strip()] = value.strip().strip('\'"')
-names = ('IG_ADMIN_TOKEN', 'IG_SESSION_KEY', 'IG_USERNAME', 'IG_PASSWORD', 'IG_TOTP_SECRET', 'RENDER_BOX_TOKEN', 'CHATTERBOX_TOKEN')
+names = ('IG_ADMIN_TOKEN', 'IG_SESSION_KEY', 'IG_USERNAME', 'IG_PASSWORD', 'IG_TOTP_SECRET', 'META_APP_ID', 'META_APP_SECRET', 'RENDER_BOX_TOKEN', 'CHATTERBOX_TOKEN')
 payload = {k: env[k] for k in names if env.get(k)}
 missing = [k for k in ('IG_ADMIN_TOKEN', 'IG_SESSION_KEY') if k not in payload]
 if missing:

@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import type { Logger } from '@reelset/core'
 
-// Instagram API with Instagram Login: Instagram User access token, no Facebook Page.
-export const IG_GRAPH_HOST = 'https://graph.instagram.com'
+// Instagram API with Unified Login: a Business Integration System User access token on
+// graph.facebook.com, with the Instagram account id in every path. No Facebook Page is needed.
+export const IG_GRAPH_HOST = 'https://graph.facebook.com'
 export const IG_GRAPH_VERSION = 'v27.0'
 
 export const OFFICIAL_TIMEOUT_MS = { read: 30_000, write: 60_000 }
@@ -43,9 +44,9 @@ const metaErrorSchema = z.object({
 })
 type MetaError = z.infer<typeof metaErrorSchema>['error']
 
-const TOKEN_CODES = new Set([190])
+const TOKEN_CODES = new Set([102, 190])
 const PERMISSION_CODES = new Set([3, 10, 200])
-const RATE_LIMIT_CODES = new Set([4, 17, 32, 613])
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80002])
 const TRANSIENT_CODES = new Set([1, 2])
 // Subcodes from the Instagram Platform error reference.
 const SUBCODE_KIND: Record<number, OfficialErrorKind> = {
@@ -98,27 +99,43 @@ export type OfficialMedia = {
   permalink: string | null
   timestamp: Date | null
 }
-export type RefreshedToken = { accessToken: string; expiresInSeconds: number }
+/** `expiresAt` is null for a token that never expires. */
+export type TokenInfo = { valid: boolean; expiresAt: Date | null; scopes: string[] }
+export type MetaApp = { id: string; secret: string }
 
 export type OfficialClient = {
-  getAccount(token: string): Promise<OfficialAccount>
+  /** True when the Meta app id and secret are configured: expiry can be read and tokens refreshed. */
+  canManageTokens: boolean
+  /** The Instagram accounts shared with the token; `/me` itself is the system user. */
+  listAccounts(token: string): Promise<OfficialAccount[]>
+  getClientBusinessId(token: string): Promise<string | null>
   createReelContainer(token: string, igId: string, reel: OfficialReel): Promise<string>
   getContainerStatus(token: string, containerId: string): Promise<ContainerStatus>
   publish(token: string, igId: string, containerId: string): Promise<string>
   getPublishingLimit(token: string, igId: string): Promise<PublishingLimit>
   getPermalink(token: string, mediaId: string): Promise<string>
   listMediaSince(token: string, igId: string, since: Date): Promise<OfficialMedia[]>
-  refreshToken(token: string): Promise<RefreshedToken>
+  deleteMedia(token: string, mediaId: string): Promise<boolean>
+  inspectToken(token: string): Promise<TokenInfo>
+  /** Asks the token management API for a new token for the same business; returns it. */
+  refreshToken(token: string, clientBusinessId: string): Promise<string>
 }
 
 const idSchema = z.object({ id: z.string().min(1) })
-const accountFields = z.object({
-  user_id: z.union([z.string(), z.number()]).optional(),
-  id: z.union([z.string(), z.number()]).optional(),
-  username: z.string().min(1),
+const accountsSchema = z.object({
+  data: z.array(z.object({ id: z.union([z.string(), z.number()]), username: z.string().min(1) })),
 })
-// The get-started guide shows `/me` wrapped in a data array; the API also answers with a bare object.
-const accountSchema = z.union([accountFields, z.object({ data: z.array(accountFields).min(1) })])
+const businessSchema = z.object({
+  client_business_id: z.union([z.string(), z.number()]).optional(),
+})
+const deleteSchema = z.object({ success: z.boolean() })
+const debugSchema = z.object({
+  data: z.object({
+    is_valid: z.boolean(),
+    expires_at: z.number().optional(),
+    scopes: z.array(z.string()).optional(),
+  }),
+})
 const statusSchema = z.object({
   status_code: z.enum(CONTAINER_STATUS_CODES),
   status: z.string().optional(),
@@ -144,31 +161,43 @@ const mediaListSchema = z.object({
     }),
   ),
 })
-const refreshSchema = z.object({
-  access_token: z.string().min(1),
-  expires_in: z.number().positive(),
-})
+const refreshSchema = z.object({ access_token: z.string().min(1) })
+
+async function appSecretProof(token: string, secret: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(token)))
+  return [...mac].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 type CallInput = {
   op: string
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST' | 'DELETE'
   path: string
+  /** Sent as the Authorization header, so it never appears in a URL. */
   token: string
   query?: Record<string, string>
   body?: Record<string, unknown>
   timeoutMs: number
-  /** The refresh endpoint is documented with the token as a query parameter only. */
-  tokenInQuery?: boolean
 }
 
-export function createOfficialClient(fetchImpl: typeof fetch, log: Logger): OfficialClient {
+const NO_APP_MESSAGE = 'META_APP_ID and META_APP_SECRET are not configured'
+
+export function createOfficialClient(
+  fetchImpl: typeof fetch,
+  log: Logger,
+  app: MetaApp | null = null,
+): OfficialClient {
   async function call<T>(input: CallInput, schema: z.ZodType<T>): Promise<T> {
     const url = new URL(`${IG_GRAPH_HOST}${input.path}`)
     for (const [k, v] of Object.entries(input.query ?? {})) url.searchParams.set(k, v)
-    if (input.tokenInQuery) url.searchParams.set('access_token', input.token)
-    const headers: Record<string, string> = input.tokenInQuery
-      ? {}
-      : { authorization: `Bearer ${input.token}` }
+    const headers: Record<string, string> = { authorization: `Bearer ${input.token}` }
     if (input.body) headers['content-type'] = 'application/json'
     let res: Response
     try {
@@ -212,23 +241,36 @@ export function createOfficialClient(fetchImpl: typeof fetch, log: Logger): Offi
   const v = `/${IG_GRAPH_VERSION}`
 
   return {
-    async getAccount(token) {
+    canManageTokens: app !== null,
+
+    async listAccounts(token) {
       const raw = await call(
         {
-          op: 'me',
+          op: 'assigned_accounts',
+          method: 'GET',
+          path: `${v}/me/assigned_instagram_accounts`,
+          token,
+          query: { fields: 'id,username', limit: '100' },
+          timeoutMs: OFFICIAL_TIMEOUT_MS.read,
+        },
+        accountsSchema,
+      )
+      return raw.data.map((a) => ({ userId: String(a.id), username: a.username }))
+    },
+
+    async getClientBusinessId(token) {
+      const raw = await call(
+        {
+          op: 'client_business',
           method: 'GET',
           path: `${v}/me`,
           token,
-          query: { fields: 'user_id,username' },
+          query: { fields: 'client_business_id' },
           timeoutMs: OFFICIAL_TIMEOUT_MS.read,
         },
-        accountSchema,
+        businessSchema,
       )
-      const account = 'data' in raw ? raw.data[0]! : raw
-      const userId = account.user_id ?? account.id
-      if (userId === undefined)
-        throw new OfficialApiError('bad_response', 'Instagram did not return an account id', true)
-      return { userId: String(userId), username: account.username }
+      return raw.client_business_id === undefined ? null : String(raw.client_business_id)
     },
 
     async createReelContainer(token, igId, reel) {
@@ -344,20 +386,56 @@ export function createOfficialClient(fetchImpl: typeof fetch, log: Logger): Offi
       })
     },
 
-    async refreshToken(token) {
+    async deleteMedia(token, mediaId) {
+      const raw = await call(
+        {
+          op: 'delete_media',
+          method: 'DELETE',
+          path: `${v}/${mediaId}`,
+          token,
+          timeoutMs: OFFICIAL_TIMEOUT_MS.write,
+        },
+        deleteSchema,
+      )
+      return raw.success
+    },
+
+    // debug_token takes the inspected token as a query parameter only; URLs are never logged.
+    async inspectToken(token) {
+      if (!app) throw new OfficialApiError('rejected', NO_APP_MESSAGE, true)
+      const raw = await call(
+        {
+          op: 'debug_token',
+          method: 'GET',
+          path: `${v}/debug_token`,
+          token: `${app.id}|${app.secret}`,
+          query: { input_token: token },
+          timeoutMs: OFFICIAL_TIMEOUT_MS.read,
+        },
+        debugSchema,
+      )
+      const expires = raw.data.expires_at ?? 0
+      return {
+        valid: raw.data.is_valid,
+        expiresAt: expires > 0 ? new Date(expires * 1000) : null,
+        scopes: raw.data.scopes ?? [],
+      }
+    },
+
+    async refreshToken(token, clientBusinessId) {
+      if (!app) throw new OfficialApiError('rejected', NO_APP_MESSAGE, true)
       const raw = await call(
         {
           op: 'refresh_token',
-          method: 'GET',
-          path: '/refresh_access_token',
+          method: 'POST',
+          path: `${v}/${clientBusinessId}/system_user_access_tokens`,
           token,
-          tokenInQuery: true,
-          query: { grant_type: 'ig_refresh_token' },
-          timeoutMs: OFFICIAL_TIMEOUT_MS.read,
+          body: { appsecret_proof: await appSecretProof(token, app.secret) },
+          timeoutMs: OFFICIAL_TIMEOUT_MS.write,
         },
         refreshSchema,
       )
-      return { accessToken: raw.access_token, expiresInSeconds: raw.expires_in }
+      return raw.access_token
     },
   }
 }

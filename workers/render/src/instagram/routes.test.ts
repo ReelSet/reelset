@@ -140,7 +140,7 @@ describe('handleIgRoute', () => {
       }),
       c,
     )
-    expect(official.getAccount).toHaveBeenCalledWith('IGAAtesttokenvalue1234567890')
+    expect(official.listAccounts).toHaveBeenCalledWith('IGAAtesttokenvalue1234567890')
     expect(await res.json()).toMatchObject({
       state: 'connected',
       username: 'reelset_app',

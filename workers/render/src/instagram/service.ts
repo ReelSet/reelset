@@ -41,6 +41,8 @@ export type IgDeps = {
   now?: () => Date
   /** Meta's official API; used when the `instagram_publisher` setting is `official`. */
   official: OfficialClient
+  /** IG_USERNAME: picks the account when a token covers several. */
+  preferredUsername: string | null
   publisher: () => Promise<InstagramPublisher>
   aiLabel: () => Promise<boolean>
   alert: (input: AlertInput) => Promise<unknown>

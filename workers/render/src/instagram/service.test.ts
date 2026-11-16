@@ -118,6 +118,7 @@ async function setup(
     mediaBaseUrl: 'https://media.reelset.app',
     log: silentLog,
     official: fakeOfficialClient(),
+    preferredUsername: null,
     publisher: async () => 'unofficial',
     aiLabel: async () => false,
     alert: vi.fn(async () => 'sent'),

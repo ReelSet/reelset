@@ -17,6 +17,9 @@ export type Env = {
   IG_USERNAME?: string
   IG_PASSWORD?: string
   IG_TOTP_SECRET?: string
+  /** Optional: lets the official publisher read its token's expiry and refresh it. */
+  META_APP_ID?: string
+  META_APP_SECRET?: string
   MEDIA_PUBLIC_BASE_URL?: string
   RENDER_JOBS: Queue<JobMessage>
   IG_RUN: Queue<IgRunMessage>

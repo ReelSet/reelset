@@ -205,7 +205,7 @@ export function AccountCard({
 function TokenExpiry({ account }: { account: IgAccount | null }) {
   if (!account?.tokenExpiresAt) return null
   const day = new Date(account.tokenExpiresAt).toISOString().slice(0, 10)
-  return <span>token expires about {day} UTC, refreshed automatically</span>
+  return <span>token expires about {day} UTC</span>
 }
 
 function TokenForm({ returnTo }: { returnTo: string }) {
@@ -213,9 +213,9 @@ function TokenForm({ returnTo }: { returnTo: string }) {
     <form action={connectAccountAction} className="flex flex-col gap-2.5" autoComplete="off">
       <input type="hidden" name="returnTo" value={returnTo} />
       <p className="text-xs text-faint">
-        Paste the long-lived Instagram User access token from the Meta app dashboard (Instagram, API
-        setup with Instagram login, Generate token). It is checked with Instagram, stored encrypted
-        and refreshed automatically.
+        Paste the system-user access token from the Meta app dashboard (Use cases, Manage messaging
+        and content on Instagram, API setup with Unified login, Generate access tokens). Meta shows
+        it only once. It is checked with Meta and stored encrypted.
       </p>
       <input
         name="accessToken"

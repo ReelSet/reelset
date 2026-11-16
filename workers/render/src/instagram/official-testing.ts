@@ -7,14 +7,22 @@ export const OFFICIAL_ME = { userId: '17841400000000001', username: 'reelset_app
 
 export function fakeOfficialClient(overrides: Partial<OfficialClient> = {}): OfficialClient {
   return {
-    getAccount: vi.fn(async () => OFFICIAL_ME),
+    canManageTokens: false,
+    listAccounts: vi.fn(async () => [OFFICIAL_ME]),
+    getClientBusinessId: vi.fn(async () => 'biz1'),
+    deleteMedia: vi.fn(async () => true),
+    inspectToken: vi.fn(async () => ({
+      valid: true,
+      expiresAt: null,
+      scopes: ['instagram_basic', 'instagram_content_publish', 'business_management'],
+    })),
     createReelContainer: vi.fn(async () => 'c1'),
     getContainerStatus: vi.fn(async () => ({ statusCode: 'FINISHED' as const, status: null })),
     publish: vi.fn(async () => 'm1'),
     getPublishingLimit: vi.fn(async () => ({ used: 1, total: 100 })),
     getPermalink: vi.fn(async () => 'https://www.instagram.com/reel/ABC/'),
     listMediaSince: vi.fn(async () => []),
-    refreshToken: vi.fn(async () => ({ accessToken: 'fresh-token', expiresInSeconds: 5_184_000 })),
+    refreshToken: vi.fn(async () => 'fresh-token'),
     ...overrides,
   }
 }

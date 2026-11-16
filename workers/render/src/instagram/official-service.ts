@@ -7,18 +7,21 @@ import {
 } from '@reelset/core'
 import { posterKeyForVideoKey } from '../keys'
 import { decryptJson, encryptJson } from './crypto'
-import { OfficialApiError, type ContainerStatus, type OfficialMedia } from './official-client'
+import {
+  OfficialApiError,
+  type ContainerStatus,
+  type OfficialAccount,
+  type OfficialMedia,
+} from './official-client'
 import type { IgDeps, QueueOutcome } from './service'
 import type { ClaimedPost, LostPost } from './store'
 
 const DAY_MS = 86_400_000
-// Long-lived Instagram User tokens last 60 days; a refresh restarts the 60 days.
-export const TOKEN_LIFETIME_MS = 60 * DAY_MS
-export const TOKEN_REFRESH_AFTER_MS = 7 * DAY_MS
-// Instagram refuses to refresh a token younger than 24 hours.
-export const TOKEN_MIN_REFRESH_AGE_MS = DAY_MS
+// With the Meta app id and secret the token is inspected once a day (expiry, validity, scopes) and,
+// if it expires at all, replaced this long before it does. Without them it is only health-checked.
+export const TOKEN_CHECK_EVERY_MS = DAY_MS
+export const TOKEN_REFRESH_BEFORE_MS = 14 * DAY_MS
 export const TOKEN_EXPIRY_WARNING_MS = 7 * DAY_MS
-export const TOKEN_REFRESH_RETRY_MS = 6 * 60 * 60_000
 export const TOKEN_EXPIRY_ALERT_EVERY_MS = DAY_MS
 
 // Meta recommends checking a container about once a minute for at most 5 minutes.
@@ -29,26 +32,42 @@ const PERMALINK_TRIES = 3
 const PUBLISHED_LOOKBACK_MS = DAY_MS
 const LOOKUP_SLACK_MS = 2 * 60_000
 
-export const OFFICIAL_DELETE_MESSAGE =
-  'The official Instagram API cannot delete posts. Delete the reel in the Instagram app, or set instagram_publisher to unofficial and delete it again.'
+const PUBLISH_SCOPE = 'instagram_content_publish'
+const TOKEN_MANAGEMENT_SCOPE = 'business_management'
+export const UNOFFICIAL_DELETE_MESSAGE =
+  'This reel was posted by the unofficial publisher, so the official API cannot delete it. Delete it in the Instagram app, or set instagram_publisher to unofficial and delete it again.'
+const DELETE_REFUSED_ADVICE =
+  "Meta documents delete for the Facebook Login setup only; it may work once instagram_manage_contents is added to the app's configuration. Otherwise delete the reel in the Instagram app."
 const NO_TOKEN_MESSAGE = 'No access token saved. Paste one to connect.'
 const TOKEN_REJECTED_MESSAGE =
-  'Instagram rejected the access token (invalid or expired). Paste a new one.'
+  'Meta rejected the access token (invalid, expired or removed). Generate a new one and paste it.'
 const PERMISSION_MESSAGE =
-  'The access token is missing a permission. It needs instagram_business_basic and instagram_business_content_publish.'
+  'The access token is missing a permission. It needs instagram_basic and instagram_content_publish.'
+const NO_ACCOUNT_MESSAGE =
+  'This token has no Instagram account assigned. In the Meta app dashboard, add the account under "Generate access tokens" and generate the token for it.'
+const ACCOUNT_GONE_MESSAGE =
+  'The Instagram account is no longer shared with this token. Generate a new token and paste it.'
+const EXPIRY_UNKNOWN_NOTE =
+  'Token expiry cannot be read without the META_APP_ID and META_APP_SECRET worker secrets.'
+const NEVER_EXPIRES_NOTE = 'This token does not expire.'
 const STILL_PROCESSING_NOTE =
   'Instagram is still processing the video. Publishing continues on the next run.'
 const BLOCKED_STATES: readonly IgAccountState[] = ['needs_login', 'challenge', 'disconnected']
 
 export type StoredToken = {
   accessToken: string
+  /** The Instagram account id used in request paths. */
   userId: string
   username: string
+  /** Needed by the token management API; null when Meta did not return one. */
+  clientBusinessId: string | null
   savedAt: string
   refreshedAt: string | null
-  expiresAt: string
-  /** False until the first refresh: a pasted token's real expiry is not known. */
+  /** Null with `expiryKnown` true means the token never expires. */
+  expiresAt: string | null
   expiryKnown: boolean
+  scopes: string[] | null
+  checkedAt: string | null
   refreshAttemptAt: string | null
   expiryAlertAt: string | null
 }
@@ -56,6 +75,7 @@ export type StoredToken = {
 const clock = (deps: IgDeps) => deps.now?.() ?? new Date()
 const sleep = (deps: IgDeps, ms: number) =>
   deps.sleep ? deps.sleep(ms) : new Promise<void>((resolve) => setTimeout(resolve, ms))
+const text = (v: unknown) => (typeof v === 'string' ? v : null)
 
 export async function loadOfficialToken(deps: IgDeps): Promise<StoredToken | null> {
   const blob = await deps.store.getOfficialToken()
@@ -66,20 +86,22 @@ export async function loadOfficialToken(deps: IgDeps): Promise<StoredToken | nul
       typeof v?.accessToken !== 'string' ||
       typeof v.userId !== 'string' ||
       typeof v.username !== 'string' ||
-      typeof v.savedAt !== 'string' ||
-      typeof v.expiresAt !== 'string'
+      typeof v.savedAt !== 'string'
     )
       return null
     return {
       accessToken: v.accessToken,
       userId: v.userId,
       username: v.username,
+      clientBusinessId: text(v.clientBusinessId),
       savedAt: v.savedAt,
-      refreshedAt: typeof v.refreshedAt === 'string' ? v.refreshedAt : null,
-      expiresAt: v.expiresAt,
+      refreshedAt: text(v.refreshedAt),
+      expiresAt: text(v.expiresAt),
       expiryKnown: v.expiryKnown === true,
-      refreshAttemptAt: typeof v.refreshAttemptAt === 'string' ? v.refreshAttemptAt : null,
-      expiryAlertAt: typeof v.expiryAlertAt === 'string' ? v.expiryAlertAt : null,
+      scopes: Array.isArray(v.scopes) ? v.scopes.filter((x) => typeof x === 'string') : null,
+      checkedAt: text(v.checkedAt),
+      refreshAttemptAt: text(v.refreshAttemptAt),
+      expiryAlertAt: text(v.expiryAlertAt),
     }
   } catch (err) {
     deps.log.error(errorFields(err), 'stored instagram access token could not be decrypted')
@@ -121,7 +143,11 @@ async function writeOfficialAccount(deps: IgDeps, patch: OfficialPatch): Promise
   return account
 }
 
+/** A token problem the admin has to fix, said in plain words. */
+class TokenProblem extends Error {}
+
 function accountPatchForError(err: unknown): OfficialPatch {
+  if (err instanceof TokenProblem) return { state: 'needs_login', message: err.message }
   if (err instanceof OfficialApiError) {
     if (err.kind === 'token_invalid')
       return { state: 'needs_login', message: TOKEN_REJECTED_MESSAGE }
@@ -132,33 +158,85 @@ function accountPatchForError(err: unknown): OfficialPatch {
   return { state: 'unknown', message: 'Could not check the account. Try again.' }
 }
 
-/** Validates a pasted access token with `/me` and saves it encrypted; a rejected token is never saved. */
+const handle = (name: string) => name.trim().replace(/^@/, '').toLowerCase()
+
+// One token can cover several Instagram accounts; IG_USERNAME says which one this app posts to.
+function pickAccount(deps: IgDeps, accounts: OfficialAccount[]): OfficialAccount {
+  if (accounts.length === 0) throw new TokenProblem(NO_ACCOUNT_MESSAGE)
+  if (accounts.length === 1) return accounts[0]!
+  const wanted = deps.preferredUsername ? handle(deps.preferredUsername) : null
+  const match = wanted ? accounts.find((a) => handle(a.username) === wanted) : undefined
+  if (match) return match
+  const names = accounts.map((a) => `@${a.username}`).join(', ')
+  throw new TokenProblem(
+    wanted
+      ? `This token covers ${names}, but not @${wanted} (IG_USERNAME). Generate a token for that account.`
+      : `This token covers several Instagram accounts (${names}). Set the IG_USERNAME worker secret to the one to post to, then paste the token again.`,
+  )
+}
+
+type Expiry = Pick<StoredToken, 'expiresAt' | 'expiryKnown' | 'scopes'>
+
+// Reads expiry and scopes with debug_token; without the Meta app secrets both stay unknown.
+async function inspect(deps: IgDeps, accessToken: string): Promise<Expiry> {
+  if (!deps.official.canManageTokens) return { expiresAt: null, expiryKnown: false, scopes: null }
+  const info = await deps.official.inspectToken(accessToken)
+  if (!info.valid) throw new TokenProblem(TOKEN_REJECTED_MESSAGE)
+  if (!info.scopes.includes(PUBLISH_SCOPE)) throw new TokenProblem(PERMISSION_MESSAGE)
+  return {
+    expiresAt: info.expiresAt ? info.expiresAt.toISOString() : null,
+    expiryKnown: true,
+    scopes: info.scopes,
+  }
+}
+
+const expiryNote = (token: Expiry) =>
+  !token.expiryKnown ? EXPIRY_UNKNOWN_NOTE : token.expiresAt ? null : NEVER_EXPIRES_NOTE
+
+/**
+ * Validates a pasted token by listing the Instagram accounts it covers and saves it encrypted with
+ * the account id and the client business id; a token that fails any check is never saved.
+ */
 export async function connectOfficialAccount(
   deps: IgDeps,
   accessToken: string,
 ): Promise<IgAccount> {
   const log = deps.log.child({ op: 'ig-official-connect' })
   try {
-    const me = await deps.official.getAccount(accessToken)
-    const now = clock(deps)
-    const expiresAt = new Date(now.getTime() + TOKEN_LIFETIME_MS).toISOString()
+    const account = pickAccount(deps, await deps.official.listAccounts(accessToken))
+    const expiry = await inspect(deps, accessToken)
+    const clientBusinessId = await deps.official.getClientBusinessId(accessToken).catch((err) => {
+      log.warn(errorFields(err), 'client business id unreadable, token refresh will be skipped')
+      return null
+    })
+    const now = clock(deps).toISOString()
     await saveToken(deps, {
       accessToken,
-      userId: me.userId,
-      username: me.username,
-      savedAt: now.toISOString(),
+      userId: account.userId,
+      username: account.username,
+      clientBusinessId,
+      savedAt: now,
       refreshedAt: null,
-      expiresAt,
-      expiryKnown: false,
+      ...expiry,
+      checkedAt: now,
       refreshAttemptAt: null,
       expiryAlertAt: null,
     })
-    log.info({ userId: me.userId, username: me.username }, 'instagram access token saved')
+    log.info(
+      {
+        userId: account.userId,
+        username: account.username,
+        hasBusinessId: Boolean(clientBusinessId),
+        expiresAt: expiry.expiresAt,
+        expiryKnown: expiry.expiryKnown,
+      },
+      'instagram access token saved',
+    )
     return writeOfficialAccount(deps, {
       state: 'connected',
-      message: null,
-      username: me.username,
-      tokenExpiresAt: expiresAt,
+      message: expiryNote(expiry),
+      username: account.username,
+      tokenExpiresAt: expiry.expiresAt,
     })
   } catch (err) {
     log.error(errorFields(err), 'instagram access token was not accepted')
@@ -183,12 +261,14 @@ export async function checkOfficialAccount(deps: IgDeps): Promise<IgAccount> {
     })
   }
   try {
-    const me = await deps.official.getAccount(token.accessToken)
-    log.info({ userId: me.userId }, 'instagram access token checked')
+    const accounts = await deps.official.listAccounts(token.accessToken)
+    const account = accounts.find((a) => a.userId === token.userId)
+    if (!account) throw new TokenProblem(ACCOUNT_GONE_MESSAGE)
+    log.info({ userId: account.userId }, 'instagram access token checked')
     return writeOfficialAccount(deps, {
       state: 'connected',
-      message: null,
-      username: me.username,
+      message: expiryNote(token),
+      username: account.username,
       tokenExpiresAt: token.expiresAt,
     })
   } catch (err) {
@@ -203,11 +283,21 @@ export async function disconnectOfficialAccount(deps: IgDeps): Promise<IgAccount
   return writeOfficialAccount(deps, { state: 'disconnected', message: null, tokenExpiresAt: null })
 }
 
-export type RefreshOutcome = 'no_token' | 'not_due' | 'refreshed' | 'failed'
+export type RefreshOutcome = 'no_token' | 'not_due' | 'checked' | 'refreshed' | 'failed'
+
+async function tokenStoppedWorking(deps: IgDeps, err: unknown): Promise<void> {
+  await writeOfficialAccount(deps, accountPatchForError(err))
+  await deps.alert({
+    key: 'instagram_token_refresh_failed',
+    message: 'The Instagram access token stopped working. Paste a new token in admin.',
+  })
+}
 
 /**
- * Runs on the cron. A pasted token is refreshed once it is a day old (that also reveals its real
- * expiry), then every 7 days. A failed refresh, or a token within 7 days of expiry, raises an alert.
+ * Runs on the cron and does real work once a day. System user tokens never expire by default, so
+ * for most tokens this only confirms the token still works. A token that does expire is replaced
+ * through the token management API 14 days ahead, which needs the Meta app secret, the
+ * business_management permission and the client business id; without any of those it alerts instead.
  */
 export async function refreshOfficialToken(deps: IgDeps): Promise<RefreshOutcome> {
   const log = deps.log.child({ op: 'ig-official-refresh' })
@@ -215,60 +305,89 @@ export async function refreshOfficialToken(deps: IgDeps): Promise<RefreshOutcome
   if (!token) return 'no_token'
   const now = clock(deps)
   const since = (iso: string | null) => (iso ? now.getTime() - Date.parse(iso) : Infinity)
-  const age = since(token.refreshedAt ?? token.savedAt)
-  const due =
-    age >= TOKEN_MIN_REFRESH_AGE_MS &&
-    (!token.expiryKnown || age >= TOKEN_REFRESH_AFTER_MS) &&
-    since(token.refreshAttemptAt) >= TOKEN_REFRESH_RETRY_MS
-  let outcome: RefreshOutcome = 'not_due'
+  if (since(token.checkedAt) < TOKEN_CHECK_EVERY_MS) return 'not_due'
+  let outcome: RefreshOutcome = 'checked'
 
-  if (due) {
+  try {
+    if (deps.official.canManageTokens) {
+      token = { ...token, ...(await inspect(deps, token.accessToken)) }
+    } else {
+      const accounts = await deps.official.listAccounts(token.accessToken)
+      if (!accounts.some((a) => a.userId === token!.userId))
+        throw new TokenProblem(ACCOUNT_GONE_MESSAGE)
+    }
+  } catch (err) {
+    log.error(errorFields(err), 'daily instagram access token check failed')
+    const dead =
+      err instanceof TokenProblem ||
+      (err instanceof OfficialApiError && err.kind === 'token_invalid')
+    // A check that could not run is tried again on the next tick; a dead token waits for a new one.
+    if (!dead) return 'failed'
+    await saveToken(deps, { ...token, checkedAt: now.toISOString() })
+    await tokenStoppedWorking(deps, err)
+    return 'failed'
+  }
+  token = { ...token, checkedAt: now.toISOString() }
+
+  const left = () => (token!.expiresAt ? Date.parse(token!.expiresAt) - now.getTime() : Infinity)
+  const cannotRefresh = !deps.official.canManageTokens
+    ? 'META_APP_ID and META_APP_SECRET are not set'
+    : !token.clientBusinessId
+      ? 'the client business id is unknown'
+      : !token.scopes?.includes(TOKEN_MANAGEMENT_SCOPE)
+        ? `the token lacks the ${TOKEN_MANAGEMENT_SCOPE} permission`
+        : null
+
+  if (left() < TOKEN_REFRESH_BEFORE_MS && !cannotRefresh) {
     try {
-      const fresh = await deps.official.refreshToken(token.accessToken)
+      const fresh = await deps.official.refreshToken(token.accessToken, token.clientBusinessId!)
+      const expiry = await inspect(deps, fresh)
       token = {
         ...token,
-        accessToken: fresh.accessToken,
+        ...expiry,
+        accessToken: fresh,
         refreshedAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + fresh.expiresInSeconds * 1000).toISOString(),
-        expiryKnown: true,
         refreshAttemptAt: null,
         expiryAlertAt: null,
       }
-      await saveToken(deps, token)
-      const account = await deps.store.getOfficialAccount()
-      if (account)
-        await deps.store.setOfficialAccount({ ...account, tokenExpiresAt: token.expiresAt })
-      log.info({ expiresAt: token.expiresAt }, 'instagram access token refreshed')
+      log.info({ expiresAt: token.expiresAt }, 'instagram access token replaced')
       outcome = 'refreshed'
     } catch (err) {
       log.error(errorFields(err), 'instagram access token refresh failed')
+      // Retried on the next daily check at the earliest.
       token = { ...token, refreshAttemptAt: now.toISOString() }
-      await saveToken(deps, token)
-      const rejected = err instanceof OfficialApiError && err.kind === 'token_invalid'
-      if (rejected) await writeOfficialAccount(deps, accountPatchForError(err))
       await deps.alert({
         key: 'instagram_token_refresh_failed',
-        message: rejected
-          ? 'Instagram rejected the access token during refresh. Paste a new token in admin.'
-          : 'Instagram access token refresh failed. It is retried in 6 hours.',
-        fields: { expiresAt: token.expiresAt, expiryKnown: token.expiryKnown },
+        message: 'Instagram access token refresh failed. It is retried tomorrow.',
+        fields: { expiresAt: token.expiresAt },
       })
       outcome = 'failed'
     }
   }
 
-  const left = Date.parse(token.expiresAt) - now.getTime()
-  if (left < TOKEN_EXPIRY_WARNING_MS && since(token.expiryAlertAt) >= TOKEN_EXPIRY_ALERT_EVERY_MS) {
-    await saveToken(deps, { ...token, expiryAlertAt: now.toISOString() })
+  if (
+    left() < TOKEN_EXPIRY_WARNING_MS &&
+    since(token.expiryAlertAt) >= TOKEN_EXPIRY_ALERT_EVERY_MS
+  ) {
+    token = { ...token, expiryAlertAt: now.toISOString() }
     await deps.alert({
       key: 'instagram_token_expiring',
       message:
-        left <= 0
+        left() <= 0
           ? 'The Instagram access token has expired. Paste a new token in admin.'
-          : 'The Instagram access token expires within 7 days and has not been refreshed. Paste a new token in admin.',
-      fields: { expiresAt: token.expiresAt, daysLeft: Math.max(0, Math.floor(left / DAY_MS)) },
+          : `The Instagram access token expires within 7 days${cannotRefresh ? ` and cannot be refreshed automatically (${cannotRefresh})` : ' and the refresh has not worked'}. Paste a new token in admin.`,
+      fields: { expiresAt: token.expiresAt, daysLeft: Math.max(0, Math.floor(left() / DAY_MS)) },
     })
   }
+
+  await saveToken(deps, token)
+  const account = await deps.store.getOfficialAccount()
+  if (account && account.state === 'connected')
+    await deps.store.setOfficialAccount({
+      ...account,
+      message: expiryNote(token),
+      tokenExpiresAt: token.expiresAt,
+    })
   return outcome
 }
 
@@ -569,6 +688,44 @@ export async function recoverLostOfficialPost(
   }
 }
 
+/**
+ * Tries the delete and reports Meta's own reason when it is refused. Only reels this publisher
+ * posted are tried: the unofficial publisher stores a different kind of media id.
+ */
+export async function runOfficialDelete(
+  deps: IgDeps,
+  post: ClaimedPost,
+  token: StoredToken,
+): Promise<boolean> {
+  const log = deps.log.child({ postId: post.id, mediaPk: post.media_pk, publisher: 'official' })
+  if (!post.media_pk || !(await deps.store.getContainerId(post.id))) {
+    log.warn('delete refused: the reel was not posted by the official publisher')
+    await deps.store.restoreAfterDeleteFailure(post.id, UNOFFICIAL_DELETE_MESSAGE)
+    return false
+  }
+  try {
+    if (!(await deps.official.deleteMedia(token.accessToken, post.media_pk)))
+      throw new Error('Instagram did not confirm the delete')
+    await deps.store.markDeleted(post.id)
+    log.info('instagram post deleted')
+    return true
+  } catch (err) {
+    log.error(errorFields(err), 'official instagram delete failed')
+    const refused = err instanceof OfficialApiError && err.answered
+    await deps.store.restoreAfterDeleteFailure(
+      post.id,
+      refused
+        ? `Instagram refused the delete: ${err.message} ${DELETE_REFUSED_ADVICE}`
+        : err instanceof Error
+          ? err.message
+          : 'delete failed',
+    )
+    if (err instanceof OfficialApiError && err.kind === 'token_invalid')
+      await writeOfficialAccount(deps, accountPatchForError(err))
+    return false
+  }
+}
+
 // At most one post per run, like the unofficial queue; the claim query enforces the gap.
 export async function runOfficialQueue(deps: IgDeps): Promise<QueueOutcome> {
   const stuck = await deps.store.failStuck()
@@ -584,11 +741,7 @@ export async function runOfficialQueue(deps: IgDeps): Promise<QueueOutcome> {
   if (lost) await recoverLostOfficialPost(deps, lost, token)
 
   const del = await deps.store.claimDelete()
-  if (del) {
-    deps.log.warn({ postId: del.id }, 'delete refused: not possible with the official api')
-    await deps.store.restoreAfterDeleteFailure(del.id, OFFICIAL_DELETE_MESSAGE)
-    return { ran: 'delete', postId: del.id, ok: false }
-  }
+  if (del) return { ran: 'delete', postId: del.id, ok: await runOfficialDelete(deps, del, token) }
   const post = await deps.store.claimPost()
   if (post) return { ran: 'post', postId: post.id, ok: await runOfficialPost(deps, post, token) }
   return { ran: 'none', reason: 'nothing_due' }

@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { Logger } from '@reelset/core'
 import { silentLog } from '../testing'
@@ -6,16 +7,19 @@ import {
   OfficialApiError,
   classifyMetaError,
   createOfficialClient,
+  type MetaApp,
 } from './official-client'
 
 const TOKEN = 'IGAAtesttokenvalue1234567890'
 const IG_ID = '17841400000000001'
+const APP = { id: '4242', secret: 'app-secret-value-123' }
 
 type Seen = { url: URL; method: string; headers: Record<string, string>; body: unknown }
 
 function fakeApi(
   answer: (seen: Seen) => { status?: number; json: unknown } | Error,
   log = silentLog,
+  app: MetaApp | null = null,
 ) {
   const requests: Seen[] = []
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -30,7 +34,7 @@ function fakeApi(
     if (result instanceof Error) throw result
     return new Response(JSON.stringify(result.json), { status: result.status ?? 200 })
   }) as typeof fetch
-  return { client: createOfficialClient(fetchImpl, log), requests }
+  return { client: createOfficialClient(fetchImpl, log, app), requests }
 }
 
 const metaError = (code: number, extra: Record<string, unknown> = {}) => ({
@@ -48,20 +52,26 @@ async function failure(run: Promise<unknown>): Promise<OfficialApiError> {
 }
 
 describe('official instagram client requests', () => {
-  it('reads the account with the token in the Authorization header, never in the URL', async () => {
-    const t = fakeApi(() => ({ json: { user_id: IG_ID, username: 'reelset_app' } }))
-    expect(await t.client.getAccount(TOKEN)).toEqual({ userId: IG_ID, username: 'reelset_app' })
+  it('lists the assigned accounts with the token in the Authorization header, never in the URL', async () => {
+    const t = fakeApi(() => ({
+      json: { data: [{ id: IG_ID, username: 'reelset_app' }], paging: { cursors: {} } },
+    }))
+    expect(await t.client.listAccounts(TOKEN)).toEqual([{ userId: IG_ID, username: 'reelset_app' }])
     const [req] = t.requests
-    expect(req?.url.origin).toBe('https://graph.instagram.com')
-    expect(req?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/me`)
-    expect(req?.url.searchParams.get('fields')).toBe('user_id,username')
+    expect(req?.url.origin).toBe('https://graph.facebook.com')
+    expect(req?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/me/assigned_instagram_accounts`)
+    expect(req?.url.searchParams.get('fields')).toBe('id,username')
     expect(req?.headers.authorization).toBe(`Bearer ${TOKEN}`)
     expect(req?.url.toString()).not.toContain(TOKEN)
   })
 
-  it('accepts the account wrapped in a data array, as the docs show it', async () => {
-    const t = fakeApi(() => ({ json: { data: [{ user_id: 123, username: 'reelset_app' }] } }))
-    expect(await t.client.getAccount(TOKEN)).toEqual({ userId: '123', username: 'reelset_app' })
+  it('reads the client business id from /me, or null when there is none', async () => {
+    const t = fakeApi(() => ({ json: { client_business_id: '999', id: '1' } }))
+    expect(await t.client.getClientBusinessId(TOKEN)).toBe('999')
+    expect(t.requests[0]?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/me`)
+    expect(t.requests[0]?.url.searchParams.get('fields')).toBe('client_business_id')
+    const none = fakeApi(() => ({ json: { id: '1' } }))
+    expect(await none.client.getClientBusinessId(TOKEN)).toBeNull()
   })
 
   it('creates a reel container with the video, cover and caption', async () => {
@@ -162,25 +172,67 @@ describe('official instagram client requests', () => {
     expect(t.requests[1]?.url.searchParams.get('since')).toBe('1794819600')
   })
 
-  it('refreshes a token on the unversioned endpoint', async () => {
-    const t = fakeApi(() => ({
-      json: { access_token: 'next', token_type: 'bearer', expires_in: 5183944 },
-    }))
-    expect(await t.client.refreshToken(TOKEN)).toEqual({
-      accessToken: 'next',
-      expiresInSeconds: 5183944,
+  it('deletes a media object', async () => {
+    const t = fakeApi(() => ({ json: { success: true, deleted_id: 'm1' } }))
+    expect(await t.client.deleteMedia(TOKEN, 'm1')).toBe(true)
+    expect(t.requests[0]?.method).toBe('DELETE')
+    expect(t.requests[0]?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/m1`)
+  })
+})
+
+describe('official instagram client token management', () => {
+  it('cannot inspect or refresh without the Meta app id and secret', async () => {
+    const t = fakeApi(() => ({ json: {} }))
+    expect(t.client.canManageTokens).toBe(false)
+    await failure(t.client.inspectToken(TOKEN))
+    await failure(t.client.refreshToken(TOKEN, '999'))
+    expect(t.requests).toHaveLength(0)
+  })
+
+  it('inspects a token with the app token and reads its expiry and scopes', async () => {
+    const t = fakeApi(
+      () => ({
+        json: {
+          data: { is_valid: true, expires_at: 1800000000, scopes: ['instagram_basic'] },
+        },
+      }),
+      silentLog,
+      APP,
+    )
+    expect(t.client.canManageTokens).toBe(true)
+    expect(await t.client.inspectToken(TOKEN)).toEqual({
+      valid: true,
+      expiresAt: new Date(1800000000 * 1000),
+      scopes: ['instagram_basic'],
     })
     const [req] = t.requests
-    expect(req?.url.pathname).toBe('/refresh_access_token')
-    expect(req?.url.searchParams.get('grant_type')).toBe('ig_refresh_token')
-    expect(req?.url.searchParams.get('access_token')).toBe(TOKEN)
+    expect(req?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/debug_token`)
+    expect(req?.url.searchParams.get('input_token')).toBe(TOKEN)
+    expect(req?.headers.authorization).toBe(`Bearer ${APP.id}|${APP.secret}`)
+  })
+
+  it('reads expires_at 0 as a token that never expires', async () => {
+    const t = fakeApi(() => ({ json: { data: { is_valid: true, expires_at: 0 } } }), silentLog, APP)
+    expect(await t.client.inspectToken(TOKEN)).toEqual({ valid: true, expiresAt: null, scopes: [] })
+  })
+
+  it('asks the token management api for a new token, signed with the app secret', async () => {
+    const t = fakeApi(() => ({ json: { access_token: 'next' } }), silentLog, APP)
+    expect(await t.client.refreshToken(TOKEN, '999')).toBe('next')
+    const [req] = t.requests
+    expect(req?.method).toBe('POST')
+    expect(req?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/999/system_user_access_tokens`)
+    expect(req?.url.search).toBe('')
+    expect(req?.headers.authorization).toBe(`Bearer ${TOKEN}`)
+    const expected = createHmac('sha256', APP.secret).update(TOKEN).digest('hex')
+    expect(req?.body).toEqual({ appsecret_proof: expected })
   })
 })
 
 describe('official instagram client errors', () => {
   it('maps an invalid or expired token', async () => {
     const t = fakeApi(() => metaError(190))
-    const err = await failure(t.client.getAccount(TOKEN))
+    const err = await failure(t.client.listAccounts(TOKEN))
     expect(err.kind).toBe('token_invalid')
     expect(err.answered).toBe(true)
     expect(err.detail.code).toBe(190)
@@ -246,14 +298,15 @@ describe('official instagram client errors', () => {
       debug: record,
       child: () => log,
     } as unknown as Logger
-    const ok = fakeApi(() => ({ json: { access_token: 'next', expires_in: 10 } }), log)
-    await ok.client.refreshToken(TOKEN)
-    const bad = fakeApi(() => metaError(190), log)
-    await failure(bad.client.refreshToken(TOKEN))
-    const down = fakeApi(() => new TypeError(`fetch failed ${TOKEN}`), log)
-    await failure(down.client.refreshToken(TOKEN))
+    const ok = fakeApi(() => ({ json: { access_token: 'next' } }), log, APP)
+    await ok.client.refreshToken(TOKEN, '999')
+    const bad = fakeApi(() => metaError(190), log, APP)
+    await failure(bad.client.inspectToken(TOKEN))
+    const down = fakeApi(() => new TypeError(`fetch failed ${TOKEN}`), log, APP)
+    await failure(down.client.inspectToken(TOKEN))
     expect(lines.length).toBeGreaterThan(0)
     expect(JSON.stringify(lines)).not.toContain(TOKEN)
     expect(JSON.stringify(lines)).not.toContain('next')
+    expect(JSON.stringify(lines)).not.toContain(APP.secret)
   })
 })

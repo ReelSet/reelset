@@ -37,7 +37,14 @@ export async function buildIgDeps(
         : null,
     mediaBaseUrl: (env.MEDIA_PUBLIC_BASE_URL ?? DEFAULT_MEDIA_BASE_URL).replace(/\/$/, ''),
     log,
-    official: createOfficialClient((url, init) => fetch(url, init), log),
+    official: createOfficialClient(
+      (url, init) => fetch(url, init),
+      log,
+      env.META_APP_ID && env.META_APP_SECRET
+        ? { id: env.META_APP_ID, secret: env.META_APP_SECRET }
+        : null,
+    ),
+    preferredUsername: env.IG_USERNAME ?? null,
     publisher: () => getSetting(db, SETTINGS.instagramPublisher, log),
     aiLabel: () => getSetting(db, SETTINGS.instagramAiLabel, log),
     alert: (input) => sendAlert(db, env.ALERT_WEBHOOK_URL, input, log),
