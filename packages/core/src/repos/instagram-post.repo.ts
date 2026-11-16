@@ -417,6 +417,31 @@ export async function autoPostsQueuedToday(db: Database): Promise<number> {
 }
 
 /**
+ * Passes when the item's newest automatic gate decision says reel. An admin label wins (agree keeps
+ * the stored verdict, disagree flips it); an unlabelled explore row is a judge's no, so it fails.
+ * Manual judgements are analysis only and never count. `i` is the item alias.
+ */
+const PASSES_GATE_SQL = sql`exists (
+  select 1 from (
+    select d.verdict, d.decided_by, d.label from gate_decision d
+    where d.item_id = i.id and d.trigger = 'auto'
+    order by d.created_at desc, d.id desc limit 1
+  ) latest
+  where case
+    when latest.label = 'agree' then latest.verdict = 'reel'
+    when latest.label = 'disagree' then latest.verdict <> 'reel'
+    when latest.decided_by = 'explore' then false
+    else latest.verdict = 'reel'
+  end
+)`
+
+export type AutoCandidateOptions = {
+  /** Only items whose gate decision passes (see PASSES_GATE_SQL); items never judged are left out. */
+  requireGatePass?: boolean
+  lookbackHours?: number
+}
+
+/**
  * Newly rendered reels with no live Instagram post, newest first, with their served render. A reel
  * whose earlier posts failed is retried (up to INSTAGRAM_AUTO_MAX_ATTEMPTS failures), except while a
  * lost upload is still being looked up on the account.
@@ -424,7 +449,10 @@ export async function autoPostsQueuedToday(db: Database): Promise<number> {
 export async function listAutoPostCandidates(
   db: Database,
   limit: number,
-  lookbackHours = INSTAGRAM_AUTO_LOOKBACK_HOURS,
+  {
+    requireGatePass = false,
+    lookbackHours = INSTAGRAM_AUTO_LOOKBACK_HOURS,
+  }: AutoCandidateOptions = {},
 ): Promise<AutoCandidate[]> {
   if (limit <= 0) return []
   const { rows } = await sql<AutoCandidate>`
@@ -449,6 +477,7 @@ export async function listAutoPostCandidates(
       and (
         select count(*) from instagram_post p where p.item_id = i.id and p.status = ${S.failed}
       ) < ${INSTAGRAM_AUTO_MAX_ATTEMPTS}
+      and ${requireGatePass ? PASSES_GATE_SQL : sql`true`}
     order by first_done.at desc
     limit ${limit}
   `.execute(db)

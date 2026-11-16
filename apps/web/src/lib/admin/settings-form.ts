@@ -69,6 +69,8 @@ const HINTS: Record<string, string> = {
   reel_credit_cost: 'Credits charged per generated reel',
   instagram_auto_post:
     'Queue every new reel for Instagram (up to daily_reel_cap per day); false = post by hand only',
+  instagram_auto_post_gate:
+    'Auto post only reels the gate said should be reels (your Agree/Disagree label wins). Reels the gate never judged are not auto posted, so keep gate_mode on Shadow or Live',
   instagram_publisher:
     'How reels reach Instagram: unofficial = the instagrapi login on the render box; official = the Meta API with the access token saved on the Instagram admin page',
   instagram_ai_label:

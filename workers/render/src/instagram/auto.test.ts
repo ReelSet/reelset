@@ -18,9 +18,12 @@ function deps(over: Partial<AutoPostDeps> = {}) {
   const inserted: { itemId: string; videoKey: string; caption: string }[] = []
   const d: AutoPostDeps = {
     enabled: async () => true,
+    requireGatePass: async () => false,
     dailyLimit: async () => 2,
     queuedToday: async () => 0,
-    candidates: vi.fn(async (limit: number) => [candidate('a'), candidate('b')].slice(0, limit)),
+    candidates: vi.fn(async (limit: number, _opts: { requireGatePass: boolean }) =>
+      [candidate('a'), candidate('b')].slice(0, limit),
+    ),
     insert: async (post) => {
       inserted.push(post)
       return true
@@ -34,7 +37,7 @@ describe('queueAutoInstagramPosts', () => {
   it('queues new reels with the composer caption, up to the daily cap', async () => {
     const { d, inserted } = deps()
     expect(await queueAutoInstagramPosts(d, silentLog)).toBe(2)
-    expect(d.candidates).toHaveBeenCalledWith(2)
+    expect(d.candidates).toHaveBeenCalledWith(2, { requireGatePass: false })
     expect(inserted.map((p) => p.itemId)).toEqual(['a', 'b'])
     expect(inserted[0]).toMatchObject({ videoKey: 'reels/a/v.mp4' })
     expect(inserted[0]!.caption.split('\n\n')).toEqual([
@@ -48,7 +51,7 @@ describe('queueAutoInstagramPosts', () => {
   it('only fills what is left of today', async () => {
     const { d, inserted } = deps({ dailyLimit: async () => 2, queuedToday: async () => 1 })
     expect(await queueAutoInstagramPosts(d, silentLog)).toBe(1)
-    expect(d.candidates).toHaveBeenCalledWith(1)
+    expect(d.candidates).toHaveBeenCalledWith(1, { requireGatePass: false })
     expect(inserted).toHaveLength(1)
   })
 
@@ -68,5 +71,12 @@ describe('queueAutoInstagramPosts', () => {
   it('does not count a reel that was already queued', async () => {
     const { d } = deps({ insert: async (p) => p.itemId !== 'a' })
     expect(await queueAutoInstagramPosts(d, silentLog)).toBe(1)
+  })
+
+  it('asks only for gate-passed reels when the gate setting is on', async () => {
+    const { d, inserted } = deps({ requireGatePass: async () => true })
+    expect(await queueAutoInstagramPosts(d, silentLog)).toBe(2)
+    expect(d.candidates).toHaveBeenCalledWith(2, { requireGatePass: true })
+    expect(inserted).toHaveLength(2)
   })
 })

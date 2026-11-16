@@ -129,6 +129,7 @@ export const SETTINGS = {
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
   renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
   instagramAutoPost: def('instagram_auto_post', z.boolean(), true),
+  instagramAutoPostGate: def('instagram_auto_post_gate', z.boolean(), false),
   instagramPublisher: def(
     'instagram_publisher',
     instagramPublisherSchema,

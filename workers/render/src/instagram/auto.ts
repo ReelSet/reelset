@@ -14,18 +14,20 @@ export type AutoCandidate = Awaited<ReturnType<typeof listAutoPostCandidates>>[n
 
 export type AutoPostDeps = {
   enabled(): Promise<boolean>
+  requireGatePass(): Promise<boolean>
   dailyLimit(): Promise<number>
   queuedToday(): Promise<number>
-  candidates(limit: number): Promise<AutoCandidate[]>
+  candidates(limit: number, opts: { requireGatePass: boolean }): Promise<AutoCandidate[]>
   insert(post: { itemId: string; videoKey: string; caption: string }): Promise<boolean>
 }
 
 export function createAutoPostDeps(db: Database, log: Logger): AutoPostDeps {
   return {
     enabled: () => getSetting(db, SETTINGS.instagramAutoPost, log),
+    requireGatePass: () => getSetting(db, SETTINGS.instagramAutoPostGate, log),
     dailyLimit: () => getSetting(db, SETTINGS.dailyReelCap, log),
     queuedToday: () => autoPostsQueuedToday(db),
-    candidates: (limit) => listAutoPostCandidates(db, limit),
+    candidates: (limit, opts) => listAutoPostCandidates(db, limit, opts),
     insert: (post) => insertAutoPost(db, post),
   }
 }
@@ -37,13 +39,18 @@ export async function queueAutoInstagramPosts(deps: AutoPostDeps, log: Logger): 
     l.debug('instagram auto post is off')
     return 0
   }
-  const [limit, queuedToday] = await Promise.all([deps.dailyLimit(), deps.queuedToday()])
+  const [limit, queuedToday, requireGatePass] = await Promise.all([
+    deps.dailyLimit(),
+    deps.queuedToday(),
+    deps.requireGatePass(),
+  ])
   const remaining = limit - queuedToday
   if (remaining <= 0) {
     l.debug({ limit, queuedToday }, 'daily auto post limit reached')
     return 0
   }
-  const candidates = await deps.candidates(remaining)
+  const candidates = await deps.candidates(remaining, { requireGatePass })
+  l.debug({ requireGatePass, candidates: candidates.length }, 'auto post candidates')
   let queued = 0
   for (const c of candidates) {
     const caption = buildCaption({
@@ -61,6 +68,7 @@ export async function queueAutoInstagramPosts(deps: AutoPostDeps, log: Logger): 
       inserted ? 'reel auto-queued for instagram' : 'already queued',
     )
   }
-  if (candidates.length) l.info({ queued, limit, queuedToday }, 'instagram auto post done')
+  if (candidates.length)
+    l.info({ queued, limit, queuedToday, requireGatePass }, 'instagram auto post done')
   return queued
 }
