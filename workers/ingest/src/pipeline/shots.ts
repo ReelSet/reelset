@@ -15,7 +15,7 @@ export const MAX_HEADLINE_WORDS = 7
 export const MAX_SHOTS_PER_BEAT = 4
 /** Labels into the parsed paper ('Table 2', '(3)'); resolved to real props later, never numeric claims. */
 const PAPER_REF_KEYS = new Set(['table', 'figure', 'equation'])
-export const MAX_NARRATION_WORDS = 135
+export const MAX_NARRATION_WORDS = 170
 
 const NUM_RE = /\d[\d,]*(?:\.\d+)?\s?(?:[kKmMbB]\b)?/g
 const SCREENS = new Set<string>(SCREEN_NAMES)

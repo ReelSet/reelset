@@ -54,7 +54,14 @@ import { primarySource } from '../score'
 import { markDecisionNotApplied, runGate, type GateDeps, type GateResult } from './gate'
 import { LLM_PROVIDER } from './llm'
 import { STYLE_LIMITS, type StyleLimits } from './plain'
-import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserPrompt, itemImagesPrompt } from './prompt'
+import {
+  NARRATION_MAX_WORDS,
+  NARRATION_MIN_WORDS,
+  PROMPT_VERSION,
+  SYSTEM_PROMPT,
+  buildUserPrompt,
+  itemImagesPrompt,
+} from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
 import type { TranscriptClient } from './transcript'
 
@@ -115,7 +122,11 @@ type ItemRow = {
 const MAX_LLM_CALLS = 3
 const MAX_HARD_REJECTIONS = 2
 const MAX_PROMPT_IMAGES = 4
-export const NARRATION_LIMITS = { min: 100, max: 112, maxSpokenChars: MAX_SPOKEN_CHARS }
+export const NARRATION_LIMITS = {
+  min: NARRATION_MIN_WORDS,
+  max: NARRATION_MAX_WORDS,
+  maxSpokenChars: MAX_SPOKEN_CHARS,
+}
 
 async function loadItem(db: Database, itemId: string): Promise<ItemRow | undefined> {
   const row = await db
@@ -593,6 +604,7 @@ async function summarize(
       {
         attempt,
         hookFormula: parsed.style.hookFormula,
+        storyShape: parsed.style.storyShape,
         hookScore: parsed.style.hookScore,
         hookSeconds: parsed.style.hookSeconds,
         readingGrade: parsed.style.readingGrade,

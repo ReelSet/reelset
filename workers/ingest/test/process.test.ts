@@ -175,7 +175,7 @@ describe('processItem', () => {
           visual: { type: 'title', title: 'acme/repo' },
         },
         {
-          text: 'Ollama shrinks the model to fit in 8 gigabytes. Then it runs offline.',
+          text: 'Ollama shrinks the model to fit in 8 gigabytes, but it runs slower offline.',
           visual: { type: 'title', title: 'T2' },
         },
       ],

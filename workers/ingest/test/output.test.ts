@@ -130,3 +130,44 @@ describe('hook options', () => {
     if (r.ok) expect(r.value.script.outro).toBe('No GPU, and it is a big deal for your laptop.')
   })
 })
+
+describe('reel length', () => {
+  const sentence =
+    'You can run this model on the laptop you already own, and it works offline too. '
+  const long = (steps: string[]) =>
+    JSON.stringify({
+      ...validOutput,
+      story: { idea: 'x', shape: 'Experiment', steps },
+      script: {
+        ...validOutput.script,
+        beats: [0, 1, 2, 3, 4].map((i) => ({
+          text: sentence.repeat(2).trim() + (i === 4 ? ' But it is slower.' : ''),
+          visual: { type: 'title', title: 'T' },
+        })),
+      },
+    })
+
+  it('sends a long script back when the story has too few steps to need the room', () => {
+    const r = parseModelOutput(long(['one', 'two']), undefined, '', {}, STYLE_LIMITS)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.style.issues.join(' ')).toContain('the story has 2 distinct steps')
+      expect(r.style.words).toBeGreaterThan(125)
+    }
+  })
+
+  it('lets a long script through when the story lists enough steps', () => {
+    const r = parseModelOutput(
+      long(['one', 'two', 'three', 'four']),
+      undefined,
+      '',
+      {},
+      STYLE_LIMITS,
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.style.issues.join(' ')).not.toContain('distinct steps')
+      expect(r.style.storySteps).toBe(4)
+    }
+  })
+})

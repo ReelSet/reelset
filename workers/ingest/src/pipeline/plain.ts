@@ -12,7 +12,7 @@ export type StyleLimits = {
 }
 
 export const STYLE_LIMITS: StyleLimits = {
-  maxSentenceWords: 16,
+  maxSentenceWords: 22,
   maxGrade: 9,
   maxQuantitiesPerBeat: 2,
   minHookScore: 50,
@@ -63,6 +63,15 @@ const content = (text: string): Set<string> =>
       .map((w) => (w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, '') : w)),
   )
 
+const SHORT_SENTENCE_WORDS = 8
+const MAX_SHORT_SHARE = 0.6
+const LABELLED_CATCH =
+  /(?:^|[.!?]\s+)(?:but\s+)?(?:the catch|heads up|bottom line|here'?s why|the kicker|the twist|the takeaway)(?:\s*[:,]|\s+(?:is|was|here)\b)/i
+const TEMPLATE_OUTRO = /^\s*(?:would|will|could|should) you\b/i
+const AUTHOR_VOICE =
+  /\b(?:we|our team)\s+(?:tested|test|built|build|propose|found|find|show|showed|evaluate|evaluated|introduce|present|release|released|ran|trained|measured|benchmark|benchmarked)\b/i
+const TURN = /\b(?:but|except|yet|until|instead|turns out)\b/i
+
 const isConcrete = (text: string): boolean =>
   /\d/.test(text) ||
   tokens(text).some((t, i) => isName(t) || (i > 0 && /^\p{Lu}\p{Ll}{2,}/u.test(bare(t))))
@@ -90,6 +99,41 @@ export function styleIssues(script: Narration, limits: StyleLimits = STYLE_LIMIT
   if (long.length > 0) {
     issues.push(
       `${long.slice(0, 3).join(', ')}; split every sentence over ${limits.maxSentenceWords} words into two short ones`,
+    )
+  }
+  const said = parts.flatMap(([, text]) => sentences(text))
+  const short = said.filter((s) => tokens(s).length < SHORT_SENTENCE_WORDS).length
+  if (said.length >= 6 && short / said.length > MAX_SHORT_SHARE) {
+    issues.push(
+      `${short} of ${said.length} sentences are under ${SHORT_SENTENCE_WORDS} words, which sounds robotic; join linked short sentences with "and", "but", "so" or "which means" so the narration flows like talk`,
+    )
+  }
+  const labelled = script.beats.flatMap((b, i) => (LABELLED_CATCH.test(b.text) ? [i + 1] : []))
+  if (labelled.length > 0) {
+    issues.push(
+      `beat ${labelled.join(', ')} announces itself with a label ("The catch:", "Heads up:"); say the turn as part of the story, starting with "But"`,
+    )
+  }
+  if (AUTHOR_VOICE.test(all)) {
+    issues.push(
+      'the narration speaks as the source\'s authors ("we tested"); the narrator is not them, so say "the researchers tested" or name who did it',
+    )
+  }
+  const turns = script.beats.map((b) => TURN.test(b.text))
+  const lastTurn = turns.lastIndexOf(true)
+  if (script.beats.length >= 4 && lastTurn >= 0 && lastTurn < script.beats.length - 2) {
+    issues.push(
+      `the turn comes in beat ${lastTurn + 1} of ${script.beats.length}, and the beats after it add side facts; move the turn to the last or second-to-last beat and cut what does not serve the one idea`,
+    )
+  }
+  if (TEMPLATE_OUTRO.test(script.outro)) {
+    issues.push(
+      'the outro opens with "Would you...?", a stock ending; close on a line that turns the hook around, or ask about something the viewer already does ("How long have you been playing today?")',
+    )
+  }
+  if (script.beats.length > 1 && !script.beats.slice(1).some((b) => TURN.test(b.text))) {
+    issues.push(
+      'the story never turns; give one middle or late beat a sentence starting with "But" that shows the strange part, the cost or the limit',
     )
   }
   const grade = readingGrade(all)

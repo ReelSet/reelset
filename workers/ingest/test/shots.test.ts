@@ -3,6 +3,7 @@ import { SCREEN_NAMES, SFX_NAMES } from '@reelset/core'
 import { readFileSync } from 'node:fs'
 import { parseModelOutput } from '../src/pipeline/output'
 import { PROMPT_VERSION, SYSTEM_PROMPT } from '../src/pipeline/prompt'
+import { STORY_SHAPE_NAMES } from '../src/pipeline/story-shapes'
 import {
   clipHeadline,
   cueExists,
@@ -159,12 +160,13 @@ describe('parseModelOutput with shots', () => {
 
 describe('prompt', () => {
   it('is versioned and lists every screen and sfx the renderer knows', () => {
-    expect(PROMPT_VERSION).toBe('reel-v9')
+    expect(PROMPT_VERSION).toBe('reel-v10')
+    for (const name of STORY_SHAPE_NAMES) expect(SYSTEM_PROMPT).toContain(name)
     expect(SYSTEM_PROMPT).toContain('Never mention popularity counts')
     for (const name of SCREEN_NAMES) expect(SYSTEM_PROMPT).toContain(`${name}:`)
     for (const name of SFX_NAMES) expect(SYSTEM_PROMPT).toContain(name)
-    expect(SYSTEM_PROMPT).toContain('100 to 112 words')
-    expect(SYSTEM_PROMPT).toContain('at most 760 characters')
+    expect(SYSTEM_PROMPT).toContain('90 to 165 words')
+    expect(SYSTEM_PROMPT).toContain('at most 1100 characters')
     expect(SYSTEM_PROMPT).toContain('at most 3 significant digits')
   })
 

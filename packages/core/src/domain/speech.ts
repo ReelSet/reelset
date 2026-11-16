@@ -1,5 +1,7 @@
 export const AURA_CHARS_PER_SECOND = 14.2
-export const MAX_SPOKEN_CHARS = 760
+// About 77 s at this rate. Measured production narration runs 12.2 to 17 chars/s, so the slowest
+// voice lands near 90 s, under the renderer's 100 s video cap with the end card.
+export const MAX_SPOKEN_CHARS = 1100
 const FREE_DIGITS = 3
 const EXTRA_DIGIT_WEIGHT = 4
 

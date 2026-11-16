@@ -21,7 +21,8 @@ export type HookOption = { formula?: string; spoken: string; headline?: string }
 
 export type HookPick = { option: HookOption; result: HookScore; index: number }
 
-export const MAX_HOOK_CHARS = 60
+// Room for a claim plus an open question (about 6 seconds); a bare 6-word fact rarely holds anyone.
+export const MAX_HOOK_CHARS = 100
 
 const WORD_RE = /[\p{L}\p{N}$%'’.+#-]*[\p{L}\p{N}%]/gu
 const NUMBER_RE =
@@ -42,7 +43,8 @@ const STAKES = set(
   illegal worst hate wasted waste scam lie lied truth secret hidden stole stolen before until
   instead but except unless problem risk danger warning regret should shouldn't still already only
   without versus vs actually now anymore faster slower cheaper smaller leak leaked leaks crash
-  crashes crashed bug hacked outage dead fix fixes fixed just finally offline`,
+  crashes crashed bug hacked outage dead fix fixes fixed just finally offline why reason last
+  nobody's caught quietly`,
 )
 const WEAK_OPENERS = [
   'so',
@@ -74,8 +76,6 @@ const WEAK_OPENERS = [
   'in today',
   'the thing',
   'a lot',
-  'there is',
-  'there are',
   'it is',
   'as a',
   'when it',
@@ -115,8 +115,8 @@ const isConcrete = (w: string, i: number, names: ReadonlySet<string>): boolean =
 
 function checkLength(text: string, n: number): number {
   let score = 100
-  if (n < 5) score = 100 - (5 - n) * 20
-  else if (n > 11) score = 100 - (n - 11) * 12
+  if (n < 8) score = 100 - (8 - n) * 12
+  else if (n > 18) score = 100 - (n - 18) * 12
   const over = text.trim().length - MAX_HOOK_CHARS
   if (over > 0) score -= 10 + over * 2
   return clamp(score)
@@ -131,6 +131,9 @@ function checkStakes(text: string, words: string[]): number {
   const markers = new Set(words.map(lower).filter((w) => STAKES.has(w)))
   if (/\$\s?\d/.test(text)) markers.add('$')
   if (/\bused to\b|\bno longer\b|\binstead of\b/i.test(text)) markers.add('shift')
+  if (/[,;]\s*(?:and|but|so|which)\b[^.?!]{6,}[.?!]?\s*$/i.test(text) || /\?\s*$/.test(text)) {
+    markers.add('gap')
+  }
   return markers.size === 0 ? 20 : markers.size === 1 ? 70 : 100
 }
 
@@ -139,7 +142,7 @@ function checkFrontload(words: string[], names: ReadonlySet<string>): number {
   const opener = low.slice(0, 2).join(' ')
   const weak = WEAK_OPENERS.some((w) => opener.startsWith(`${w} `) || opener === w || low[0] === w)
   const payload = words.findIndex((w, i) => STAKES.has(low[i]!) || isConcrete(w, i, names))
-  const base = payload < 0 ? 30 : payload <= 3 ? 100 : payload <= 6 ? 70 : 40
+  const base = payload < 0 ? 30 : payload <= 3 ? 100 : payload <= 6 ? 85 : payload <= 9 ? 60 : 40
   return clamp(base - (weak ? 30 : 0))
 }
 
@@ -241,10 +244,10 @@ export function pickHook(
 }
 
 const ADVICE: Record<HookCheck, string> = {
-  length: `too long or too short; write 6 to 10 words and at most ${MAX_HOOK_CHARS} characters`,
+  length: `too long or too short; write 10 to 18 words and at most ${MAX_HOOK_CHARS} characters`,
   specificity: 'nothing concrete in it; put a real number or a name from the sources in it',
   stakes:
-    'nothing is at stake; show what changed, what it replaces, or what the viewer loses or gains',
+    'nothing is at stake and nothing is left to find out; state the surprise, then open a question ("..., and nobody can explain how")',
   frontload:
     'the interesting word comes too late; put the number or the surprise in the first four words',
   address: 'it speaks to nobody; aim it at "you"',

@@ -31,9 +31,18 @@ describe('scoreHook', () => {
     expect(scoreHook('This is a tool that helps people.').checks.specificity).toBe(15)
   })
 
+  it('rewards a hook that opens a question over a bare fact', () => {
+    const bare = scoreHook('This new Discord app uses 300 megabytes of memory.')
+    const loop = scoreHook(
+      'Discord can eat 4 gigabytes of your memory, and they are finally throwing it away.',
+    )
+    expect(loop.checks.stakes).toBeGreaterThan(bare.checks.stakes)
+    expect(loop.score).toBeGreaterThan(bare.score)
+  })
+
   it('penalises a hook that runs past the spoken window', () => {
     const long = scoreHook(
-      'This brand new open source framework lets developers everywhere build agents much faster than before.',
+      'This brand new open source framework from a small team lets developers everywhere in the world build all kinds of agents much faster than they ever could before.',
     )
     expect(long.checks.length).toBeLessThan(60)
     expect(long.weakest).toBe('length')

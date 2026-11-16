@@ -13,7 +13,7 @@ const easy = {
     { text: "That matters if you're learning AI on a normal laptop. Cloud bills add up fast." },
     { text: 'Ollama shrinks the model so it fits in 8 gigabytes of memory. Then it runs offline.' },
     {
-      text: "The catch is speed. It's slower than a big graphics card, so long jobs take a while.",
+      text: "But it's slower than a big graphics card, so long jobs take a while.",
     },
   ],
   outro: 'No GPU, one command. Try it on the laptop you already have.',
@@ -120,10 +120,66 @@ describe('styleIssues', () => {
     expect(issues).toContain('not just X')
   })
 
+  it('flags narration chopped into fragments', () => {
+    const choppy = {
+      ...easy,
+      beats: [
+        { text: 'It runs agents. Each gets a worktree. That is a copy. So no collisions.' },
+        { text: 'It works on Free. You can bring a key. Git is required.' },
+        { text: 'But the download is a rar file, so read the repo first.' },
+      ],
+    }
+    expect(styleIssues(choppy).join(' ')).toContain('sounds robotic')
+  })
+
+  it('flags a labelled catch and a story with no turn', () => {
+    const labelled = {
+      ...easy,
+      beats: [
+        easy.beats[0]!,
+        easy.beats[1]!,
+        { text: "The catch: it's slower than a big graphics card, so long jobs take a while." },
+      ],
+    }
+    const issues = styleIssues(labelled).join(' ')
+    expect(issues).toContain('beat 3 announces itself with a label')
+    expect(issues).toContain('the story never turns')
+  })
+
+  it('flags a catch dressed as a turn and a stock question outro', () => {
+    const stock = {
+      ...easy,
+      beats: [
+        easy.beats[0]!,
+        { text: 'But the catch is speed, so long jobs take a while to finish.' },
+      ],
+      outro: 'Would you run a model on your laptop?',
+    }
+    const issues = styleIssues(stock).join(' ')
+    expect(issues).toContain('beat 2 announces itself with a label')
+    expect(issues).toContain('stock ending')
+  })
+
+  it("flags the authors' voice and a turn followed by side facts", () => {
+    const tangent = {
+      ...easy,
+      beats: [
+        easy.beats[0]!,
+        { text: 'We tested it on 3 laptops, and it ran on every one of them without a GPU.' },
+        { text: "But it's slower than a big graphics card, so long jobs take a while." },
+        { text: 'The company was founded in 2021 and also ships a phone app for Android users.' },
+        { text: 'There is a Windows build too, and a Linux one that runs on older machines.' },
+      ],
+    }
+    const issues = styleIssues(tangent).join(' ')
+    expect(issues).toContain('speaks as the source')
+    expect(issues).toContain('the turn comes in beat 3 of 5')
+  })
+
   it('flags a hook over the character cap', () => {
     const long = {
       ...easy,
-      hook: "You really don't need any kind of expensive GPU to run this new model, you know.",
+      hook: "You really don't need any kind of expensive GPU or a monthly cloud bill to run this brand new open model at home, you know.",
     }
     expect(styleIssues(long)[0]).toContain('the hook is')
   })

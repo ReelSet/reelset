@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { MAX_TLDR_CHARS } from '../config'
 import { hookAdvice, pickHook, readHookOptions, type HookPick } from './hook-score'
 import { readingGrade, styleIssues, type StyleLimits } from './plain'
+import { LONG_STORY_MIN_STEPS, SHORT_REEL_MAX_WORDS } from './prompt'
 import { cleanSlop } from './slop'
 import {
   MAX_NARRATION_WORDS,
@@ -188,6 +189,9 @@ export type StyleReport = {
   hookFormula?: string
   hookScore?: number
   hookSeconds?: number
+  storyShape?: string
+  storySteps?: number
+  words?: number
 }
 
 export type ParsedOutput =
@@ -232,6 +236,11 @@ export function parseModelOutput(
     return { ok: false, reason: 'response was not valid JSON' }
   }
   const pick = chooseHook(json)
+  const story = isObj(json) && isObj(json.story) ? json.story : undefined
+  const storyShape = typeof story?.shape === 'string' ? story.shape.slice(0, 40) : undefined
+  const storySteps = Array.isArray(story?.steps)
+    ? story.steps.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).length
+    : 0
   const parsed = outputSchema.safeParse(repairModelOutput(json, allowedChunkIds, facts))
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -245,6 +254,12 @@ export function parseModelOutput(
   const topics = [...new Set(parsed.data.topics.map((t) => t.toLowerCase()))]
   const script = parsed.data.script
   const issues = style ? styleIssues(script, style) : []
+  const words = narrationWordCount(script)
+  if (style && words > SHORT_REEL_MAX_WORDS && storySteps < LONG_STORY_MIN_STEPS) {
+    issues.push(
+      `the narration is ${words} words, but the story has ${storySteps} distinct steps; a story that size lands in ${SHORT_REEL_MAX_WORDS} words or fewer, so cut it down and keep only what serves the one idea`,
+    )
+  }
   if (style && pick && pick.result.score < style.minHookScore) {
     issues.unshift(
       `the best hook ("${pick.option.spoken}") is weak: ${hookAdvice(pick.result)}; write three new hook options`,
@@ -262,6 +277,9 @@ export function parseModelOutput(
           ...(pick.option.formula ? { hookFormula: pick.option.formula.slice(0, 40) } : {}),
         }
       : {}),
+    ...(storyShape ? { storyShape } : {}),
+    storySteps,
+    words,
   }
   return { ok: true, value: { ...parsed.data, topics }, style: report }
 }

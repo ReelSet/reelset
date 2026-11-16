@@ -11,6 +11,24 @@ export type HookFormula = {
 
 export const HOOK_FORMULAS: readonly HookFormula[] = [
   {
+    name: 'Open Loop',
+    template: '{Surprising specific claim}, and {the question it leaves open}.',
+    example: 'A model ten times smaller just won this test, and the reason is not more data.',
+    trap: 'A gap the reel never closes, or a mystery the sources do not support.',
+  },
+  {
+    name: 'The Hidden Thing',
+    template: "There's a {thing in the viewer's life} that {does something they never noticed}.",
+    example: "There's a setting on your laptop that quietly decides how fast every AI app runs.",
+    trap: 'A reveal the viewer already knows, or a thing that is not in their life.',
+  },
+  {
+    name: 'Countdown Tease',
+    template: '{N} {things}, and the last one {is why it matters}.',
+    example: 'This release does three things, and the last one is why people are switching.',
+    trap: 'A count the sources do not support, or a last item that is not the strongest.',
+  },
+  {
     name: 'Time Collapse',
     template: '{Task} used to take {long time}. Now it takes {short time}.',
     example: 'Training this took 49 minutes. Now it takes 20.',

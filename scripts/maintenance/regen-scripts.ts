@@ -201,6 +201,7 @@ async function regen(item: Row): Promise<'ok' | 'failed'> {
       `words=${narrationWordCount(value.script)}`,
       `grade=${style.readingGrade}`,
       `hook=${style.hookScore} (${style.hookFormula}, ${style.hookSeconds}s)`,
+      `shape=${style.storyShape ?? '-'}`,
       `issues=${style.issues.length}`,
       value.script.headline,
     )
