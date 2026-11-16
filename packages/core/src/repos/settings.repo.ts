@@ -113,8 +113,8 @@ export const SETTINGS = {
   scrapeDailySpendCapUsd: def('scrape_daily_spend_cap_usd', z.number().positive(), 1),
   ttsProvider: def(
     'tts_provider',
-    z.enum(['edge', 'aura2', 'kokoro']),
-    'edge' as 'edge' | 'aura2' | 'kokoro',
+    z.enum(['edge', 'aura2', 'kokoro', 'chatterbox']),
+    'edge' as 'edge' | 'aura2' | 'kokoro' | 'chatterbox',
   ),
   scriptModel: def('script_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   // Medium: low skips the self-checks that keep narration on length; higher adds cost, no gain seen.

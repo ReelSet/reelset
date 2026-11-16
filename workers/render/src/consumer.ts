@@ -80,6 +80,7 @@ export type ConsumerDeps = {
   edgeVoice?: string
   fallbackEngine?: FallbackEngine
   aura?: { ai: AiLike; speaker: string }
+  chatterbox?: { generate: (script: ReelScript, log: Logger) => Promise<Narration> }
   /** Stock clips for the reel; optional, failures never fail a render. */
   broll?: (script: ReelScript, item: ItemForRender) => Promise<BrollPick[]>
   /** Director config for the box, or null when switched off; a failure renders without it. */
@@ -236,51 +237,79 @@ function combine(first: Narration, second: Narration): Narration {
   }
 }
 
+type RemoteProvider = 'aura2' | 'chatterbox'
+type RemoteNarrator = {
+  provider: RemoteProvider
+  generate: (script: ReelScript, log: Logger) => Promise<Narration>
+}
+
+function remoteProvider(deps: ConsumerDeps): RemoteProvider {
+  return deps.chatterbox ? 'chatterbox' : 'aura2'
+}
+
 function logFallback(deps: ConsumerDeps, reason: string, log: Logger, extra: object = {}): void {
   const to = deps.fallbackEngine ?? 'edge'
-  log.warn({ from: 'aura2', to, reason, ...extra }, 'aura tts unusable, falling back')
+  log.warn(
+    { from: remoteProvider(deps), to, reason, ...extra },
+    'remote tts unusable, falling back',
+  )
 }
 
-async function generateAura(
-  aura: NonNullable<ConsumerDeps['aura']>,
-  script: ReelScript,
-  log: Logger,
-): Promise<Narration> {
-  log.info({ provider: 'aura2', speaker: aura.speaker }, 'tts provider attempt')
-  return generateNarration(aura.ai, narrationText(script), aura.speaker, log)
+/** The narrator that runs outside the render box, if the chosen voice has one. */
+function remoteNarrator(deps: ConsumerDeps): RemoteNarrator | null {
+  const { chatterbox, aura } = deps
+  if (chatterbox) {
+    return {
+      provider: 'chatterbox',
+      generate: (script, log) => {
+        log.info({ provider: 'chatterbox' }, 'tts provider attempt')
+        return chatterbox.generate(script, log)
+      },
+    }
+  }
+  if (aura) {
+    return {
+      provider: 'aura2',
+      generate: (script, log) => {
+        log.info({ provider: 'aura2', speaker: aura.speaker }, 'tts provider attempt')
+        return generateNarration(aura.ai, narrationText(script), aura.speaker, log)
+      },
+    }
+  }
+  return null
 }
 
-/** Aura over the cap is re-synthesized from progressively shorter scripts; any Aura failure hands off to the container's kokoro then edge chain. */
+/** Remote narration over the cap is re-synthesized from progressively shorter scripts; any failure hands off to the container's kokoro then edge chain. */
 async function prepareNarration(
   deps: ConsumerDeps,
   rawScript: ReelScript,
   log: Logger,
 ): Promise<Prepared> {
   const script = speakableNumbers(rawScript)
-  const aura = deps.aura
-  if (!aura) {
+  const remote = remoteNarrator(deps)
+  if (!remote) {
     log.info({ provider: deps.fallbackEngine ?? 'edge' }, 'tts provider attempt')
     return { narration: null, script }
   }
   try {
-    const within = await synthesizeWithinCap(aura, script, log)
+    const within = await synthesizeWithinCap(remote, script, log)
     if (within) return within
     logFallback(deps, 'over_cap', log)
   } catch (err) {
-    logFallback(deps, 'aura_failed', log, errorFields(err))
+    logFallback(deps, `${remote.provider}_failed`, log, errorFields(err))
   }
   return { narration: null, script }
 }
 
 async function synthesizeWithinCap(
-  aura: NonNullable<ConsumerDeps['aura']>,
+  remote: RemoteNarrator,
   script: ReelScript,
   log: Logger,
 ): Promise<Prepared | null> {
   let current = script
   let total: Narration | null = null
   for (let attempt = 0; attempt <= MAX_SHORTEN_ATTEMPTS; attempt++) {
-    const next = await generateAura(aura, current, log)
+    const next = await remote.generate(current, log)
     total = total ? combine(total, next) : next
     if (next.audioSeconds <= MAX_NARRATION_SECONDS) return { narration: total, script: current }
     const ratio = (MAX_NARRATION_SECONDS - SHORTEN_MARGIN_SECONDS) / next.audioSeconds
@@ -288,7 +317,7 @@ async function synthesizeWithinCap(
     if (!shorter) return null
     log.warn(
       { audioSeconds: next.audioSeconds, attempt },
-      'aura narration too long, retrying shorter',
+      'remote narration too long, retrying shorter',
     )
     current = shorter
   }
@@ -416,7 +445,7 @@ function logNarrationProvider(
   narration: Narration | null,
   log: Logger,
 ): void {
-  const provider = narration ? 'aura2' : containerProvider(metadata)
+  const provider = narration ? remoteProvider(deps) : containerProvider(metadata)
   log.info({ provider }, 'narration provider used')
   if (!narration && deps.fallbackEngine === 'kokoro' && provider === 'edge') {
     log.warn({ from: 'kokoro', to: 'edge' }, 'kokoro failed in the container, edge-tts used')
@@ -439,7 +468,10 @@ async function recordSpend(
       category: 'tts',
       units: metadata.ttsChars,
       costUsd: narration?.costUsd ?? 0,
-      meta: { renderKey: key, provider: narration ? 'aura2' : containerProvider(metadata) },
+      meta: {
+        renderKey: key,
+        provider: narration ? remoteProvider(deps) : containerProvider(metadata),
+      },
     })
     const seconds = metadata.renderMs / 1000
     await deps.spend({

@@ -53,7 +53,12 @@ describe('settingEnumOptions', () => {
       'claude-opus-5-5',
     ])
     expect(settingEnumOptions(SETTINGS.scriptEffort)).toEqual(['low', 'medium', 'high'])
-    expect(settingEnumOptions(SETTINGS.ttsProvider)).toEqual(['edge', 'aura2', 'kokoro'])
+    expect(settingEnumOptions(SETTINGS.ttsProvider)).toEqual([
+      'edge',
+      'aura2',
+      'kokoro',
+      'chatterbox',
+    ])
     expect(settingEnumOptions(SETTINGS.dailyReelCap)).toBeNull()
     expect(settingEnumOptions(SETTINGS.redditSubreddits)).toBeNull()
   })

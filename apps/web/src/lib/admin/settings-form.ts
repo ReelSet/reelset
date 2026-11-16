@@ -48,7 +48,8 @@ const HINTS: Record<string, string> = {
   youtube_max_age_days: 'Only videos published within this many days, 1 to 30',
   youtube_results_per_query: 'Search results fetched per query',
   news_feeds: 'One RSS or Atom URL per line',
-  tts_provider: 'Narration voice: edge (free), aura2 (Workers AI, paid per char), kokoro (local)',
+  tts_provider:
+    'Narration voice: edge (free), aura2 (Workers AI, paid per char), kokoro (local), chatterbox (Chatterbox Nano on Modal, falls back to kokoro)',
   script_model: `Writes reel scripts from the next ingest batch; ${MODEL_PRICES}`,
   script_effort: 'Script thinking depth; medium keeps narration on length, high costs more output',
   image_vet_model: `Vets up to 6 images per item; ${MODEL_PRICES}`,

@@ -8,6 +8,8 @@ export type Env = {
   RENDER_BOX_TOKEN?: string
   TTS_VOICE?: string
   AI?: Ai
+  CHATTERBOX_URL?: string
+  CHATTERBOX_TOKEN?: string
   ALERT_WEBHOOK_URL?: string
   PEXELS_API_KEY?: string
   IG_ADMIN_TOKEN?: string

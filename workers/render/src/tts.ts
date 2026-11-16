@@ -60,7 +60,7 @@ const errorFields = (err: unknown) => ({
   err: err instanceof Error ? { name: err.name, message: err.message } : String(err),
 })
 
-export type TtsProvider = 'edge' | 'aura2' | 'kokoro'
+export type TtsProvider = 'edge' | 'aura2' | 'kokoro' | 'chatterbox'
 export type FallbackEngine = 'kokoro' | 'edge'
 export type TimedWord = { text: string; start: number; end: number }
 export type SpokenWord = { word: string; start: number; end: number }
@@ -83,12 +83,19 @@ export function narrationText(script: ReelScript): string {
 /** The render-key voice: switching provider or speaker changes it, so reels re-render. */
 export function effectiveVoice(provider: TtsProvider, speaker: string, edgeVoice: string): string {
   if (provider === 'aura2') return `aura2-${speaker}`
+  if (provider === 'chatterbox') return 'chatterbox-nano'
   return provider === 'kokoro' ? `kokoro-${KOKORO_VOICE}` : edgeVoice
 }
 
-/** Aura needs the AI binding; without it the chain starts at Kokoro. */
-export function selectProvider(provider: TtsProvider, ai: AiLike | undefined): TtsProvider {
-  return provider === 'aura2' && !ai ? 'kokoro' : provider
+/** Aura needs the AI binding and Chatterbox its service address and token; without them the chain starts at Kokoro. */
+export function selectProvider(
+  provider: TtsProvider,
+  ai: AiLike | undefined,
+  chatterboxReady = false,
+): TtsProvider {
+  if (provider === 'aura2' && !ai) return 'kokoro'
+  if (provider === 'chatterbox' && !chatterboxReady) return 'kokoro'
+  return provider
 }
 
 /** Engine the container tries first when the worker supplies no narration; edge-tts is always last. */
