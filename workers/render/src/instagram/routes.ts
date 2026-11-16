@@ -1,7 +1,12 @@
 import { z } from 'zod'
 import { errorFields, type Logger } from '@reelset/core'
 import { isAuthorized } from './auth'
-import { checkAccount, connectAccount, disconnectAccount, type IgDeps } from './service'
+import {
+  checkActiveAccount,
+  connectActiveAccount,
+  disconnectActiveAccount,
+  type IgDeps,
+} from './service'
 
 export const IG_ROUTE_PREFIX = '/admin/ig/'
 export const IG_RUN_QUEUE = 'instagram-run'
@@ -31,9 +36,17 @@ const connectBodySchema = z
       .trim()
       .regex(/^[A-Z2-7 =]{16,128}$/i)
       .optional(),
+    accessToken: z
+      .string()
+      .trim()
+      .regex(/^\S{20,2000}$/)
+      .optional(),
   })
   .refine((b) => Boolean(b.username) === Boolean(b.password), {
     message: 'username and password go together',
+  })
+  .refine((b) => !(b.accessToken && (b.username || b.code)), {
+    message: 'an access token is saved on its own',
   })
 
 export type IgRouteContext = {
@@ -58,11 +71,11 @@ export async function handleIgRoute(
     return new Response('not found', { status: 404 })
   }
   try {
-    if (route === 'status') return Response.json(await ctx.withDeps(checkAccount))
+    if (route === 'status') return Response.json(await ctx.withDeps(checkActiveAccount))
     if (route === 'connect') {
       const body = connectBodySchema.safeParse(await request.json().catch(() => ({})))
       if (!body.success) return Response.json({ error: 'invalid input' }, { status: 400 })
-      const { code, username, password, totpSecret } = body.data
+      const { code, username, password, totpSecret, accessToken } = body.data
       const creds =
         username && password
           ? {
@@ -71,9 +84,15 @@ export async function handleIgRoute(
               ...(totpSecret ? { totpSecret: totpSecret.replace(/\s+/g, '').toUpperCase() } : {}),
             }
           : undefined
-      return Response.json(await ctx.withDeps((deps) => connectAccount(deps, { code, creds })))
+      ctx.log.info(
+        { newCreds: Boolean(creds), code: Boolean(code), accessToken: Boolean(accessToken) },
+        'instagram connect requested',
+      )
+      return Response.json(
+        await ctx.withDeps((deps) => connectActiveAccount(deps, { code, creds, accessToken })),
+      )
     }
-    if (route === 'disconnect') return Response.json(await ctx.withDeps(disconnectAccount))
+    if (route === 'disconnect') return Response.json(await ctx.withDeps(disconnectActiveAccount))
     await ctx.enqueueRun({ reason: 'poke' })
     ctx.log.info('instagram queue run enqueued')
     return Response.json({ accepted: true }, { status: 202 })

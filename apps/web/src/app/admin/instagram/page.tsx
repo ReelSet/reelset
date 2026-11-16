@@ -21,7 +21,10 @@ import {
   publishedReels,
   readAccount,
   readCheckError,
+  readOfficialAccount,
+  readPublisher,
 } from '@/server/admin/instagram'
+import { routeLog } from '@/server/logger'
 import { mediaBaseUrl } from '@/server/env'
 import { getDb } from '@/server/db'
 
@@ -43,14 +46,17 @@ export default async function InstagramPage({ searchParams }: Props) {
   const itemParam = z.guid().safeParse(Array.isArray(sp.item) ? sp.item[0] : sp.item)
   const mediaBase = mediaBaseUrl()
 
-  const [account, checkError, reels, rawQueue, lastPosted, composer] = await Promise.all([
-    readAccount(db),
-    readCheckError(db),
-    publishedReels(db, page.offset),
-    postQueue(db),
-    lastPostedAt(db),
-    itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
-  ])
+  const publisher = await readPublisher(db, routeLog('admin/instagram'))
+  const [account, officialAccount, checkError, reels, rawQueue, lastPosted, composer] =
+    await Promise.all([
+      readAccount(db, publisher),
+      publisher === 'official' ? Promise.resolve(null) : readOfficialAccount(db),
+      readCheckError(db),
+      publishedReels(db, page.offset),
+      postQueue(db),
+      lastPostedAt(db),
+      itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
+    ])
   const queuedOldestFirst = rawQueue.filter((r) => r.status === 'queued').reverse()
   const etas = queuedPostEtas(queuedOldestFirst.length, lastPosted, now)
   const etaById = new Map(queuedOldestFirst.map((r, i) => [r.id, etas[i] ?? null]))
@@ -78,6 +84,8 @@ export default async function InstagramPage({ searchParams }: Props) {
       />
 
       <AccountCard
+        publisher={publisher}
+        officialAccount={officialAccount}
         account={account}
         checkError={checkError}
         configured={configured}

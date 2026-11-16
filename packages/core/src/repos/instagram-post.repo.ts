@@ -13,6 +13,7 @@ import {
   isLostLookupPending,
   igAccountSchema,
   type IgAccount,
+  type InstagramPublisher,
 } from '../domain/instagram-post'
 import type { Logger } from '../lib/logger'
 
@@ -20,6 +21,8 @@ export const IG_ACCOUNT_KEY = 'ig_account'
 export const IG_SESSION_KEY = 'ig_session_enc'
 export const IG_CHECK_ERROR_KEY = 'ig_check_error'
 export const IG_CREDENTIALS_KEY = 'ig_credentials_enc'
+export const IG_OFFICIAL_ACCOUNT_KEY = 'ig_official_account'
+export const IG_OFFICIAL_TOKEN_KEY = 'ig_official_token_enc'
 
 export type IgCheckError = { message: string; at: string }
 
@@ -305,6 +308,63 @@ export async function clearIgConnection(db: Database): Promise<void> {
   await db
     .deleteFrom('app_setting')
     .where('key', 'in', [IG_SESSION_KEY, IG_CREDENTIALS_KEY, IG_CHECK_ERROR_KEY])
+    .execute()
+}
+
+async function getStringSetting(db: Database, key: string): Promise<string | null> {
+  const row = await db
+    .selectFrom('app_setting')
+    .select('value')
+    .where('key', '=', key)
+    .executeTakeFirst()
+  return typeof row?.value === 'string' ? row.value : null
+}
+
+export async function getOfficialIgAccount(db: Database): Promise<IgAccount | null> {
+  const row = await db
+    .selectFrom('app_setting')
+    .select('value')
+    .where('key', '=', IG_OFFICIAL_ACCOUNT_KEY)
+    .executeTakeFirst()
+  const parsed = igAccountSchema.safeParse(row?.value)
+  return parsed.success ? parsed.data : null
+}
+
+export const setOfficialIgAccount = (db: Database, account: IgAccount) =>
+  putSetting(db, IG_OFFICIAL_ACCOUNT_KEY, account)
+
+export const getEncryptedOfficialToken = (db: Database) =>
+  getStringSetting(db, IG_OFFICIAL_TOKEN_KEY)
+
+export const setEncryptedOfficialToken = (db: Database, blob: string) =>
+  putSetting(db, IG_OFFICIAL_TOKEN_KEY, blob)
+
+export async function clearOfficialIgToken(db: Database): Promise<void> {
+  await db.deleteFrom('app_setting').where('key', '=', IG_OFFICIAL_TOKEN_KEY).execute()
+}
+
+export const getIgAccountFor = (db: Database, publisher: InstagramPublisher) =>
+  publisher === 'official' ? getOfficialIgAccount(db) : getIgAccount(db)
+
+/** The official API container a post is being published from; kept on the row so a rerun resumes it. */
+export async function getPostContainerId(db: Database, id: string): Promise<string | null> {
+  const row = await db
+    .selectFrom('instagram_post')
+    .select('container_id')
+    .where('id', '=', id)
+    .executeTakeFirst()
+  return row?.container_id ?? null
+}
+
+export async function setPostContainerId(
+  db: Database,
+  id: string,
+  containerId: string | null,
+): Promise<void> {
+  await db
+    .updateTable('instagram_post')
+    .set({ container_id: containerId, updated_at: sql`now()` })
+    .where('id', '=', id)
     .execute()
 }
 

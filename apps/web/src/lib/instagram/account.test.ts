@@ -135,3 +135,48 @@ describe('parseConnectForm', () => {
     expect(form({ username: 'a', password: 'b', totpSecret: 'not-base32!' }).ok).toBe(false)
   })
 })
+
+describe('official publisher', () => {
+  const official: IgAccount = { ...base, proxy: null, publisher: 'official' }
+  const token = 'IGAAtesttokenvalue1234567890'
+  const form = (fields: Record<string, string>) => {
+    const fd = new FormData()
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v)
+    return parseConnectForm(fd)
+  }
+
+  it('reads an access token on its own, ignoring the login fields', () => {
+    expect(form({ accessToken: `  ${token}\n`, username: 'x' })).toEqual({
+      ok: true,
+      value: { accessToken: token },
+    })
+  })
+
+  it('rejects something that cannot be a token', () => {
+    expect(form({ accessToken: 'too short' }).ok).toBe(false)
+  })
+
+  it('describes the token states without offering the password login', () => {
+    expect(describeAccount(official, true, 'official')).toMatchObject({
+      tone: 'ok',
+      headline: 'Connected as @reelset (official API)',
+      canConnect: false,
+    })
+    expect(describeAccount({ ...official, state: 'needs_login' }, true, 'official')).toMatchObject({
+      tone: 'danger',
+      headline: 'Access token rejected',
+      needsCode: false,
+    })
+    expect(describeAccount(null, true, 'official').headline).toBe('No access token saved')
+  })
+
+  it('flashes with the official wording', () => {
+    expect(accountFlash(official)).toEqual({
+      ok: true,
+      message: 'Connected as @reelset (official API)',
+    })
+    expect(accountFlash({ ...official, state: 'needs_login' }).message).toMatch(
+      /^Access token rejected/,
+    )
+  })
+})

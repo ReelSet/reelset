@@ -1,4 +1,8 @@
-import { IG_LOGIN_FAILURE_ADVICE_AFTER, type IgAccount } from '@reelset/core'
+import {
+  IG_LOGIN_FAILURE_ADVICE_AFTER,
+  type IgAccount,
+  type InstagramPublisher,
+} from '@reelset/core'
 
 export type AccountView = {
   tone: 'ok' | 'warn' | 'danger' | 'muted'
@@ -22,7 +26,13 @@ export function proxyLabel(account: IgAccount | null): string | null {
 export type ConnectForm =
   | {
       ok: true
-      value: { code?: string; username?: string; password?: string; totpSecret?: string }
+      value: {
+        code?: string
+        username?: string
+        password?: string
+        totpSecret?: string
+        accessToken?: string
+      }
     }
   | { ok: false; message: string }
 
@@ -31,8 +41,17 @@ const field = (formData: FormData, name: string) => {
   return typeof v === 'string' ? v : ''
 }
 
-/** Reads the connect form: an optional 2FA code, plus optional fresh credentials. */
+/**
+ * Reads the connect form: an access token for the official API on its own, or an optional 2FA code
+ * plus optional fresh credentials for the unofficial login.
+ */
 export function parseConnectForm(formData: FormData): ConnectForm {
+  const accessToken = field(formData, 'accessToken').trim()
+  if (accessToken) {
+    if (!/^\S{20,2000}$/.test(accessToken))
+      return { ok: false, message: 'That does not look like an Instagram access token' }
+    return { ok: true, value: { accessToken } }
+  }
   let code = field(formData, 'code').replace(/\s+/g, '')
   const username = field(formData, 'username').trim().replace(/^@/, '')
   const password = field(formData, 'password')
@@ -65,7 +84,47 @@ export function parseConnectForm(formData: FormData): ConnectForm {
   }
 }
 
-export function describeAccount(account: IgAccount | null, configured: boolean): AccountView {
+function describeOfficialAccount(account: IgAccount | null): AccountView {
+  const base = { suggestGraphApi: false, canConnect: false, needsCode: false }
+  switch (account?.state) {
+    case 'connected':
+      return {
+        ...base,
+        tone: 'ok',
+        headline: `Connected as @${account.username} (official API)`,
+        detail: account.message,
+      }
+    case 'needs_login':
+      return {
+        ...base,
+        tone: 'danger',
+        headline: 'Access token rejected',
+        detail: account.message ?? 'Paste a new access token to post again.',
+      }
+    case 'challenge':
+      return {
+        ...base,
+        tone: 'warn',
+        headline: 'Instagram restricted the account',
+        detail: account.message ?? 'Open the Instagram app and follow its steps, then check again.',
+      }
+    case 'unknown':
+      return { ...base, tone: 'muted', headline: 'Status unknown', detail: account.message }
+    default:
+      return {
+        ...base,
+        tone: 'muted',
+        headline: 'No access token saved',
+        detail: 'Paste an Instagram access token to connect. Queued posts wait until then.',
+      }
+  }
+}
+
+export function describeAccount(
+  account: IgAccount | null,
+  configured: boolean,
+  publisher: InstagramPublisher = 'unofficial',
+): AccountView {
   if (!configured) {
     return {
       tone: 'danger',
@@ -76,6 +135,7 @@ export function describeAccount(account: IgAccount | null, configured: boolean):
       suggestGraphApi: false,
     }
   }
+  if (publisher === 'official') return describeOfficialAccount(account)
   const suggestGraphApi = (account?.loginFailures ?? 0) >= IG_LOGIN_FAILURE_ADVICE_AFTER
   const base = { suggestGraphApi, canConnect: true, needsCode: false }
   if (!account) {
@@ -136,8 +196,11 @@ export function describeAccount(account: IgAccount | null, configured: boolean):
 
 export function accountFlash(account: IgAccount): { ok: boolean; message: string } {
   if (account.state === 'connected')
-    return { ok: true, message: `Connected as @${account.username}` }
-  const view = describeAccount(account, true)
+    return {
+      ok: true,
+      message: `Connected as @${account.username}${account.publisher === 'official' ? ' (official API)' : ''}`,
+    }
+  const view = describeAccount(account, true, account.publisher)
   const advice = view.suggestGraphApi ? ` ${GRAPH_API_ADVICE}` : ''
   return { ok: false, message: `${view.headline}. ${view.detail ?? ''}${advice}`.trim() }
 }

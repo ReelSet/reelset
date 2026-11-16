@@ -168,6 +168,7 @@ export type InstagramPost = {
   caption: string
   status: Generated<InstagramPostStatus>
   media_pk: string | null
+  container_id: string | null
   permalink: string | null
   error: string | null
   attempts: Generated<number>

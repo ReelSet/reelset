@@ -102,7 +102,14 @@ export async function connectAccountAction(formData: FormData): Promise<void> {
       await rememberCheck(rejected, log)
       return rejected
     }
-    log.info({ newCreds: Boolean(form.value.username), code: Boolean(form.value.code) }, 'connect')
+    log.info(
+      {
+        newCreds: Boolean(form.value.username),
+        code: Boolean(form.value.code),
+        accessToken: Boolean(form.value.accessToken),
+      },
+      'connect',
+    )
     const result = await connectInstagramAccount(worker, form.value)
     await rememberCheck(result, log)
     return result.ok ? accountFlash(result.value) : { ok: false, message: result.message }
@@ -117,6 +124,12 @@ export async function disconnectAccountAction(formData: FormData): Promise<void>
     await rememberCheck(result, log)
     if (!result.ok) return { ok: false, message: result.message }
     log.info('instagram account disconnected')
-    return { ok: true, message: 'Disconnected. Saved session and credentials are gone.' }
+    return {
+      ok: true,
+      message:
+        result.value.publisher === 'official'
+          ? 'Disconnected. The saved access token is gone.'
+          : 'Disconnected. Saved session and credentials are gone.',
+    }
   })
 }

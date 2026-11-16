@@ -1,9 +1,17 @@
-import { createDb, type Database, type Logger } from '@reelset/core'
+import {
+  SETTINGS,
+  createDb,
+  getSetting,
+  sendAlert,
+  type Database,
+  type Logger,
+} from '@reelset/core'
 import { DEFAULT_MEDIA_BASE_URL } from '../constants'
 import type { ContainerFetcher } from '../container-client'
 import type { Env } from '../env'
 import { createIgContainerClient } from './container-client'
 import { importSessionKey } from './crypto'
+import { createOfficialClient } from './official-client'
 import type { IgDeps } from './service'
 import { createIgStore } from './store'
 
@@ -29,6 +37,10 @@ export async function buildIgDeps(
         : null,
     mediaBaseUrl: (env.MEDIA_PUBLIC_BASE_URL ?? DEFAULT_MEDIA_BASE_URL).replace(/\/$/, ''),
     log,
+    official: createOfficialClient((url, init) => fetch(url, init), log),
+    publisher: () => getSetting(db, SETTINGS.instagramPublisher, log),
+    aiLabel: () => getSetting(db, SETTINGS.instagramAiLabel, log),
+    alert: (input) => sendAlert(db, env.ALERT_WEBHOOK_URL, input, log),
   }
 }
 

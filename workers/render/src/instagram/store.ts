@@ -1,6 +1,13 @@
 import {
   claimNextDelete,
   clearIgConnection,
+  clearOfficialIgToken,
+  getEncryptedOfficialToken,
+  getOfficialIgAccount,
+  getPostContainerId,
+  setEncryptedOfficialToken,
+  setOfficialIgAccount,
+  setPostContainerId,
   claimNextPost,
   failStuckPosts,
   getEncryptedCredentials,
@@ -48,6 +55,14 @@ export type IgStore = {
   recentMediaPks(): Promise<string[]>
   markLostFound(id: string, result: { mediaPk: string; permalink: string }): Promise<boolean>
   markLostNotFound(id: string): Promise<boolean>
+  /** Official API: the encrypted access token, its own account record, and each post's container. */
+  getOfficialToken(): Promise<string | null>
+  saveOfficialToken(blob: string): Promise<void>
+  clearOfficialToken(): Promise<void>
+  getOfficialAccount(): Promise<IgAccount | null>
+  setOfficialAccount(account: IgAccount): Promise<void>
+  getContainerId(postId: string): Promise<string | null>
+  setContainerId(postId: string, containerId: string | null): Promise<void>
 }
 
 export function createIgStore(db: Database, log: Logger): IgStore {
@@ -71,5 +86,12 @@ export function createIgStore(db: Database, log: Logger): IgStore {
     recentMediaPks: () => listRecentMediaPks(db),
     markLostFound: (id, result) => markLostFound(db, id, result),
     markLostNotFound: (id) => markLostNotFound(db, id),
+    getOfficialToken: () => getEncryptedOfficialToken(db),
+    saveOfficialToken: (blob) => setEncryptedOfficialToken(db, blob),
+    clearOfficialToken: () => clearOfficialIgToken(db),
+    getOfficialAccount: () => getOfficialIgAccount(db),
+    setOfficialAccount: (account) => setOfficialIgAccount(db, account),
+    getContainerId: (postId) => getPostContainerId(db, postId),
+    setContainerId: (postId, containerId) => setPostContainerId(db, postId, containerId),
   }
 }

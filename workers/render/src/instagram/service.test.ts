@@ -12,6 +12,7 @@ import {
   runInstagramQueue,
   type IgDeps,
 } from './service'
+import { fakeOfficialClient, officialStoreStubs } from './official-testing'
 import type { ClaimedPost, IgStore, LostPost } from './store'
 
 const KEY = await importSessionKey(btoa(String.fromCharCode(...new Uint8Array(32).fill(3))))
@@ -82,6 +83,7 @@ async function setup(
     recentMediaPks: vi.fn(async () => ['77']),
     markLostFound: vi.fn(async () => true),
     markLostNotFound: vi.fn(async () => true),
+    ...officialStoreStubs().store,
   }
   const client: IgContainerClient = {
     supportsJobs: vi.fn(async () => true),
@@ -115,6 +117,10 @@ async function setup(
     envCreds: opts.envCreds === undefined ? { username: 'reelset', password: 'pw' } : opts.envCreds,
     mediaBaseUrl: 'https://media.reelset.app',
     log: silentLog,
+    official: fakeOfficialClient(),
+    publisher: async () => 'unofficial',
+    aiLabel: async () => false,
+    alert: vi.fn(async () => 'sent'),
   }
   return {
     deps,

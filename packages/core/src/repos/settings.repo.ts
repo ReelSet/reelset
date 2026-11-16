@@ -33,6 +33,7 @@ import {
   type GateSourceRules,
   type GateWeights,
 } from '../domain/gate'
+import { instagramPublisherSchema, type InstagramPublisher } from '../domain/instagram-post'
 import type { Logger } from '../lib/logger'
 
 export type SettingDef<T> = { key: string; schema: z.ZodType<T>; default: T }
@@ -124,6 +125,12 @@ export const SETTINGS = {
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
   renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
   instagramAutoPost: def('instagram_auto_post', z.boolean(), true),
+  instagramPublisher: def(
+    'instagram_publisher',
+    instagramPublisherSchema,
+    'unofficial' as InstagramPublisher,
+  ),
+  instagramAiLabel: def('instagram_ai_label', z.boolean(), false),
   directorEnabled: def('director_enabled', z.boolean(), true),
   directorModel: def('director_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   directorEffort: def('director_effort', directorEffortSchema, 'medium' as DirectorEffort),

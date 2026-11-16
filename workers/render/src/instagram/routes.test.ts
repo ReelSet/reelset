@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { silentLog } from '../testing'
 import { handleIgRoute, matchIgRoute, type IgRouteContext } from './routes'
 import { isAuthorized } from './auth'
+import { importSessionKey } from './crypto'
+import { fakeOfficialClient, officialStoreStubs } from './official-testing'
+import type { IgDeps } from './service'
 
 const TOKEN = 'x'.repeat(40)
 
@@ -91,6 +94,58 @@ describe('handleIgRoute', () => {
     )
     expect(full.status).toBe(200)
     expect(c.withDeps).toHaveBeenCalledOnce()
+  })
+
+  it('accepts an access token on its own and never alongside a login', async () => {
+    const c = ctx()
+    const accessToken = 'IGAAtesttokenvalue1234567890'
+    const ok = await handleIgRoute(
+      'connect',
+      req('/admin/ig/connect', { token: TOKEN, body: { accessToken: ` ${accessToken}\n` } }),
+      c,
+    )
+    expect(ok.status).toBe(200)
+    expect(c.withDeps).toHaveBeenCalledOnce()
+    for (const body of [
+      { accessToken: 'short' },
+      { accessToken: 'has a space in the middle of it' },
+      { accessToken, username: 'someone', password: 'pw' },
+      { accessToken, code: '123456' },
+    ]) {
+      const res = await handleIgRoute(
+        'connect',
+        req('/admin/ig/connect', { token: TOKEN, body }),
+        c,
+      )
+      expect(res.status).toBe(400)
+    }
+    expect(c.withDeps).toHaveBeenCalledOnce()
+  })
+
+  it('hands the access token to the official publisher', async () => {
+    const official = fakeOfficialClient()
+    const deps = {
+      store: officialStoreStubs().store,
+      key: await importSessionKey(btoa(String.fromCharCode(...new Uint8Array(32).fill(9)))),
+      official,
+      publisher: async () => 'unofficial' as const,
+      log: silentLog,
+    } as unknown as IgDeps
+    const c = ctx({ withDeps: ((fn) => fn(deps)) as IgRouteContext['withDeps'] })
+    const res = await handleIgRoute(
+      'connect',
+      req('/admin/ig/connect', {
+        token: TOKEN,
+        body: { accessToken: 'IGAAtesttokenvalue1234567890' },
+      }),
+      c,
+    )
+    expect(official.getAccount).toHaveBeenCalledWith('IGAAtesttokenvalue1234567890')
+    expect(await res.json()).toMatchObject({
+      state: 'connected',
+      username: 'reelset_app',
+      publisher: 'official',
+    })
   })
 
   it('routes disconnect to the deps', async () => {

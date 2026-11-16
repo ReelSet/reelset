@@ -77,6 +77,10 @@ export const igProxySchema = z.object({
 })
 export type IgProxy = z.infer<typeof igProxySchema>
 
+export const INSTAGRAM_PUBLISHERS = ['unofficial', 'official'] as const
+export const instagramPublisherSchema = z.enum(INSTAGRAM_PUBLISHERS)
+export type InstagramPublisher = z.infer<typeof instagramPublisherSchema>
+
 export const igAccountSchema = z.object({
   username: z.string(),
   state: igAccountStateSchema,
@@ -84,6 +88,9 @@ export const igAccountSchema = z.object({
   checkedAt: z.string(),
   loginFailures: z.number().int().nonnegative(),
   proxy: igProxySchema.nullable().optional(),
+  // Set only on the official (Meta API) account record.
+  publisher: instagramPublisherSchema.optional(),
+  tokenExpiresAt: z.string().nullable().optional(),
 })
 export type IgAccount = z.infer<typeof igAccountSchema>
 

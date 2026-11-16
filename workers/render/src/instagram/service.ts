@@ -1,9 +1,11 @@
 import {
   INSTAGRAM_LOST_ERROR,
   errorFields,
+  type AlertInput,
   type IgAccount,
   type IgAccountState,
   type IgProxy,
+  type InstagramPublisher,
   type Logger,
 } from '@reelset/core'
 import { decryptJson, encryptJson } from './crypto'
@@ -19,6 +21,13 @@ import {
   type IgState,
 } from './container-client'
 import { posterKeyForVideoKey } from '../keys'
+import type { OfficialClient } from './official-client'
+import {
+  checkOfficialAccount,
+  connectOfficialAccount,
+  disconnectOfficialAccount,
+  runOfficialQueue,
+} from './official-service'
 import type { ClaimedPost, IgStore, LostPost } from './store'
 
 export type IgDeps = {
@@ -30,6 +39,12 @@ export type IgDeps = {
   mediaBaseUrl: string
   log: Logger
   now?: () => Date
+  /** Meta's official API; used when the `instagram_publisher` setting is `official`. */
+  official: OfficialClient
+  publisher: () => Promise<InstagramPublisher>
+  aiLabel: () => Promise<boolean>
+  alert: (input: AlertInput) => Promise<unknown>
+  sleep?: (ms: number) => Promise<void>
 }
 
 const SESSION_LOST_STATES: readonly string[] = ['needs_login', 'needs_code', 'challenge']
@@ -210,7 +225,30 @@ export async function checkAccount(deps: IgDeps): Promise<IgAccount> {
   }
 }
 
-export type ConnectInput = { code?: string; creds?: IgCredentials }
+export type ConnectInput = { code?: string; creds?: IgCredentials; accessToken?: string }
+
+export async function checkActiveAccount(deps: IgDeps): Promise<IgAccount> {
+  return (await deps.publisher()) === 'official' ? checkOfficialAccount(deps) : checkAccount(deps)
+}
+
+/**
+ * An access token always goes to the official publisher, so it can be saved and checked before the
+ * `instagram_publisher` setting is switched over.
+ */
+export async function connectActiveAccount(
+  deps: IgDeps,
+  input: ConnectInput = {},
+): Promise<IgAccount> {
+  if (input.accessToken) return connectOfficialAccount(deps, input.accessToken)
+  if (!input.creds && (await deps.publisher()) === 'official') return checkOfficialAccount(deps)
+  return connectAccount(deps, input)
+}
+
+export async function disconnectActiveAccount(deps: IgDeps): Promise<IgAccount> {
+  return (await deps.publisher()) === 'official'
+    ? disconnectOfficialAccount(deps)
+    : disconnectAccount(deps)
+}
 
 /**
  * One explicit login attempt (admin click); a missing 2FA code is not counted as a failure.
@@ -442,6 +480,7 @@ export async function recoverLostPost(
 
 // At most one post or delete per run; the claim query enforces the gap between posts.
 export async function runInstagramQueue(deps: IgDeps): Promise<QueueOutcome> {
+  if ((await deps.publisher()) === 'official') return runOfficialQueue(deps)
   const stuck = await deps.store.failStuck()
   if (stuck > 0) deps.log.warn({ stuck }, 'instagram posts lost mid-upload, will look them up')
   const account = await deps.store.getAccount()

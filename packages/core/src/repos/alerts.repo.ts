@@ -11,6 +11,8 @@ export const ALERT_KEYS = [
   'transcript_success_low',
   'dead_letter_growing',
   'llm_quota_exhausted',
+  'instagram_token_refresh_failed',
+  'instagram_token_expiring',
 ] as const
 export type AlertKey = (typeof ALERT_KEYS)[number]
 

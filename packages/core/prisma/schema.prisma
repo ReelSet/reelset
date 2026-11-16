@@ -223,6 +223,7 @@ model InstagramPost {
   caption           String
   status            InstagramPostStatus     @default(queued)
   mediaPk           String?                 @map("media_pk")
+  containerId       String?                 @map("container_id")
   permalink         String?
   error             String?
   attempts          Int                     @default(0)

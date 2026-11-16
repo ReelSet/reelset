@@ -69,6 +69,10 @@ const HINTS: Record<string, string> = {
   reel_credit_cost: 'Credits charged per generated reel',
   instagram_auto_post:
     'Queue every new reel for Instagram (up to daily_reel_cap per day); false = post by hand only',
+  instagram_publisher:
+    'How reels reach Instagram: unofficial = the instagrapi login on the render box; official = the Meta API with the access token saved on the Instagram admin page',
+  instagram_ai_label:
+    "Official publisher only: mark each reel with Instagram's AI-generated label (is_ai_generated)",
 }
 
 function settingField(name: keyof typeof SETTINGS): SettingField {

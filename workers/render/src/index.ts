@@ -23,6 +23,7 @@ import { IG_RUN_QUEUE, handleIgRoute, matchIgRoute, type IgRunMessage } from './
 import { igConfigured, withIgDeps } from './instagram/wire'
 import { DOWNLOAD_PREFIX, handleDownload } from './download'
 import { runInstagramQueue } from './instagram/service'
+import { refreshOfficialToken } from './instagram/official-service'
 import { createAutoPostDeps, queueAutoInstagramPosts } from './instagram/auto'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import {
@@ -203,6 +204,13 @@ export default {
             log.error(errorFields(err), 'instagram auto post failed')
           } finally {
             await closeIg()
+          }
+          try {
+            const refresh = await withIgDeps(env, boxFor(env, log), log, refreshOfficialToken)
+            if (refresh !== 'no_token' && refresh !== 'not_due')
+              log.info({ refresh }, 'instagram access token refresh ran')
+          } catch (err) {
+            log.error(errorFields(err), 'instagram access token refresh crashed')
           }
           await env.IG_RUN.send({ reason: 'cron' })
         })().catch((err) => log.error(errorFields(err), 'instagram queue run enqueue failed')),

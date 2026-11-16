@@ -51,6 +51,7 @@ export type ConnectRequest = {
   username?: string
   password?: string
   totpSecret?: string
+  accessToken?: string
 }
 
 export const connectInstagramAccount = (config: WorkerConfig, request: ConnectRequest = {}) =>

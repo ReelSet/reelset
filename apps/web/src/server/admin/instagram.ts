@@ -5,11 +5,15 @@ import {
   SERVED_RENDER_ORDER_SQL,
   assertPostTransition,
   buildCaption,
-  getIgAccount,
+  SETTINGS,
+  getIgAccountFor,
   getIgCheckError,
+  getOfficialIgAccount,
+  getSetting,
   parseCaptionCredits,
   retryInstagramPost,
   type RetryPostResult,
+  type InstagramPublisher,
   type Database,
   type Logger,
 } from '@reelset/core'
@@ -157,7 +161,11 @@ export async function lastPostedAt(db: Database): Promise<Date | null> {
   return row?.at ?? null
 }
 
-export const readAccount = (db: Database) => getIgAccount(db)
+export const readPublisher = (db: Database, log: Logger) =>
+  getSetting(db, SETTINGS.instagramPublisher, log)
+export const readAccount = (db: Database, publisher: InstagramPublisher = 'unofficial') =>
+  getIgAccountFor(db, publisher)
+export const readOfficialAccount = (db: Database) => getOfficialIgAccount(db)
 export const readCheckError = (db: Database) => getIgCheckError(db)
 
 export async function queueInstagramPost(

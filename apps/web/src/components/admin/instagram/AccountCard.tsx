@@ -1,4 +1,4 @@
-import type { IgAccount, IgCheckError } from '@reelset/core'
+import type { IgAccount, IgCheckError, InstagramPublisher } from '@reelset/core'
 import { Ago } from '@/components/admin/pipeline/Elapsed'
 import { button, buttonPrimary, input } from '@/components/admin/ui'
 import { SubmitButton } from '@/components/admin/SubmitButton'
@@ -13,16 +13,22 @@ const DOT = { ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger', muted: 'bg-fain
 
 export function AccountCard({
   account,
+  officialAccount,
+  publisher,
   checkError,
   configured,
   returnTo,
 }: {
   account: IgAccount | null
+  /** The official API connection, shown as a side panel while the unofficial publisher is active. */
+  officialAccount: IgAccount | null
+  publisher: InstagramPublisher
   checkError: IgCheckError | null
   configured: boolean
   returnTo: string
 }) {
-  const view = describeAccount(account, configured)
+  const official = publisher === 'official'
+  const view = describeAccount(account, configured, publisher)
   const proxy = proxyLabel(account)
   const lastError =
     checkError && (!account || Date.parse(checkError.at) > Date.parse(account.checkedAt))
@@ -54,13 +60,14 @@ export function AccountCard({
                 checked <Ago at={account.checkedAt} />
               </span>
             ) : null}
+            {official ? <TokenExpiry account={account} /> : null}
           </p>
         </div>
         {configured ? (
           <form action={checkAccountAction}>
             <input type="hidden" name="returnTo" value={returnTo} />
             <SubmitButton className={button} pendingLabel="Checking">
-              Check session
+              {official ? 'Check token' : 'Check session'}
             </SubmitButton>
           </form>
         ) : null}
@@ -102,13 +109,70 @@ export function AccountCard({
         <p className="mt-3 rounded bg-warn/10 p-2.5 text-xs text-warn">{GRAPH_API_ADVICE}</p>
       ) : null}
 
-      {configured && account?.state === 'disconnected' ? (
+      {configured && official && account?.state !== 'connected' ? (
+        <div className="mt-4 border-t border-line pt-4">
+          <TokenForm returnTo={returnTo} />
+        </div>
+      ) : null}
+
+      {configured && official && account?.state === 'connected' ? (
+        <details className="group mt-4 border-t border-line pt-3">
+          <summary className="cursor-pointer select-none text-xs text-muted transition hover:text-fg">
+            Replace the access token or disconnect
+          </summary>
+          <div className="mt-3 flex flex-col gap-4">
+            <TokenForm returnTo={returnTo} />
+            <form
+              action={disconnectAccountAction}
+              className="flex flex-wrap items-center gap-2 rounded-md border border-danger/30 bg-danger/5 p-3"
+            >
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <p className="min-w-0 flex-1 text-xs text-muted">
+                Disconnect forgets the saved access token. Queued posts wait until a token is saved
+                again.
+              </p>
+              <SubmitButton
+                className={`${button} border-danger/50 text-danger`}
+                pendingLabel="Disconnecting"
+              >
+                Disconnect
+              </SubmitButton>
+            </form>
+          </div>
+        </details>
+      ) : null}
+
+      {configured && !official ? (
+        <details className="group mt-4 border-t border-line pt-3">
+          <summary className="cursor-pointer select-none text-xs text-muted transition hover:text-fg">
+            Official Instagram API:{' '}
+            {officialAccount?.state === 'connected'
+              ? `token saved for @${officialAccount.username}`
+              : 'no working token saved'}
+          </summary>
+          <div className="mt-3 flex flex-col gap-2">
+            {officialAccount?.message ? (
+              <p className="text-xs text-warn">{officialAccount.message}</p>
+            ) : null}
+            <p className="flex flex-wrap gap-x-3 text-xs text-faint">
+              <TokenExpiry account={officialAccount} />
+              <span>
+                Posts still go out through the unofficial login. To switch, save a token here, then
+                set instagram_publisher to official in Settings.
+              </span>
+            </p>
+            <TokenForm returnTo={returnTo} />
+          </div>
+        </details>
+      ) : null}
+
+      {configured && !official && account?.state === 'disconnected' ? (
         <div className="mt-4 border-t border-line pt-4">
           <CredentialsForm returnTo={returnTo} />
         </div>
       ) : null}
 
-      {configured && account && account.state !== 'disconnected' ? (
+      {configured && !official && account && account.state !== 'disconnected' ? (
         <details className="group mt-4 border-t border-line pt-3">
           <summary className="cursor-pointer select-none text-xs text-muted transition hover:text-fg">
             Use a different account or disconnect
@@ -135,6 +199,43 @@ export function AccountCard({
         </details>
       ) : null}
     </section>
+  )
+}
+
+function TokenExpiry({ account }: { account: IgAccount | null }) {
+  if (!account?.tokenExpiresAt) return null
+  const day = new Date(account.tokenExpiresAt).toISOString().slice(0, 10)
+  return <span>token expires about {day} UTC, refreshed automatically</span>
+}
+
+function TokenForm({ returnTo }: { returnTo: string }) {
+  return (
+    <form action={connectAccountAction} className="flex flex-col gap-2.5" autoComplete="off">
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <p className="text-xs text-faint">
+        Paste the long-lived Instagram User access token from the Meta app dashboard (Instagram, API
+        setup with Instagram login, Generate token). It is checked with Instagram, stored encrypted
+        and refreshed automatically.
+      </p>
+      <input
+        name="accessToken"
+        type="password"
+        required
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
+        spellCheck={false}
+        placeholder="Instagram access token"
+        aria-label="Instagram access token"
+        className={`${input} font-mono`}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <SubmitButton className={buttonPrimary} pendingLabel="Checking token">
+          Save access token
+        </SubmitButton>
+      </div>
+    </form>
   )
 }
 
