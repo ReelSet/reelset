@@ -149,7 +149,7 @@ describe('runInstagramQueue', () => {
       expect.objectContaining({ session: expect.anything() }),
       {
         videoUrl: 'https://media.reelset.app/reels/i1/k.mp4',
-        posterUrl: 'https://media.reelset.app/reels/i1/k.jpg',
+        posterUrl: 'https://media.reelset.app/reels/i1/k.jpg?v=2',
         caption: 'cap',
       },
     )
@@ -163,7 +163,9 @@ describe('runInstagramQueue', () => {
     const t = await setup({ post: { ...POST, video_key: videoKeyFor('i1', 'render-2') } })
     await runInstagramQueue(t.deps)
     const upload = vi.mocked(t.client.post).mock.calls[0]?.[1]
-    expect(upload?.posterUrl).toBe(`https://media.reelset.app/${posterKeyFor('i1', 'render-2')}`)
+    expect(upload?.posterUrl).toBe(
+      `https://media.reelset.app/${posterKeyFor('i1', 'render-2')}?v=2`,
+    )
   })
 
   it('sends no poster when the video key is not a render key, so the cover falls back', async () => {

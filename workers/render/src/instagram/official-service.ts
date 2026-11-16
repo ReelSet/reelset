@@ -4,6 +4,7 @@ import {
   type IgAccount,
   type IgAccountState,
   type Logger,
+  mediaKeyUrl,
 } from '@reelset/core'
 import { posterKeyForVideoKey } from '../keys'
 import { decryptJson, encryptJson } from './crypto'
@@ -393,9 +394,7 @@ export async function refreshOfficialToken(deps: IgDeps): Promise<RefreshOutcome
   return outcome
 }
 
-function mediaUrl(base: string, key: string): string {
-  return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`
-}
+const mediaUrl = mediaKeyUrl
 
 // Instagram can drop the @ from captions it returns.
 const normalizeCaption = (text: string | null) =>

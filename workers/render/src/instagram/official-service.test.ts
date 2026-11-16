@@ -510,7 +510,7 @@ describe('runInstagramQueue with the official publisher', () => {
     expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'post', postId: 'p1', ok: true })
     expect(t.client.createReelContainer).toHaveBeenCalledWith(RAW_TOKEN, OFFICIAL_ME.userId, {
       videoUrl: 'https://media.reelset.app/reels/i1/k.mp4',
-      coverUrl: 'https://media.reelset.app/reels/i1/k.jpg',
+      coverUrl: 'https://media.reelset.app/reels/i1/k.jpg?v=2',
       caption: POST.caption,
       aiGenerated: false,
     })

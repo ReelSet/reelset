@@ -38,6 +38,7 @@ export {
   spokenChars,
 } from './domain/speech'
 export { contentHash, renderKey, sha256Hex, type RenderKeyInput } from './domain/hash'
+export { POSTER_CACHE_VERSION, mediaKeyUrl } from './domain/media-url'
 export {
   EMBEDDING_DIMENSIONS,
   EmbeddingShapeError,

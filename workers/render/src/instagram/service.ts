@@ -7,6 +7,7 @@ import {
   type IgProxy,
   type InstagramPublisher,
   type Logger,
+  mediaKeyUrl,
 } from '@reelset/core'
 import { decryptJson, encryptJson } from './crypto'
 import {
@@ -341,9 +342,7 @@ export type QueueOutcome =
   | { ran: 'none'; reason: 'not_connected' | 'nothing_due' }
   | { ran: 'post' | 'delete'; postId: string; ok: boolean }
 
-function mediaUrl(base: string, key: string): string {
-  return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`
-}
+const mediaUrl = mediaKeyUrl
 
 // The app shows the render's poster image as the cover, so Instagram gets that same file.
 function reelUpload(deps: IgDeps, post: ClaimedPost): IgReelUpload {

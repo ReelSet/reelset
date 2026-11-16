@@ -1,4 +1,5 @@
+import { mediaKeyUrl } from '@reelset/core'
+
 export function mediaUrl(base: string, key: string | null): string | null {
-  if (!key) return null
-  return `${base.replace(/\/+$/, '')}/${key.replace(/^\/+/, '')}`
+  return key ? mediaKeyUrl(base, key) : null
 }
