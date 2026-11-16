@@ -81,7 +81,7 @@ const post = (body: unknown) =>
 
 describe('judgeItemManually', () => {
   it('judges an item from its stored evidence and records a manual, never-applied decision', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20)])
     const row = await judgeItemManually(t.deps, ITEM_ID)
 
     expect(row).toMatchObject({
@@ -102,7 +102,7 @@ describe('judgeItemManually', () => {
   })
 
   it('changes nothing but the decision and spend tables: no transition, no embedding, no queue', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20)])
     await judgeItemManually(t.deps, ITEM_ID)
     const writes = t.writes()
     expect(writes).toHaveLength(2)
@@ -112,7 +112,7 @@ describe('judgeItemManually', () => {
   })
 
   it('records the spend as gate llm spend with a manual trigger', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(8)])
+    const t = setup(makeGateWorld(), [judgeAnswer(80)])
     await judgeItemManually(t.deps, ITEM_ID)
     const spend = t.fake.find('insert into "spend_ledger"')[0]!
     expect(spend.params[0]).toBe('llm')
@@ -125,7 +125,7 @@ describe('judgeItemManually', () => {
   })
 
   it('judges even when the gate is off', async () => {
-    const t = setup(makeGateWorld({ settings: { gate_mode: 'off' } }), [judgeAnswer(8)])
+    const t = setup(makeGateWorld({ settings: { gate_mode: 'off' } }), [judgeAnswer(80)])
     expect(await judgeItemManually(t.deps, ITEM_ID)).toMatchObject({
       verdict: 'reel',
       mode: 'shadow',
@@ -136,7 +136,7 @@ describe('judgeItemManually', () => {
   it('never explores: an item in the explore sample keeps its real verdict', async () => {
     const t = setup(
       makeGateWorld({ settings: { gate_mode: 'live', gate_explore_rate: EXPLORE_RATE } }),
-      [judgeAnswer(2)],
+      [judgeAnswer(20)],
     )
     expect(await judgeItemManually(t.deps, ITEM_ID)).toMatchObject({
       verdict: 'source_only',
@@ -146,9 +146,9 @@ describe('judgeItemManually', () => {
 
   it('records the same config hash an automatic decision would, despite not exploring', async () => {
     const settings = { gate_mode: 'live', gate_explore_rate: EXPLORE_RATE }
-    const a = setup(makeGateWorld({ settings }), [judgeAnswer(8)])
+    const a = setup(makeGateWorld({ settings }), [judgeAnswer(80)])
     const b = setup(makeGateWorld({ settings: { ...settings, gate_explore_rate: 0 } }), [
-      judgeAnswer(8),
+      judgeAnswer(80),
     ])
     const [rowA, rowB] = [
       await judgeItemManually(a.deps, ITEM_ID),
@@ -168,7 +168,7 @@ describe('judgeItemManually', () => {
     const world = makeGateWorld({
       latest: { id: 'dec-admin', decided_by: 'admin', verdict: 'reel', mode: 'live' },
     })
-    const t = setup(world, [judgeAnswer(2)], makeItemWorld({ item }))
+    const t = setup(world, [judgeAnswer(20)], makeItemWorld({ item }))
     expect(await judgeItemManually(t.deps, ITEM_ID)).toMatchObject({ verdict: 'source_only' })
     expect(t.fake.find('from "gate_decision"')).toHaveLength(0)
     expect(t.writes().some((sql) => sql.startsWith('update'))).toBe(false)
@@ -191,13 +191,13 @@ describe('judgeItemManually', () => {
 
   it('treats a youtube item with stored text as having a transcript', async () => {
     const item = { ...makeItemWorld().item, canonical_key: 'youtube:abc', images: null, demo: null }
-    const t = setup(makeGateWorld(), [judgeAnswer(8)], makeItemWorld({ item }))
+    const t = setup(makeGateWorld(), [judgeAnswer(80)], makeItemWorld({ item }))
     await judgeItemManually(t.deps, ITEM_ID)
     expect(t.generate.mock.calls[0]![0].user).toContain('Visuals: a video with a transcript')
   })
 
   it('judges again on a second call and records a second row', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2), judgeAnswer(8)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20), judgeAnswer(80)])
     const [first, second] = await Promise.all([
       judgeItemManually(t.deps, ITEM_ID),
       judgeItemManually(t.deps, ITEM_ID),
@@ -251,7 +251,7 @@ describe('manualJudgeFailure', () => {
 
 describe('handleManualJudge', () => {
   it('returns the recorded decision', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(8)])
+    const t = setup(makeGateWorld(), [judgeAnswer(80)])
     const res = await handleManualJudge(post({ itemId: ITEM_ID }), t.deps)
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({
@@ -276,7 +276,7 @@ describe('handleManualJudge', () => {
   it.each([['not json'], [{}], [{ itemId: 'item-1' }], [{ itemId: 7 }]])(
     'rejects an invalid body %j with 400 before touching the database',
     async (body) => {
-      const t = setup(makeGateWorld(), [judgeAnswer(8)])
+      const t = setup(makeGateWorld(), [judgeAnswer(80)])
       const res = await handleManualJudge(post(body), t.deps)
       expect(res.status).toBe(400)
       expect(await res.json()).toMatchObject({ ok: false, error: { code: 'invalid_request' } })
@@ -289,7 +289,7 @@ describe('handleManualJudge', () => {
       [setup(makeGateWorld(), [], makeItemWorld({ item: null })), 404, 'item_not_found'],
       [setup(makeGateWorld(), [], makeItemWorld({ chunks: [] })), 422, 'no_evidence'],
       [
-        setup(makeGateWorld({ settings: { gate_model: 'claude-opus-5-5' } }), [judgeAnswer(8)]),
+        setup(makeGateWorld({ settings: { gate_model: 'claude-opus-5-5' } }), [judgeAnswer(80)]),
         422,
         'over_budget',
       ],
@@ -297,7 +297,7 @@ describe('handleManualJudge', () => {
       [setup(makeGateWorld(), [NEVER_ANSWERS], makeItemWorld(), 30), 504, 'judge_timeout'],
       [setup(makeGateWorld(), ['nope', 'nope']), 502, 'judge_failed'],
       [
-        setup(makeGateWorld({ failOn: 'insert into "gate_decision"' }), [judgeAnswer(8)]),
+        setup(makeGateWorld({ failOn: 'insert into "gate_decision"' }), [judgeAnswer(80)]),
         500,
         'internal_error',
       ],

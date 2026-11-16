@@ -2,14 +2,12 @@ import {
   CLAUDE_MODELS,
   GATE_EVIDENCE_MAX_CHARS,
   GATE_PROMPT_OVERHEAD_CHARS,
-  GATE_SIGNAL_KEYS,
   gateCallBudget,
   gateCallCostUsd,
   SETTINGS,
   SOURCES,
   type GateConfig,
   type GateSourceRules,
-  type GateWeights,
   type SettingDef,
 } from '@reelset/core'
 import { GATE_FIELD, type CostMarks } from './gate-fields'
@@ -24,6 +22,7 @@ export const GATE_SETTING_DEFS = {
   effort: SETTINGS.gateEffort,
   exploreRate: SETTINGS.gateExploreRate,
   exampleCount: SETTINGS.gateExampleCount,
+  performanceExamples: SETTINGS.gatePerformanceExamples,
   maxCostUsdPerItem: SETTINGS.gateMaxCostUsdPerItem,
 } satisfies { [Field in keyof GateConfig]: SettingDef<GateConfig[Field]> }
 
@@ -36,6 +35,10 @@ const PERCENT = 100
 
 export function isGateSettingName(name: unknown): name is GateSettingName {
   return typeof name === 'string' && Object.hasOwn(GATE_SETTING_DEFS, name)
+}
+
+export function isEditableGateSetting(name: unknown): name is EditableGateSetting {
+  return typeof name === 'string' && Object.hasOwn(CANDIDATES, name)
 }
 
 /** Whether a stored value equals the default; both sides come out of the same zod schema, so key order matches. */
@@ -56,12 +59,6 @@ const toNumber = (raw: string) => (raw.trim() === '' ? Number.NaN : Number(raw.t
 const toOptionalNumber = (raw: string | undefined) =>
   raw === undefined || raw.trim() === '' ? undefined : Number(raw.trim())
 
-function weightsCandidate(fields: GateFormFields): unknown {
-  return Object.fromEntries(
-    GATE_SIGNAL_KEYS.map((key) => [key, toNumber(fields[GATE_FIELD.weight(key)] ?? '')]),
-  )
-}
-
 function sourceRulesCandidate(fields: GateFormFields): unknown {
   return Object.fromEntries(
     SOURCES.map((source) => [
@@ -77,14 +74,16 @@ function sourceRulesCandidate(fields: GateFormFields): unknown {
 
 type Candidate = (fields: GateFormFields) => unknown
 
+// gate_weights is still stored and parsed by core, but since gate-v2 it changes nothing, so no form writes it.
+export type EditableGateSetting = Exclude<GateSettingName, 'weights'>
+
 // Each setting is read only when its form field (or the first of its group) was submitted.
-const CANDIDATES: { [Field in GateSettingName]: { present: string; candidate: Candidate } } = {
+const CANDIDATES: { [Field in EditableGateSetting]: { present: string; candidate: Candidate } } = {
   mode: { present: GATE_FIELD.mode, candidate: (f) => f[GATE_FIELD.mode]?.trim() },
   threshold: {
     present: GATE_FIELD.threshold,
     candidate: (f) => toNumber(f[GATE_FIELD.threshold] ?? ''),
   },
-  weights: { present: GATE_FIELD.weight(GATE_SIGNAL_KEYS[0]), candidate: weightsCandidate },
   sourceRules: { present: GATE_FIELD.ruleMode(SOURCES[0]!), candidate: sourceRulesCandidate },
   instructions: {
     present: GATE_FIELD.instructions,
@@ -100,6 +99,10 @@ const CANDIDATES: { [Field in GateSettingName]: { present: string; candidate: Ca
     present: GATE_FIELD.exampleCount,
     candidate: (f) => toNumber(f[GATE_FIELD.exampleCount] ?? ''),
   },
+  performanceExamples: {
+    present: GATE_FIELD.performanceExamples,
+    candidate: (f) => toNumber(f[GATE_FIELD.performanceExamples] ?? ''),
+  },
   maxCostUsdPerItem: {
     present: GATE_FIELD.maxCostUsdPerItem,
     candidate: (f) => toNumber(f[GATE_FIELD.maxCostUsdPerItem] ?? ''),
@@ -114,7 +117,7 @@ function issueText(def: SettingDef<unknown>, issue: { path: PropertyKey[]; messa
 /** Validates the gate settings present in a submitted form with the core schemas; the first invalid one fails the whole form. */
 export function parseGateSettingsForm(fields: GateFormFields): ParsedGateForm<GateSettingsPatch> {
   const patch: Record<string, unknown> = {}
-  for (const name of Object.keys(CANDIDATES) as GateSettingName[]) {
+  for (const name of Object.keys(CANDIDATES) as EditableGateSetting[]) {
     const { present, candidate } = CANDIDATES[name]
     if (!Object.hasOwn(fields, present)) continue
     const def = GATE_SETTING_DEFS[name] as SettingDef<unknown>
@@ -129,20 +132,17 @@ export function parseGateSettingsForm(fields: GateFormFields): ParsedGateForm<Ga
   return { ok: true, value: patch as GateSettingsPatch }
 }
 
-export type GateTuningInput = { threshold: number; weights: GateWeights }
+export type GateTuningInput = { threshold: number }
 
-/** The threshold and weights typed into the tuning form, validated but not saved, for a dry run. */
+/** The threshold typed into the tuning form, validated but not saved, for a dry run. */
 export function parseGateTuningForm(fields: GateFormFields): ParsedGateForm<GateTuningInput> {
   const parsed = parseGateSettingsForm({
     [GATE_FIELD.threshold]: fields[GATE_FIELD.threshold] ?? '',
-    ...Object.fromEntries(
-      GATE_SIGNAL_KEYS.map((key) => [GATE_FIELD.weight(key), fields[GATE_FIELD.weight(key)] ?? '']),
-    ),
   })
   if (!parsed.ok) return parsed
-  const { threshold, weights } = parsed.value
-  if (threshold === undefined || !weights) return { ok: false, error: 'Threshold and weights' }
-  return { ok: true, value: { threshold, weights } }
+  const { threshold } = parsed.value
+  if (threshold === undefined) return { ok: false, error: 'gate_threshold: required' }
+  return { ok: true, value: { threshold } }
 }
 
 /** Per-source threshold overrides, for re-scoring a decision against the threshold its source uses. */

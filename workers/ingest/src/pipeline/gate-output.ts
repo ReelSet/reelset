@@ -1,18 +1,10 @@
-import {
-  GATE_RATIONALE_MAX_CHARS,
-  GATE_REASON_MAX_CHARS,
-  GATE_SIGNAL_KEYS,
-  parseGateSignals,
-  type GateSignals,
-} from '@reelset/core'
+import { GATE_RATIONALE_MAX_CHARS, GATE_REASON_MAX_CHARS, GATE_SCORE_MAX } from '@reelset/core'
 import { GATE_PROMPT_REASONS_MAX } from '../config'
 
-export type GateJudgement = { signals: GateSignals; reasons: string[]; rationale: string }
+/** The judge's one holistic rating (0..100) of how well a reel from this source would hold viewers, with its reasons. */
+export type GateJudgement = { score: number; reasons: string[]; rationale: string }
 
 export type ParsedGateOutput = { ok: true; value: GateJudgement } | { ok: false; reason: string }
-
-/** Fewer marked signals than this is too little to score on, so the answer counts as malformed. */
-export const GATE_MIN_MARKED_SIGNALS = Math.ceil(GATE_SIGNAL_KEYS.length / 2)
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -29,14 +21,11 @@ function extractJson(text: string): unknown {
   }
 }
 
-function numericMarks(raw: unknown): Obj {
-  if (!isObj(raw)) return {}
-  const marks: Obj = {}
-  for (const [key, value] of Object.entries(raw)) {
-    const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
-    marks[key] = typeof number === 'number' ? Math.round(number) : number
-  }
-  return marks
+// Accepts 72, 72.4 and "72"; anything that is not a number is no rating at all.
+function readScore(raw: unknown): number | null {
+  const value = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.min(GATE_SCORE_MAX, Math.max(0, Math.round(value)))
 }
 
 function shortReasons(raw: unknown): string[] {
@@ -48,18 +37,15 @@ function shortReasons(raw: unknown): string[] {
     .slice(0, GATE_PROMPT_REASONS_MAX)
 }
 
-/** Reads the judge's answer: marks are rounded and clamped to 0..10, unknown or missing signals dropped, text cut to size. */
+/** Reads the judge's answer: one rating rounded and clamped to 0..100, reasons and rationale cut to size. No usable rating means malformed. */
 export function parseGateOutput(text: string): ParsedGateOutput {
   const json = extractJson(text)
   if (!isObj(json)) return { ok: false, reason: 'response was not a JSON object' }
-  const signals = parseGateSignals(numericMarks(json.signals))
-  const marked = Object.keys(signals).length
-  if (marked < GATE_MIN_MARKED_SIGNALS) {
-    return { ok: false, reason: `only ${marked} of ${GATE_SIGNAL_KEYS.length} signals were marked` }
-  }
+  const score = readScore(json.score)
+  if (score === null) return { ok: false, reason: 'the answer had no numeric score' }
   const rationale =
     typeof json.rationale === 'string'
       ? json.rationale.trim().slice(0, GATE_RATIONALE_MAX_CHARS)
       : ''
-  return { ok: true, value: { signals, reasons: shortReasons(json.reasons), rationale } }
+  return { ok: true, value: { score, reasons: shortReasons(json.reasons), rationale } }
 }

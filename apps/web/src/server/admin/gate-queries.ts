@@ -1,10 +1,10 @@
 import {
   EventName,
+  GATE_PROMPT_VERSION,
   GATE_LABELS,
   ItemStatus,
   gateStats,
   gateVerdictSchema,
-  parseGateSignals,
   errorFields,
   type Database,
   type GateStats,
@@ -254,7 +254,7 @@ export async function gateOverview(
 
 const labelSchema = z.enum(GATE_LABELS)
 
-/** The newest pipeline judgements that carry model signals (on-demand checks of old reels are left out so they cannot skew tuning), for re-scoring under other settings without a model call. */
+/** The newest pipeline judgements scored by the current prompt version (earlier versions score on another scale, and on-demand checks of old reels would skew tuning), for re-scoring under other settings without a model call. */
 export async function recentJudgedDecisions(
   db: Database,
   opts: { limit: number; labelledOnly?: boolean },
@@ -263,7 +263,6 @@ export async function recentJudgedDecisions(
     .selectFrom('gate_decision')
     .innerJoin('item', 'item.id', 'gate_decision.item_id')
     .select([
-      'gate_decision.signals',
       'gate_decision.score',
       'gate_decision.threshold',
       'gate_decision.verdict',
@@ -272,6 +271,7 @@ export async function recentJudgedDecisions(
     ])
     .where('gate_decision.decided_by', 'in', JUDGED_BY)
     .where('gate_decision.trigger', '=', 'auto')
+    .where('gate_decision.prompt_version', '=', GATE_PROMPT_VERSION)
     .where('gate_decision.score', 'is not', null)
   if (opts.labelledOnly) query = query.where('gate_decision.label', 'is not', null)
   const rows = await query
@@ -281,12 +281,11 @@ export async function recentJudgedDecisions(
     .execute()
   return rows.flatMap((row) => {
     const verdict = gateVerdictSchema.safeParse(row.verdict)
-    if (!verdict.success) return []
+    if (!verdict.success || row.score === null) return []
     const label = labelSchema.safeParse(row.label)
     return [
       {
-        signals: parseGateSignals(row.signals),
-        score: row.score === null ? null : Number(row.score),
+        score: Number(row.score),
         threshold: Number(row.threshold),
         verdict: verdict.data,
         label: label.success ? label.data : null,

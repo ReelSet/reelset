@@ -1,12 +1,9 @@
 import {
   GATE_SCORE_MAX,
   correctGateVerdict,
-  gateScore,
   gateVerdict,
   type GateLabel,
-  type GateSignals,
   type GateVerdict,
-  type GateWeights,
 } from '@reelset/core'
 
 export const DRY_RUN_SAMPLE = 200
@@ -14,10 +11,9 @@ export const SUGGEST_SAMPLE = 500
 export const SUGGEST_MIN_LABELS = 20
 export const SUGGEST_MIN_PER_SIDE = 3
 
-/** A stored model judgement: enough to re-score it without calling the model again. */
+/** A stored model judgement with its score: enough to re-cut it against another threshold without calling the model. Callers pass rows of one prompt version only, since versions score on different scales. */
 export type JudgedDecision = {
-  signals: GateSignals
-  score: number | null
+  score: number
   threshold: number
   verdict: GateVerdict
   label: GateLabel | null
@@ -26,7 +22,6 @@ export type JudgedDecision = {
 
 export type GateTuning = {
   threshold: number
-  weights: Partial<GateWeights>
   sourceThresholds?: Partial<Record<string, number>>
 }
 
@@ -41,25 +36,21 @@ export type DryRunResult = {
   matchedAfter: number
 }
 
-const hasSignals = (decision: JudgedDecision) => Object.keys(decision.signals).length > 0
-
 // The judge's own call, which differs from the stored verdict on explore rows.
 function judgedBefore(decision: JudgedDecision): GateVerdict {
-  return decision.score === null
-    ? decision.verdict
-    : gateVerdict(decision.score, decision.threshold)
+  return gateVerdict(decision.score, decision.threshold)
 }
 
 function judgedAfter(decision: JudgedDecision, tuning: GateTuning): GateVerdict {
   const threshold = tuning.sourceThresholds?.[decision.source] ?? tuning.threshold
-  return gateVerdict(gateScore(decision.signals, tuning.weights), threshold)
+  return gateVerdict(decision.score, threshold)
 }
 
 function correctVerdict(decision: JudgedDecision): GateVerdict | null {
   return decision.label ? correctGateVerdict(decision.verdict, decision.label) : null
 }
 
-/** Re-scores stored judgements under a proposed threshold and weights; decisions without signals are left out. */
+/** Re-cuts stored scores against a proposed threshold: what flips, the new reel share, and how the change scores against admin labels. */
 export function dryRunGate(decisions: readonly JudgedDecision[], tuning: GateTuning): DryRunResult {
   const result: DryRunResult = {
     sample: 0,
@@ -71,7 +62,7 @@ export function dryRunGate(decisions: readonly JudgedDecision[], tuning: GateTun
     matchedBefore: 0,
     matchedAfter: 0,
   }
-  for (const decision of decisions.filter(hasSignals)) {
+  for (const decision of decisions) {
     const before = judgedBefore(decision)
     const after = judgedAfter(decision, tuning)
     result.sample += 1
@@ -95,15 +86,14 @@ export type ThresholdSuggestion = {
   sample: number
 }
 
-/** The whole-number threshold that matches the most admin labels under these weights (ties go to the one nearest the current threshold); null until there are enough labels on both sides. */
+/** The whole-number threshold that matches the most admin labels on the stored scores (ties go to the one nearest the current threshold); null until there are enough labels on both sides. */
 export function suggestThreshold(
   decisions: readonly JudgedDecision[],
-  weights: Partial<GateWeights>,
   currentThreshold: number,
 ): ThresholdSuggestion | null {
-  const labelled = decisions.filter(hasSignals).flatMap((decision) => {
+  const labelled = decisions.flatMap((decision) => {
     const correct = correctVerdict(decision)
-    return correct ? [{ score: gateScore(decision.signals, weights), correct }] : []
+    return correct ? [{ score: decision.score, correct }] : []
   })
   const shouldBeReel = labelled.filter((entry) => entry.correct === 'reel').length
   const smallerSide = Math.min(shouldBeReel, labelled.length - shouldBeReel)

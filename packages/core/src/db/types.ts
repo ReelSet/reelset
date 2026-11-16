@@ -178,6 +178,14 @@ export type InstagramPost = {
   posted_at: Timestamp | null
   delete_requested_at: Timestamp | null
   updated_at: Generated<Timestamp>
+  like_count: number | null
+  comments_count: number | null
+  view_count: number | null
+  reach: number | null
+  saves: number | null
+  shares: number | null
+  stats_at: Timestamp | null
+  insights_at: Timestamp | null
 }
 export type Item = {
   id: Generated<string>

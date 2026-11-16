@@ -15,6 +15,7 @@ const commands = {
   saveGateSettings: vi.fn(),
   testGateTuning: vi.fn(),
   thresholdSuggestion: vi.fn(),
+  performanceExampleStatus: vi.fn(),
 }
 const judging = { judgeItemNow: vi.fn(), checkLink: vi.fn() }
 const loadGateQueue = vi.fn()

@@ -109,11 +109,19 @@ describe('parseGateRange', () => {
 describe('disagreeReasonsFor', () => {
   it('offers reasons that argue for the opposite verdict, plus the neutral one', () => {
     const forSourceOnly = disagreeReasonsFor('source_only').map((reason) => reason.key)
-    expect(forSourceOnly).toEqual(['actually_interesting', 'strong_visuals_missed', 'other'])
+    expect(forSourceOnly).toEqual([
+      'actually_interesting',
+      'strong_visuals_missed',
+      'funny_or_timely',
+      'big_name_or_drama',
+      'other',
+    ])
     const forReel = disagreeReasonsFor('reel').map((reason) => reason.key)
     expect(forReel).toContain('too_niche')
+    expect(forReel).toContain('nobody_would_care')
     expect(forReel).toContain('other')
     expect(forReel).not.toContain('actually_interesting')
+    expect(forReel).not.toContain('funny_or_timely')
   })
 
   it('covers every core reason on exactly one side, or both when neutral', () => {
@@ -175,6 +183,14 @@ describe('toGateView', () => {
     expect(view.signals[1]).toMatchObject({ value: 10, pct: 100 })
     expect(view.signals[2]).toMatchObject({ value: null, pct: 0 })
     expect(view.disagreeReasons.map((reason) => reason.key)).toContain('actually_interesting')
+  })
+
+  it('lists no signals for a gate-v2 row, which stores only the overall score', () => {
+    const view = toGateView(row({ signals: {}, prompt_version: 'gate-v2', score: 72 }))!
+    expect(view.signals).toEqual([])
+    expect(view).toMatchObject({ score: 72, threshold: 55, promptVersion: 'gate-v2' })
+    expect(view.reasons).toEqual(['routine release'])
+    expect(view.rationale).toBe('A changelog.')
   })
 
   it('shows the label with a readable reason and keeps a null score for rule decisions', () => {

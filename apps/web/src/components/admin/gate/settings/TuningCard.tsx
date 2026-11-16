@@ -11,21 +11,16 @@ import type { GateDryRun } from '@/server/admin/gate'
 import { GateSettingsCard } from './GateSettingsCard'
 import { Field, SliderNumber } from './controls'
 
-export type SignalField = { key: string; label: string; description: string }
-
 type Props = {
   threshold: number
-  weights: Record<string, number>
-  signals: readonly SignalField[]
   scoreMax: number
-  weightMax: number
+  promptVersion: string
   suggestion: ThresholdSuggestion | null
   suggestMinLabels: number
   isDefault: boolean
 }
 
 const asShare = (part: number, whole: number) => (whole > 0 ? part / whole : null)
-const numeric = (text: string) => (Number.isFinite(Number(text)) ? Number(text) : 0)
 
 function Suggestion({
   suggestion,
@@ -40,7 +35,7 @@ function Suggestion({
     return (
       <p className="text-xs text-faint">
         Not enough labels yet to suggest a threshold. It needs at least {minLabels} labelled
-        decisions, with some on each side.
+        decisions from the current prompt version, with some on each side.
       </p>
     )
   }
@@ -66,7 +61,11 @@ function Suggestion({
 
 function DryRunSummary({ result }: { result: DryRunResult }) {
   if (result.sample === 0) {
-    return <p className="text-xs text-faint">No model-judged decisions to test on yet.</p>
+    return (
+      <p className="text-xs text-faint">
+        No decisions from the current prompt version to test on yet.
+      </p>
+    )
   }
   return (
     <ul className="space-y-1 text-xs text-muted">
@@ -92,15 +91,7 @@ function DryRunPanel({ run }: { run: GateDryRun | null }) {
   return (
     <div role="status" className="mt-3 rounded-md border border-line bg-bg p-3">
       {run.ok ? (
-        <>
-          <DryRunSummary result={run.result} />
-          {run.suggestion && run.suggestion.matches > run.suggestion.currentMatches ? (
-            <p className="mt-1 text-xs text-muted">
-              With these weights, a threshold of {run.suggestion.threshold} would match{' '}
-              {run.suggestion.matches} of {run.suggestion.sample} labelled decisions.
-            </p>
-          ) : null}
-        </>
+        <DryRunSummary result={run.result} />
       ) : (
         <p className="text-xs text-danger">{run.message}</p>
       )}
@@ -108,23 +99,18 @@ function DryRunPanel({ run }: { run: GateDryRun | null }) {
   )
 }
 
-/** Threshold and signal weights, with a dry run of unsaved values against recent decisions. */
+/** The threshold, with a dry run of an unsaved value against the scores of recent decisions. */
 export function TuningCard(props: Props) {
-  const { signals, scoreMax, weightMax } = props
+  const { scoreMax, promptVersion } = props
   const [threshold, setThreshold] = useState(String(props.threshold))
-  const [weights, setWeights] = useState(() =>
-    Object.fromEntries(signals.map(({ key }) => [key, String(props.weights[key] ?? 0)])),
-  )
   const [run, test] = useActionState(testGateTuningAction, null)
-  const total = signals.reduce((sum, { key }) => sum + numeric(weights[key] ?? ''), 0)
 
   return (
     <GateSettingsCard
-      title="Threshold and signal weights"
-      settingKeys="gate_threshold, gate_weights"
+      title="Threshold"
+      settingKeys="gate_threshold"
       isDefault={props.isDefault}
-      hint="The judge marks six signals from 0 to 10. The weights turn them into one score out of 100, and the threshold decides."
-      reset={{ name: 'weights', label: 'Reset weights to default' }}
+      hint={`The judge gives each item one rating from 0 to ${scoreMax} for how well it would do as a reel. The threshold decides.`}
       actions={
         <SubmitButton className={button} pendingLabel="Testing" formAction={test}>
           Test on recent decisions
@@ -152,27 +138,11 @@ export function TuningCard(props: Props) {
           onUse={(value) => setThreshold(String(value))}
         />
       </div>
-      {signals.map((signal) => (
-        <Field
-          key={signal.key}
-          label={`${signal.label} · ${fmtPct(asShare(numeric(weights[signal.key] ?? ''), total))} of the score`}
-          hint={signal.description}
-        >
-          <SliderNumber
-            name={GATE_FIELD.weight(signal.key)}
-            label={`${signal.label} weight`}
-            value={weights[signal.key] ?? ''}
-            onChange={(value) => setWeights((current) => ({ ...current, [signal.key]: value }))}
-            min={0}
-            max={weightMax}
-            step={0.5}
-          />
-        </Field>
-      ))}
       <p className="mt-1 text-xs text-faint">
-        The dry run re-scores the signals already stored with each decision, so it covers the
-        threshold and the weights only. Changes to the instructions, the model or the per-source
-        rules are not covered.
+        The dry run and the suggestion re-cut the scores already stored with each decision against
+        the threshold; no model is called. They use only decisions judged with the current prompt
+        version ({promptVersion}), because earlier versions scored on a different scale. Changes to
+        the instructions, the model or the per-source rule modes are not covered.
       </p>
       <DryRunPanel run={run} />
     </GateSettingsCard>

@@ -46,7 +46,7 @@ export const DECIDER_LABELS: Record<string, string> = {
 }
 
 export const DECIDER_HINTS: Record<string, string> = {
-  model: 'The judge scored the six signals',
+  model: 'The judge rated the item and the score was compared with the threshold',
   rule: 'A per-source rule settled it without a model call',
   explore: 'The judge said no, but it was made anyway as part of the explore sample',
   admin: 'An admin overrode the gate',

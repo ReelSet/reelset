@@ -1,5 +1,4 @@
 import { vi } from 'vitest'
-import { GATE_SIGNAL_KEYS } from '@reelset/core'
 import type { GateItem } from '../../src/pipeline/gate'
 import type { LlmRequest } from '../../src/pipeline/output'
 import type { RecordedQuery } from './fake-db'
@@ -13,6 +12,8 @@ export type GateWorld = {
   /** Older decision rows, oldest first, for tests that need more than one. */
   history?: Row[]
   examples: Row[]
+  /** instagram_post rows as listInstagramPerformance reads them. */
+  performance?: Row[]
   recorded: Row[]
   /** A query containing this fragment throws, to simulate a database failure. */
   failOn?: string
@@ -45,6 +46,7 @@ export function gateQueries(world: GateWorld) {
       return Object.entries(world.settings).map(([key, value]) => ({ key, value }))
     }
     if (q.sql.includes('with labelled')) return world.examples
+    if (q.sql.includes('from instagram_post')) return world.performance ?? []
     if (q.sql.startsWith('insert into "gate_decision"')) {
       const row = insertedRow(q, `dec-${world.recorded.length + 1}`)
       world.recorded.push(row)
@@ -66,10 +68,10 @@ export function gateQueries(world: GateWorld) {
   }
 }
 
-/** A judge answer that gives every signal the same mark. */
-export function judgeAnswer(mark: number, extra: Row = {}): string {
+/** A judge answer with this rating. */
+export function judgeAnswer(score: number, extra: Row = {}): string {
   return JSON.stringify({
-    signals: Object.fromEntries(GATE_SIGNAL_KEYS.map((key) => [key, mark])),
+    score,
     reasons: ['concrete speedup number', 'clear demo'],
     rationale: 'It has a checkable result and something to show.',
     ...extra,
@@ -129,4 +131,20 @@ export function gateExampleRow(index: number, overrides: Row = {}): Row {
     labeled_at: new Date(Date.UTC(2026, 10, 1 + index)),
     ...overrides,
   }
+}
+
+/** 20 posted reels: likes 100, 50, 30, 20, twelve at 10, then 5, 4, 2, 1 (median 10). */
+export function performanceRows(): Row[] {
+  const likes = [100, 50, 30, 20, ...Array.from({ length: 12 }, () => 10), 5, 4, 2, 1]
+  return likes.map((like_count, index) => ({
+    item_id: `post-${index}`,
+    title: `Posted reel ${index}`,
+    source: 'reddit',
+    posted_at: new Date(Date.UTC(2026, 10, 1 + index)),
+    like_count,
+    comments_count: 0,
+    view_count: null,
+    shares: null,
+    saves: null,
+  }))
 }

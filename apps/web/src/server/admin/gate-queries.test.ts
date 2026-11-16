@@ -1,4 +1,4 @@
-import { createLogger } from '@reelset/core'
+import { GATE_PROMPT_VERSION, createLogger } from '@reelset/core'
 import type { CompiledQuery } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_GATE_SORT, parseGateFilters, type GateFilters } from '@/lib/admin/gate'
@@ -304,32 +304,24 @@ describe('loadGateQueue', () => {
 })
 
 describe('recentJudgedDecisions', () => {
-  it('reads only model-scored rows, newest first, and parses their signals', async () => {
+  it('reads only rows scored by the current prompt version, newest first', async () => {
     const { db, queries } = scriptedDb(() => [
-      {
-        signals: { hook: 9, junk: 'x' },
-        score: 71,
-        threshold: 55,
-        verdict: 'reel',
-        label: 'agree',
-        source: 'hn',
-      },
-      { signals: {}, score: 10, threshold: 55, verdict: 'unknown', label: null, source: 'hn' },
+      { score: 71, threshold: 55, verdict: 'reel', label: 'agree', source: 'hn' },
+      { score: 10, threshold: 55, verdict: 'unknown', label: null, source: 'hn' },
+      { score: null, threshold: 55, verdict: 'reel', label: null, source: 'hn' },
     ])
     const out = await recentJudgedDecisions(db, { limit: 200, labelledOnly: true })
     expect(out).toEqual([
-      {
-        signals: { hook: 9 },
-        score: 71,
-        threshold: 55,
-        verdict: 'reel',
-        label: 'agree',
-        source: 'hn',
-      },
+      { score: 71, threshold: 55, verdict: 'reel', label: 'agree', source: 'hn' },
     ])
     const q = queries[0]!
+    expect(q.sql).not.toContain('"signals"')
+    expect(q.sql).toContain('"gate_decision"."prompt_version" = $')
+    expect(q.sql).toContain('"gate_decision"."score" is not null')
     expect(q.sql).toContain('"gate_decision"."label" is not null')
     expect(q.sql).toContain('order by "gate_decision"."created_at" desc')
-    expect(q.parameters).toEqual(expect.arrayContaining(['model', 'explore', 200]))
+    expect(q.parameters).toEqual(
+      expect.arrayContaining(['model', 'explore', 'auto', GATE_PROMPT_VERSION, 200]),
+    )
   })
 })

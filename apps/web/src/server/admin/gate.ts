@@ -6,8 +6,11 @@ import {
   gateConfigHash,
   gateVerdictSchema,
   labelGateDecision,
+  listInstagramPerformance,
   loadGateConfig,
+  performanceMetric,
   recordGateDecision,
+  selectPerformanceExamples,
   setSetting,
   transitionItem,
   type Database,
@@ -25,12 +28,12 @@ import {
 } from '@/lib/admin/gate'
 import {
   GATE_SETTING_DEFS,
-  isGateSettingName,
+  isEditableGateSetting,
   parseGateSettingsForm,
   parseGateTuningForm,
   sourceThresholds,
   type GateFormFields,
-  type GateSettingName,
+  type EditableGateSetting,
 } from '@/lib/admin/gate-settings'
 import {
   DRY_RUN_SAMPLE,
@@ -40,6 +43,7 @@ import {
   type DryRunResult,
   type ThresholdSuggestion,
 } from '@/lib/admin/gate-tuning'
+import type { PerformanceStatus } from '@/lib/admin/gate-fields'
 import { VERDICT_LABELS } from '@/lib/admin/gate-view'
 import type { CommandResult } from './commands'
 import { recentJudgedDecisions } from './gate-queries'
@@ -225,7 +229,7 @@ export async function saveGateSettings(
     l.info({ error: parsed.error }, 'gate settings rejected')
     return { ok: false, message: parsed.error }
   }
-  const names = Object.keys(parsed.value) as GateSettingName[]
+  const names = Object.keys(parsed.value) as EditableGateSetting[]
   await db.transaction().execute(async (trx) => {
     for (const name of names) {
       await setSetting(trx, GATE_SETTING_DEFS[name] as SettingDef<unknown>, parsed.value[name], l)
@@ -242,21 +246,21 @@ export async function resetGateSetting(
   input: { name: unknown },
   log: Logger,
 ): Promise<CommandResult> {
-  if (!isGateSettingName(input.name)) return { ok: false, message: 'Unknown gate setting' }
+  if (!isEditableGateSetting(input.name)) return { ok: false, message: 'Unknown gate setting' }
   const def = GATE_SETTING_DEFS[input.name] as SettingDef<unknown>
   await setSetting(db, def, def.default, log.child({ fn: 'resetGateSetting' }))
   return { ok: true, message: `${def.key} reset to default` }
 }
 
-/** The threshold that best matches the admin labels under these weights, or null when there are too few labels or the gate table cannot be read. */
+/** The threshold that best matches the admin labels on current-version scores, or null when there are too few labels or the gate table cannot be read. */
 export async function thresholdSuggestion(
   db: Database,
-  tuning: Pick<GateConfig, 'threshold' | 'weights'>,
+  tuning: Pick<GateConfig, 'threshold'>,
   log: Logger,
 ): Promise<ThresholdSuggestion | null> {
   try {
     const labelled = await recentJudgedDecisions(db, { limit: SUGGEST_SAMPLE, labelledOnly: true })
-    return suggestThreshold(labelled, tuning.weights, tuning.threshold)
+    return suggestThreshold(labelled, tuning.threshold)
   } catch (err) {
     log.warn(errorFields(err), 'gate threshold suggestion unavailable')
     return null
@@ -267,7 +271,7 @@ export type GateDryRun =
   | { ok: true; result: DryRunResult; suggestion: ThresholdSuggestion | null; threshold: number }
   | { ok: false; message: string }
 
-/** Re-scores the newest model judgements under the typed (unsaved) threshold and weights; no model call, nothing written. */
+/** Re-cuts the stored scores of the newest current-version judgements against the typed (unsaved) threshold; no model call, nothing written. */
 export async function testGateTuning(
   db: Database,
   fields: GateFormFields,
@@ -294,5 +298,23 @@ export async function testGateTuning(
       ok: false,
       message: 'Could not read recent decisions; the gate table may not be set up yet',
     }
+  }
+}
+
+/** The Instagram results the judge is shown under this limit, counted the way the ingest worker picks them; null when they cannot be read, so the page just omits the line. */
+export async function performanceExampleStatus(
+  db: Database,
+  limit: number,
+  log: Logger,
+): Promise<PerformanceStatus | null> {
+  try {
+    const posts = await listInstagramPerformance(db)
+    return {
+      inUse: selectPerformanceExamples(posts, { limit }).length,
+      metric: performanceMetric(posts),
+    }
+  } catch (err) {
+    log.warn(errorFields(err), 'gate performance examples unavailable')
+    return null
   }
 }

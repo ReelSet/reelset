@@ -91,7 +91,16 @@ export const igAccountSchema = z.object({
   // Set only on the official (Meta API) account record.
   publisher: instagramPublisherSchema.optional(),
   tokenExpiresAt: z.string().nullable().optional(),
+  /** False once a stats sync found the token cannot read insights (views, reach, saves, shares). */
+  insightsPermission: z.boolean().optional(),
 })
+
+const PERMALINK_SHORTCODE = /instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/
+
+/** The shortcode in a post or reel link; it is the same whichever API made the post. */
+export function permalinkShortcode(permalink: string | null | undefined): string | null {
+  return PERMALINK_SHORTCODE.exec(permalink ?? '')?.[1] ?? null
+}
 export type IgAccount = z.infer<typeof igAccountSchema>
 
 export const IG_LOGIN_FAILURE_ADVICE_AFTER = 3

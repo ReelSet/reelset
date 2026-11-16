@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import { GATE_V1_DEFAULT_INSTRUCTIONS } from './gate-legacy'
 import {
   GATE_EVIDENCE_MAX_CHARS,
   GATE_EVIDENCE_MIN_CHARS,
   GATE_PROMPT_OVERHEAD_CHARS,
   DEFAULT_GATE_INSTRUCTIONS,
+  DEFAULT_GATE_SOURCE_RULES,
+  DEFAULT_GATE_WEIGHTS,
+  GATE_INSTRUCTIONS_MAX_CHARS,
+  currentGateInstructions,
   gateCallBudget,
+  gateConfigHash,
+  isSupersededGateInstructions,
   gateCallCostUsd,
   judgeVerdict,
   judgeWasRight,
@@ -63,5 +70,46 @@ describe('gateCallBudget', () => {
   it('never fits a cap that is not a positive number', () => {
     expect(budget('claude-haiku-5-5', 0).fits).toBe(false)
     expect(budget('claude-haiku-5-5', Number.NaN).fits).toBe(false)
+  })
+})
+
+describe('gate-v2 defaults', () => {
+  it('rates engagement: big names, drama and memes high, and does not punish unverified threads', () => {
+    for (const phrase of [
+      'Jensen Huang',
+      'Memes and jokes',
+      'Drama',
+      'NOT a reason for a low rating',
+    ])
+      expect(DEFAULT_GATE_INSTRUCTIONS).toContain(phrase)
+    expect(DEFAULT_GATE_INSTRUCTIONS).toContain('Do not rate truth, usefulness')
+    expect(DEFAULT_GATE_INSTRUCTIONS.length).toBeLessThan(GATE_INSTRUCTIONS_MAX_CHARS)
+  })
+
+  it('treats an untouched saved copy of the v1 default as superseded, whitespace aside', () => {
+    const saved = GATE_V1_DEFAULT_INSTRUCTIONS.replace(/\n/g, '\r\n') + '\n'
+    expect(isSupersededGateInstructions(saved)).toBe(true)
+    expect(currentGateInstructions(saved)).toBe(DEFAULT_GATE_INSTRUCTIONS)
+    const edited = `${GATE_V1_DEFAULT_INSTRUCTIONS}\nAlso: no crypto.`
+    expect(currentGateInstructions(edited)).toBe(edited)
+    expect(isSupersededGateInstructions(DEFAULT_GATE_INSTRUCTIONS)).toBe(false)
+  })
+
+  it('leaves the legacy weights out of the config hash', async () => {
+    const config = {
+      mode: 'shadow',
+      threshold: 55,
+      weights: DEFAULT_GATE_WEIGHTS,
+      sourceRules: DEFAULT_GATE_SOURCE_RULES,
+      instructions: DEFAULT_GATE_INSTRUCTIONS,
+      model: 'claude-haiku-5-5',
+      effort: 'low',
+      exploreRate: 0.05,
+      exampleCount: 8,
+      performanceExamples: 8,
+      maxCostUsdPerItem: 0.01,
+    } as const
+    const reweighted = { ...config, weights: { ...DEFAULT_GATE_WEIGHTS, hook: 9 } }
+    expect(await gateConfigHash(reweighted)).toBe(await gateConfigHash(config))
   })
 })

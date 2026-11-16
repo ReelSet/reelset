@@ -75,7 +75,7 @@ describe('recordGateDecision', () => {
       'shadow',
       false,
       'claude-haiku-5-5',
-      'gate-v1',
+      'gate-v2',
       'abc123def456',
       0.0007,
       'auto',
@@ -126,7 +126,7 @@ describe('recordGateDecision', () => {
       'live',
       true,
       null,
-      'gate-v1',
+      'gate-v2',
       'abc123def456',
       0,
       'auto',
@@ -467,7 +467,7 @@ describe('gateStats', () => {
 })
 
 describe('loadGateConfig', () => {
-  it('reads all ten gate settings in one query and falls back to defaults', async () => {
+  it('reads all eleven gate settings in one query and falls back to defaults', async () => {
     const { db, statements } = capture([])
     const config = await loadGateConfig(db, log)
     expect(statements).toHaveLength(1)
@@ -478,7 +478,7 @@ describe('loadGateConfig', () => {
         .filter((key) => key.startsWith('gate_'))
         .sort(),
     )
-    expect(statements[0]!.params).toHaveLength(10)
+    expect(statements[0]!.params).toHaveLength(11)
     expect(config).toEqual({
       mode: 'shadow',
       threshold: 55,
@@ -489,6 +489,7 @@ describe('loadGateConfig', () => {
       effort: 'low',
       exploreRate: 0.05,
       exampleCount: 8,
+      performanceExamples: 8,
       maxCostUsdPerItem: 0.01,
     })
   })

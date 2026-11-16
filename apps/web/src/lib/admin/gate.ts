@@ -17,12 +17,13 @@ import {
   type GateDecidedBy,
   type GateDecisionRow,
   type GateLabelReason,
+  type GateSignals,
   type GateTrigger,
   type GateVerdict,
   type Source,
 } from '@reelset/core'
 import { z } from 'zod'
-import type { GateReasonOption, GateView } from './gate-view'
+import type { GateReasonOption, GateSignalView, GateView } from './gate-view'
 import type { SearchParams, SortState } from './sort'
 
 export const GATE_PAGE_SIZE = 30
@@ -139,6 +140,15 @@ const DISAGREE_PROMPTS: Record<GateVerdict, string> = {
   source_only: 'Why should this be a reel?',
 }
 
+// Only gate-v1 rows carry per-signal marks; later versions store one overall score, so there is nothing to list.
+function signalViews(signals: GateSignals): GateSignalView[] {
+  if (Object.keys(signals).length === 0) return []
+  return GATE_SIGNALS.map(({ key, label }) => {
+    const value = signals[key] ?? null
+    return { key, label, value, pct: ((value ?? 0) / GATE_SIGNAL_MAX) * 100 }
+  })
+}
+
 // A live "source only" that was not applied means a user asked for this item just before it settled, so it was made anyway.
 function appliedNote(
   row: Pick<GateDecisionRow, 'applied' | 'mode' | 'trigger'>,
@@ -173,10 +183,7 @@ export function toGateView(row: GateDecisionRow): GateView | null {
     score: row.score === null ? null : Number(row.score),
     threshold: Number(row.threshold),
     scoreMax: GATE_SCORE_MAX,
-    signals: GATE_SIGNALS.map(({ key, label: signalLabel }) => {
-      const value = signals[key] ?? null
-      return { key, label: signalLabel, value, pct: ((value ?? 0) / GATE_SIGNAL_MAX) * 100 }
-    }),
+    signals: signalViews(signals),
     reasons: row.reasons ?? [],
     rationale: row.rationale ?? '',
     decidedBy: row.decided_by,

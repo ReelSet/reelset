@@ -99,6 +99,24 @@ export type OfficialMedia = {
   permalink: string | null
   timestamp: Date | null
 }
+export type MediaStats = {
+  id: string
+  shortcode: string | null
+  permalink: string | null
+  likes: number | null
+  comments: number | null
+}
+export type MediaPage = { media: MediaStats[]; next: string | null }
+export type MediaInsights = {
+  views: number | null
+  reach: number | null
+  saves: number | null
+  shares: number | null
+}
+// Reel metric names in v27.0 media insights; they need the instagram_manage_insights permission.
+export const REEL_INSIGHT_METRICS = ['views', 'reach', 'saved', 'shares'] as const
+export const MEDIA_PAGE_SIZE = 50
+
 /** `expiresAt` is null for a token that never expires. */
 export type TokenInfo = { valid: boolean; expiresAt: Date | null; scopes: string[] }
 export type MetaApp = { id: string; secret: string }
@@ -115,6 +133,9 @@ export type OfficialClient = {
   getPublishingLimit(token: string, igId: string): Promise<PublishingLimit>
   getPermalink(token: string, mediaId: string): Promise<string>
   listMediaSince(token: string, igId: string, since: Date): Promise<OfficialMedia[]>
+  /** One page of the account's media with likes and comments, newest first; `next` is the cursor. */
+  listMediaStats(token: string, igId: string, after: string | null): Promise<MediaPage>
+  getMediaInsights(token: string, mediaId: string): Promise<MediaInsights>
   deleteMedia(token: string, mediaId: string): Promise<boolean>
   inspectToken(token: string): Promise<TokenInfo>
   /** Asks the token management API for a new token for the same business; returns it. */
@@ -158,6 +179,32 @@ const mediaListSchema = z.object({
       caption: z.string().optional(),
       permalink: z.string().optional(),
       timestamp: z.string().optional(),
+    }),
+  ),
+})
+const mediaStatsSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string(),
+      shortcode: z.string().optional(),
+      permalink: z.string().optional(),
+      like_count: z.number().optional(),
+      comments_count: z.number().optional(),
+    }),
+  ),
+  paging: z
+    .object({
+      cursors: z.object({ after: z.string().optional() }).optional(),
+      next: z.string().optional(),
+    })
+    .optional(),
+})
+const insightsSchema = z.object({
+  data: z.array(
+    z.object({
+      name: z.string(),
+      values: z.array(z.object({ value: z.number().optional() })).optional(),
+      total_value: z.object({ value: z.number().optional() }).optional(),
     }),
   ),
 })
@@ -384,6 +431,59 @@ export function createOfficialClient(
           timestamp: at && !Number.isNaN(at.getTime()) ? at : null,
         }
       })
+    },
+
+    async listMediaStats(token, igId, after) {
+      const raw = await call(
+        {
+          op: 'list_media_stats',
+          method: 'GET',
+          path: `${v}/${igId}/media`,
+          token,
+          query: {
+            fields: 'id,shortcode,permalink,like_count,comments_count',
+            limit: String(MEDIA_PAGE_SIZE),
+            ...(after ? { after } : {}),
+          },
+          timeoutMs: OFFICIAL_TIMEOUT_MS.read,
+        },
+        mediaStatsSchema,
+      )
+      return {
+        media: raw.data.map((m) => ({
+          id: m.id,
+          shortcode: m.shortcode ?? null,
+          permalink: m.permalink ?? null,
+          likes: m.like_count ?? null,
+          comments: m.comments_count ?? null,
+        })),
+        // `paging.next` is a full URL carrying the token, so only the cursor is passed on.
+        next: raw.paging?.next ? (raw.paging.cursors?.after ?? null) : null,
+      }
+    },
+
+    async getMediaInsights(token, mediaId) {
+      const raw = await call(
+        {
+          op: 'media_insights',
+          method: 'GET',
+          path: `${v}/${mediaId}/insights`,
+          token,
+          query: { metric: REEL_INSIGHT_METRICS.join(',') },
+          timeoutMs: OFFICIAL_TIMEOUT_MS.read,
+        },
+        insightsSchema,
+      )
+      const metric = (name: (typeof REEL_INSIGHT_METRICS)[number]) => {
+        const row = raw.data.find((m) => m.name === name)
+        return row?.values?.[0]?.value ?? row?.total_value?.value ?? null
+      }
+      return {
+        views: metric('views'),
+        reach: metric('reach'),
+        saves: metric('saved'),
+        shares: metric('shares'),
+      }
     },
 
     async deleteMedia(token, mediaId) {

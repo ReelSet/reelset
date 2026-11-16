@@ -151,6 +151,8 @@ describe('toItemDrawerData gate block', () => {
     expect(data.gate?.disagreeReasons.map((r) => r.key)).toEqual([
       'actually_interesting',
       'strong_visuals_missed',
+      'funny_or_timely',
+      'big_name_or_drama',
       'other',
     ])
   })

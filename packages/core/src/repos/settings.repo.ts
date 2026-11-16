@@ -33,6 +33,10 @@ import {
   type GateSourceRules,
   type GateWeights,
 } from '../domain/gate'
+import {
+  DEFAULT_GATE_PERFORMANCE_EXAMPLES,
+  GATE_PERFORMANCE_EXAMPLES_MAX,
+} from '../domain/gate-performance'
 import { instagramPublisherSchema, type InstagramPublisher } from '../domain/instagram-post'
 import type { Logger } from '../lib/logger'
 
@@ -168,6 +172,11 @@ export const SETTINGS = {
   gateEffort: def('gate_effort', claudeEffortSchema, 'low' as ClaudeEffort),
   gateExploreRate: def('gate_explore_rate', z.number().min(0).max(0.5), 0.05),
   gateExampleCount: def('gate_example_count', z.number().int().min(0).max(20), 8),
+  gatePerformanceExamples: def(
+    'gate_performance_examples',
+    z.number().int().min(0).max(GATE_PERFORMANCE_EXAMPLES_MAX),
+    DEFAULT_GATE_PERFORMANCE_EXAMPLES,
+  ),
   gateMaxCostUsdPerItem: def('gate_max_cost_usd_per_item', z.number().positive().max(1), 0.01),
   showViewCount: def('show_view_count', z.boolean(), false),
   viewCountThreshold: def('view_count_threshold', z.number().int().min(0), 100),

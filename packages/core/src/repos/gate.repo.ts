@@ -11,6 +11,7 @@ import {
   GATE_TRIGGERS,
   GATE_VERDICTS,
   correctGateVerdict,
+  currentGateInstructions,
   gateLabelReasonSchema,
   gateVerdictSchema,
   parseGateSignals,
@@ -460,10 +461,11 @@ const GATE_CONFIG_SETTINGS = {
   effort: SETTINGS.gateEffort,
   exploreRate: SETTINGS.gateExploreRate,
   exampleCount: SETTINGS.gateExampleCount,
+  performanceExamples: SETTINGS.gatePerformanceExamples,
   maxCostUsdPerItem: SETTINGS.gateMaxCostUsdPerItem,
 } satisfies { [Field in keyof GateConfig]: SettingDef<GateConfig[Field]> }
 
-/** Reads every gate setting in one query; a missing or invalid row falls back to its default. */
+/** Reads every gate setting in one query; a missing or invalid row falls back to its default, and so do instructions that are an untouched copy of an older default. */
 export async function loadGateConfig(db: Database, log: Logger): Promise<GateConfig> {
   const settings = Object.entries(GATE_CONFIG_SETTINGS) as [keyof GateConfig, SettingDef<unknown>][]
   const rows = await db
@@ -480,5 +482,6 @@ export async function loadGateConfig(db: Database, log: Logger): Promise<GateCon
     field,
     parseSetting(setting, stored.get(setting.key), log),
   ])
-  return Object.fromEntries(config) as GateConfig
+  const loaded = Object.fromEntries(config) as GateConfig
+  return { ...loaded, instructions: currentGateInstructions(loaded.instructions) }
 }

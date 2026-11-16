@@ -5,14 +5,15 @@ import {
   errorFields,
   gateCallCostUsd,
   gateConfigHash,
-  gateScore,
   gateVerdict,
   gateVerdictSchema,
   latestGateDecision,
   listGateExamples,
+  listInstagramPerformance,
   loadGateConfig,
   recordGateDecision,
   recordSpend,
+  selectPerformanceExamples,
   shouldExplore,
   type ClaudeEffort,
   type ClaudeModel,
@@ -21,6 +22,7 @@ import {
   type GateDecisionInput,
   type GateDecisionMode,
   type GateDecisionRow,
+  type GatePerformanceExample,
   type GateTrigger,
   type GateVerdict,
   type Logger,
@@ -159,14 +161,14 @@ export function reusableDecision(
   return new Date(latest.created_at).getTime() >= current.since.getTime() ? latest : null
 }
 
-/** Turns the judge's marks into a verdict; a rejected item in the explore sample is let through as a reel. */
+/** Turns the judge's rating into a verdict (rating at or above the threshold is a reel); a rejected item in the explore sample is let through as a reel. */
 export function settleJudgement(
   itemId: string,
   judgement: GateJudgement,
   threshold: number,
-  config: Pick<GateConfig, 'weights' | 'exploreRate'>,
+  config: Pick<GateConfig, 'exploreRate'>,
 ): { verdict: GateVerdict; decidedBy: 'model' | 'explore'; score: number } {
-  const score = gateScore(judgement.signals, config.weights)
+  const { score } = judgement
   const verdict = gateVerdict(score, threshold)
   if (verdict === 'source_only' && shouldExplore(itemId, config.exploreRate)) {
     return { verdict: 'reel', decidedBy: 'explore', score }
@@ -213,6 +215,22 @@ async function callJudge(
   return { text: result.text, costUsd }
 }
 
+/** The account's clear Instagram winners and losers for the judge, never the item being judged or one an admin already labelled. A failed lookup yields none: performance must not stop a judgement. */
+async function loadPerformanceExamples(
+  ctx: GateContext,
+  limit: number,
+  excludeItemIds: readonly string[],
+): Promise<GatePerformanceExample[]> {
+  if (!(limit > 0)) return []
+  try {
+    const posts = await listInstagramPerformance(ctx.db)
+    return selectPerformanceExamples(posts, { limit, excludeItemIds: new Set(excludeItemIds) })
+  } catch (err) {
+    ctx.log.warn(errorFields(err), 'instagram performance lookup failed, judging without it')
+    return []
+  }
+}
+
 async function askJudge(
   ctx: GateContext,
   item: GateItem,
@@ -220,8 +238,16 @@ async function askJudge(
 ): Promise<{ judgement: GateJudgement; costUsd: number }> {
   const examples =
     config.exampleCount > 0 ? await listGateExamples(ctx.db, { limit: config.exampleCount }) : []
-  const { budget, prompt } = buildGatePrompt(config, examples, item)
+  const performance = await loadPerformanceExamples(ctx, config.performanceExamples, [
+    item.itemId,
+    ...examples.map((example) => example.itemId),
+  ])
+  const { budget, prompt, performanceShown } = buildGatePrompt(config, examples, item, performance)
   if (!prompt) throw new GateBudgetError(config.model, config.maxCostUsdPerItem, budget.minCostUsd)
+  ctx.log.info(
+    { examples: examples.length, performance: performanceShown, found: performance.length },
+    'gate prompt built',
+  )
 
   const deadline = Date.now() + (ctx.gate.totalTimeoutMs ?? GATE_TOTAL_TIMEOUT_MS)
   const nextCallUsd = gateCallCostUsd(config.model, prompt.system.length + prompt.user.length)
@@ -264,7 +290,6 @@ export async function draftDecision(
   return {
     ...settled,
     threshold: outcome.threshold,
-    signals: judgement.signals,
     reasons: judgement.reasons,
     rationale: judgement.rationale,
     model: config.model,

@@ -128,6 +128,9 @@ function officialAccount(deps: IgDeps, previous: IgAccount | null, patch: Offici
     loginFailures: 0,
     proxy: null,
     publisher: 'official',
+    ...(previous?.insightsPermission === undefined
+      ? {}
+      : { insightsPermission: previous.insightsPermission }),
     tokenExpiresAt:
       patch.tokenExpiresAt === undefined
         ? (previous?.tokenExpiresAt ?? null)

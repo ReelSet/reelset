@@ -1,7 +1,7 @@
 import { sql, type Selectable } from 'kysely'
 import type { Database } from '../db/client'
 import type { InstagramPost } from '../db/types'
-import { InstagramPostStatus } from '../db/enums'
+import { InstagramPostStatus, Source } from '../db/enums'
 import {
   INSTAGRAM_MIN_GAP_MINUTES,
   INSTAGRAM_LOST_ERROR,
@@ -23,6 +23,7 @@ export const IG_CHECK_ERROR_KEY = 'ig_check_error'
 export const IG_CREDENTIALS_KEY = 'ig_credentials_enc'
 export const IG_OFFICIAL_ACCOUNT_KEY = 'ig_official_account'
 export const IG_OFFICIAL_TOKEN_KEY = 'ig_official_token_enc'
+export const IG_STATS_SYNCED_KEY = 'ig_stats_synced_at'
 
 export type IgCheckError = { message: string; at: string }
 
@@ -475,4 +476,158 @@ export async function insertAutoPost(
     if ((err as { code?: string }).code === UNIQUE_VIOLATION) return false
     throw err
   }
+}
+
+export async function getStatsSyncedAt(db: Database): Promise<Date | null> {
+  const value = await getStringSetting(db, IG_STATS_SYNCED_KEY)
+  const at = value ? new Date(value) : null
+  return at && !Number.isNaN(at.getTime()) ? at : null
+}
+
+export const setStatsSyncedAt = (db: Database, at: Date) =>
+  putSetting(db, IG_STATS_SYNCED_KEY, at.toISOString())
+
+export type PostForStats = {
+  id: string
+  media_pk: string | null
+  permalink: string | null
+  /** Posted through the official API, so `media_pk` is the Graph media id. */
+  official: boolean
+  posted_at: Date | null
+  insights_at: Date | null
+}
+
+const asDate = (value: unknown) => (value ? new Date(value as Date) : null)
+
+/** Every live post, for matching against the account's media list. */
+export async function listPostsForStats(db: Database): Promise<PostForStats[]> {
+  const rows = await db
+    .selectFrom('instagram_post')
+    .select(['id', 'media_pk', 'permalink', 'container_id', 'posted_at', 'insights_at'])
+    .where('status', 'in', [S.posted, S.deleting])
+    .orderBy('posted_at', 'desc')
+    .execute()
+  return rows.map((r) => ({
+    id: r.id,
+    media_pk: r.media_pk,
+    permalink: r.permalink,
+    official: r.container_id !== null,
+    posted_at: asDate(r.posted_at),
+    insights_at: asDate(r.insights_at),
+  }))
+}
+
+// A count Instagram did not send (hidden likes, missing permission) keeps its last stored value.
+const kept = (value: number | null | undefined) => value ?? undefined
+
+export async function setPostStats(
+  db: Database,
+  id: string,
+  stats: { likes: number | null; comments: number | null },
+): Promise<void> {
+  await db
+    .updateTable('instagram_post')
+    .set({
+      like_count: kept(stats.likes),
+      comments_count: kept(stats.comments),
+      stats_at: sql`now()`,
+    })
+    .where('id', '=', id)
+    .execute()
+}
+
+export type PostInsights = {
+  views: number | null
+  reach: number | null
+  saves: number | null
+  shares: number | null
+}
+
+/** Also stamps `insights_at` when there is nothing to store, so the post goes to the back of the line. */
+export async function setPostInsights(
+  db: Database,
+  id: string,
+  insights: PostInsights | null,
+): Promise<void> {
+  await db
+    .updateTable('instagram_post')
+    .set({
+      view_count: kept(insights?.views),
+      reach: kept(insights?.reach),
+      saves: kept(insights?.saves),
+      shares: kept(insights?.shares),
+      insights_at: sql`now()`,
+    })
+    .where('id', '=', id)
+    .execute()
+}
+
+export const INSTAGRAM_PERFORMANCE_SINCE_DAYS = 60
+// Younger posts have not collected their numbers yet.
+export const INSTAGRAM_PERFORMANCE_MIN_AGE_HOURS = 48
+
+export type InstagramPerformance = {
+  itemId: string
+  title: string
+  source: string
+  postedAt: Date
+  likes: number | null
+  comments: number | null
+  views: number | null
+  shares: number | null
+  saves: number | null
+}
+
+const sourceNames = sql.raw(
+  Object.values(Source)
+    .map((s) => `'${s}'`)
+    .join(', '),
+)
+
+// Same rule as the gate's stats: the item's top-scored mention, else its canonical key prefix.
+const performanceSource = sql<string>`coalesce(
+  (select m.source::text from mention m where m.item_id = i.id order by m.score desc nulls last limit 1),
+  case when split_part(i.canonical_key, ':', 1) in (${sourceNames})
+    then split_part(i.canonical_key, ':', 1) else 'unknown' end
+)`
+
+/** Posted reels that have synced Instagram numbers, newest first. */
+export async function listInstagramPerformance(
+  db: Database,
+  opts: { sinceDays?: number; minAgeHours?: number } = {},
+): Promise<InstagramPerformance[]> {
+  const sinceDays = opts.sinceDays ?? INSTAGRAM_PERFORMANCE_SINCE_DAYS
+  const minAgeHours = opts.minAgeHours ?? INSTAGRAM_PERFORMANCE_MIN_AGE_HOURS
+  const { rows } = await sql<{
+    item_id: string
+    title: string
+    source: string
+    posted_at: Date
+    like_count: number | null
+    comments_count: number | null
+    view_count: number | null
+    shares: number | null
+    saves: number | null
+  }>`
+    select p.item_id, i.title, ${performanceSource} as source, p.posted_at,
+      p.like_count, p.comments_count, p.view_count, p.shares, p.saves
+    from instagram_post p
+    join item i on i.id = p.item_id
+    where p.status = ${S.posted}
+      and p.stats_at is not null
+      and p.posted_at >= now() - make_interval(days => ${sinceDays})
+      and p.posted_at <= now() - make_interval(hours => ${minAgeHours})
+    order by p.posted_at desc
+  `.execute(db)
+  return rows.map((r) => ({
+    itemId: r.item_id,
+    title: r.title,
+    source: r.source,
+    postedAt: new Date(r.posted_at),
+    likes: r.like_count,
+    comments: r.comments_count,
+    views: r.view_count,
+    shares: r.shares,
+    saves: r.saves,
+  }))
 }

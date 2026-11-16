@@ -1,6 +1,7 @@
 import {
   CLAUDE_MODELS,
   GATE_EVIDENCE_MAX_CHARS,
+  GATE_PERFORMANCE_EXAMPLES_MAX,
   GATE_PROMPT_OVERHEAD_CHARS,
   gateCallBudget,
   DEFAULT_GATE_SOURCE_RULES,
@@ -10,12 +11,13 @@ import {
   SOURCES,
 } from '@reelset/core'
 import { describe, expect, it } from 'vitest'
-import { GATE_FIELD, costCapWarning } from './gate-fields'
+import { GATE_FIELD, costCapWarning, performanceStatusLine } from './gate-fields'
 import {
   GATE_SETTING_DEFS,
   gateCostMarks,
   gateFormFields,
   gateSettingMax,
+  isEditableGateSetting,
   isGateSettingDefault,
   isGateSettingName,
   parseGateSettingsForm,
@@ -23,16 +25,11 @@ import {
   sourceThresholds,
 } from './gate-settings'
 
-const weightFields = (value: string) =>
-  Object.fromEntries(
-    Object.keys(DEFAULT_GATE_WEIGHTS).map((key) => [GATE_FIELD.weight(key), value]),
-  )
-
 const ruleFields = (mode: string) =>
   Object.fromEntries(SOURCES.map((source) => [GATE_FIELD.ruleMode(source), mode]))
 
 describe('GATE_SETTING_DEFS', () => {
-  it('covers every gate_ setting in core, so none is left without an editor', () => {
+  it('covers every gate_ setting in core', () => {
     const gateKeys = Object.values(SETTINGS)
       .map((def) => def.key)
       .filter((key) => key.startsWith(GATE_SETTING_KEY_PREFIX))
@@ -46,6 +43,7 @@ describe('GATE_SETTING_DEFS', () => {
   it('reads numeric limits from the core schemas', () => {
     expect(gateSettingMax('exploreRate')).toBe(0.5)
     expect(gateSettingMax('exampleCount')).toBe(20)
+    expect(gateSettingMax('performanceExamples')).toBe(GATE_PERFORMANCE_EXAMPLES_MAX)
     expect(gateSettingMax('maxCostUsdPerItem')).toBe(1)
   })
 
@@ -68,31 +66,24 @@ describe('parseGateSettingsForm', () => {
     expect(parsed).toEqual({ ok: true, value: { mode: 'live' } })
   })
 
-  it('parses threshold and weights together', () => {
-    const parsed = parseGateSettingsForm({ [GATE_FIELD.threshold]: ' 62.5 ', ...weightFields('2') })
-    expect(parsed).toEqual({
+  it('parses the threshold', () => {
+    expect(parseGateSettingsForm({ [GATE_FIELD.threshold]: ' 62.5 ' })).toEqual({
       ok: true,
-      value: {
-        threshold: 62.5,
-        weights: { hook: 2, visual: 2, novelty: 2, audience: 2, clarity: 2, stakes: 2 },
-      },
+      value: { threshold: 62.5 },
     })
   })
 
-  it('rejects an out-of-range threshold, a blank number and all-zero weights', () => {
+  it('rejects an out-of-range or blank threshold', () => {
     expect(parseGateSettingsForm({ [GATE_FIELD.threshold]: '101' })).toMatchObject({ ok: false })
     expect(parseGateSettingsForm({ [GATE_FIELD.threshold]: '' })).toMatchObject({ ok: false })
-    const zero = parseGateSettingsForm(weightFields('0'))
-    expect(zero).toMatchObject({ ok: false })
-    expect(zero.ok ? '' : zero.error).toContain('gate_weights')
   })
 
-  it('names the weight that is wrong', () => {
-    const parsed = parseGateSettingsForm({
-      ...weightFields('2'),
-      [GATE_FIELD.weight('hook')]: '11',
-    })
-    expect(parsed.ok ? '' : parsed.error).toContain('hook')
+  it('never writes the weights, which no longer affect the verdict', () => {
+    const parsed = parseGateSettingsForm({ 'weight.hook': '9', [GATE_FIELD.mode]: 'shadow' })
+    expect(parsed).toEqual({ ok: true, value: { mode: 'shadow' } })
+    expect(isEditableGateSetting('weights')).toBe(false)
+    expect(isEditableGateSetting('threshold')).toBe(true)
+    expect(isEditableGateSetting('toString')).toBe(false)
   })
 
   it('builds per-source rules with optional overrides', () => {
@@ -171,16 +162,13 @@ describe('parseGateSettingsForm', () => {
 })
 
 describe('parseGateTuningForm', () => {
-  it('needs both the threshold and every weight', () => {
-    expect(parseGateTuningForm({ [GATE_FIELD.threshold]: '50', ...weightFields('1') })).toEqual({
+  it('needs a valid threshold and nothing else', () => {
+    expect(parseGateTuningForm({ [GATE_FIELD.threshold]: '50', returnTo: '/admin' })).toEqual({
       ok: true,
-      value: {
-        threshold: 50,
-        weights: { hook: 1, visual: 1, novelty: 1, audience: 1, clarity: 1, stakes: 1 },
-      },
+      value: { threshold: 50 },
     })
-    expect(parseGateTuningForm({ [GATE_FIELD.threshold]: '50' })).toMatchObject({ ok: false })
-    expect(parseGateTuningForm(weightFields('1'))).toMatchObject({ ok: false })
+    expect(parseGateTuningForm({})).toMatchObject({ ok: false })
+    expect(parseGateTuningForm({ [GATE_FIELD.threshold]: 'high' })).toMatchObject({ ok: false })
   })
 })
 
@@ -244,5 +232,27 @@ describe('cost cap versus model', () => {
     expect(costCapWarning(undefined, 0.01)).toBeNull()
     expect(costCapWarning(marks['claude-opus-5-5'], Number.NaN)).toBeNull()
     expect(costCapWarning(marks['claude-opus-5-5'], 0)).toBeNull()
+  })
+})
+
+describe('Instagram results shown to the judge', () => {
+  it('parses the count as a whole number within the core limit, 0 meaning off', () => {
+    const parse = (value: string) =>
+      parseGateSettingsForm({ [GATE_FIELD.performanceExamples]: value })
+    expect(parse('0')).toEqual({ ok: true, value: { performanceExamples: 0 } })
+    expect(parse(String(GATE_PERFORMANCE_EXAMPLES_MAX))).toMatchObject({ ok: true })
+    expect(parse(String(GATE_PERFORMANCE_EXAMPLES_MAX + 1))).toMatchObject({ ok: false })
+    expect(parse('2.5')).toMatchObject({ ok: false })
+    expect(parse('')).toMatchObject({ ok: false })
+  })
+
+  it('describes what is in use in plain words', () => {
+    expect(performanceStatusLine({ inUse: 8, metric: 'views' })).toBe(
+      'In use right now: 8 results, ranked by views.',
+    )
+    expect(performanceStatusLine({ inUse: 1, metric: 'interactions' })).toBe(
+      'In use right now: 1 result, ranked by likes and comments.',
+    )
+    expect(performanceStatusLine({ inUse: 0, metric: 'interactions' })).toContain('none')
   })
 })

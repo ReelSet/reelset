@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_GATE_WEIGHTS,
   gateCallCostUsd,
   GATE_PROMPT_VERSION,
   shouldExplore,
@@ -24,6 +23,7 @@ import {
   judgeAnswer,
   makeGateWorld,
   makeJudge,
+  performanceRows,
   NEVER_ANSWERS,
   type GateWorld,
   type JudgeUsage,
@@ -64,27 +64,16 @@ function decisionRow(overrides: Partial<Record<keyof GateDecisionRow, unknown>>)
 }
 
 describe('settleJudgement', () => {
-  const config = { weights: DEFAULT_GATE_WEIGHTS, exploreRate: 0 }
-  const marks = (mark: number) => ({
-    signals: {
-      hook: mark,
-      visual: mark,
-      novelty: mark,
-      audience: mark,
-      clarity: mark,
-      stakes: mark,
-    },
-    reasons: [],
-    rationale: '',
-  })
+  const config = { exploreRate: 0 }
+  const rated = (score: number) => ({ score, reasons: [], rationale: '' })
 
   it('passes a score at the threshold and rejects one below it', () => {
-    expect(settleJudgement('item-1', marks(6), 60, config)).toEqual({
+    expect(settleJudgement('item-1', rated(60), 60, config)).toEqual({
       verdict: 'reel',
       decidedBy: 'model',
       score: 60,
     })
-    expect(settleJudgement('item-1', marks(5), 60, config)).toMatchObject({
+    expect(settleJudgement('item-1', rated(50), 60, config)).toMatchObject({
       verdict: 'source_only',
       decidedBy: 'model',
     })
@@ -92,13 +81,13 @@ describe('settleJudgement', () => {
 
   it('lets a rejected item in the explore sample through, keeping its real score', () => {
     const explore = { ...config, exploreRate: EXPLORE_RATE }
-    expect(settleJudgement(EXPLORED_ID, marks(2), 60, explore)).toEqual({
+    expect(settleJudgement(EXPLORED_ID, rated(20), 60, explore)).toEqual({
       verdict: 'reel',
       decidedBy: 'explore',
       score: 20,
     })
-    expect(settleJudgement(UNEXPLORED_ID, marks(2), 60, explore).decidedBy).toBe('model')
-    expect(settleJudgement(EXPLORED_ID, marks(9), 60, explore).decidedBy).toBe('model')
+    expect(settleJudgement(UNEXPLORED_ID, rated(20), 60, explore).decidedBy).toBe('model')
+    expect(settleJudgement(EXPLORED_ID, rated(90), 60, explore).decidedBy).toBe('model')
   })
 })
 
@@ -185,7 +174,7 @@ describe('runGate', () => {
       makeGateWorld({
         latest: decisionRow({ verdict: 'reel', created_at: new Date('2026-11-16T08:00:00Z') }),
       }),
-      [judgeAnswer(2)],
+      [judgeAnswer(20)],
     )
     const retried = gateItem({ inStatusSince: new Date('2026-11-16T09:00:00Z') })
     expect(await runGate(t.ctx, retried)).toMatchObject({
@@ -230,7 +219,7 @@ describe('runGate', () => {
         created_at: new Date(),
       }),
     })
-    const t = setup(world, [judgeAnswer(2)])
+    const t = setup(world, [judgeAnswer(20)])
     const result = await runGate(t.ctx, gateItem({ inStatusSince: since }))
     expect(result).toMatchObject({ kind: 'decided', decisionId: 'dec-1', verdict: 'source_only' })
     expect(t.generate).toHaveBeenCalledTimes(1)
@@ -244,14 +233,14 @@ describe('runGate', () => {
 
   it('judges again after an admin decision that is not a reel override', async () => {
     const t = setup(makeGateWorld({ latest: decisionRow({ decided_by: 'admin' }) }), [
-      judgeAnswer(8),
+      judgeAnswer(80),
     ])
     expect(await runGate(t.ctx, gateItem())).toMatchObject({ kind: 'decided', verdict: 'reel' })
   })
 
   it('records but does not apply a decision in shadow mode', async () => {
     const t = setup(makeGateWorld({ settings: { gate_mode: 'shadow', gate_explore_rate: 0 } }), [
-      judgeAnswer(2),
+      judgeAnswer(20),
     ])
     const result = await runGate(t.ctx, gateItem())
     expect(result).toMatchObject({ kind: 'decided', verdict: 'source_only', applied: false })
@@ -259,7 +248,7 @@ describe('runGate', () => {
   })
 
   it('passes an item the judge scores above the threshold in live mode', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(8)])
+    const t = setup(makeGateWorld(), [judgeAnswer(80)])
     const result = await runGate(t.ctx, gateItem())
     expect(result).toEqual({
       kind: 'decided',
@@ -287,8 +276,21 @@ describe('runGate', () => {
     expect(t.world.recorded[0]!.cost_usd).toBeGreaterThan(0)
   })
 
+  it('uses the judge rating as the score, whatever the legacy weights say', async () => {
+    const world = makeGateWorld({
+      settings: {
+        gate_mode: 'live',
+        gate_explore_rate: 0,
+        gate_weights: { hook: 10, visual: 0, novelty: 0, audience: 0, clarity: 0, stakes: 0 },
+      },
+    })
+    const t = setup(world, [judgeAnswer(61)])
+    expect(await runGate(t.ctx, gateItem())).toMatchObject({ verdict: 'reel', score: 61 })
+    expect(world.recorded[0]).toMatchObject({ score: 61, signals: '{}', prompt_version: 'gate-v2' })
+  })
+
   it('rejects an item the judge scores below the threshold and records the spend as gate llm spend', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20)])
     const result = await runGate(t.ctx, gateItem())
     expect(result).toMatchObject({ verdict: 'source_only', score: 20, applied: true })
     const spend = t.spend()
@@ -313,7 +315,7 @@ describe('runGate', () => {
           gate_source_rules: { github: { mode: 'judge', threshold: 90 } },
         },
       }),
-      [judgeAnswer(8)],
+      [judgeAnswer(80)],
     )
     expect(await runGate(t.ctx, gateItem())).toMatchObject({ verdict: 'source_only', score: 80 })
     expect(t.world.recorded[0]).toMatchObject({ threshold: 90 })
@@ -352,7 +354,7 @@ describe('runGate', () => {
     const world = makeGateWorld({
       settings: { gate_mode: 'live', gate_explore_rate: EXPLORE_RATE },
     })
-    const t = setup(world, [judgeAnswer(2), judgeAnswer(2)])
+    const t = setup(world, [judgeAnswer(20), judgeAnswer(20)])
     const explored = await runGate(t.ctx, gateItem({ itemId: EXPLORED_ID }))
     expect(explored).toMatchObject({ verdict: 'reel', decidedBy: 'explore', score: 20 })
     expect(world.recorded[0]).toMatchObject({
@@ -362,7 +364,7 @@ describe('runGate', () => {
       reasons: ['concrete speedup number', 'clear demo'],
       rationale: 'It has a checkable result and something to show.',
     })
-    expect(JSON.parse(String(world.recorded[0]!.signals))).toMatchObject({ hook: 2, stakes: 2 })
+    expect(world.recorded[0]!.signals).toBe('{}')
 
     const rejected = await runGate(t.ctx, gateItem({ itemId: UNEXPLORED_ID }))
     expect(rejected).toMatchObject({ verdict: 'source_only', decidedBy: 'model' })
@@ -379,20 +381,74 @@ describe('runGate', () => {
         },
         examples: [gateExampleRow(1), gateExampleRow(2)],
       }),
-      [judgeAnswer(8)],
+      [judgeAnswer(80)],
     )
     await runGate(t.ctx, gateItem())
     const request = t.generate.mock.calls[0]![0]
     expect(request.system).toContain('Only reels with a demo.')
     expect(request.system).toContain(
-      '- title: "Example source 1" | source: hn | correct answer: a reel',
+      '- title: "Example source 1" | source: hn | should have been: a reel',
     )
     expect(request.user).toContain('Title: acme/repo')
     expect(t.fake.find('with labelled')[0]!.params).toContain(2)
   })
 
+  it('shows the judge the account winners and losers from Instagram', async () => {
+    const t = setup(makeGateWorld({ performance: performanceRows() }), [judgeAnswer(80)])
+    await runGate(t.ctx, gateItem())
+    const system = t.generate.mock.calls[0]![0].system
+    expect(system).toContain('- title: "Posted reel 0" | source: reddit | did well: 10x the usual')
+    expect(system).toContain(
+      '- title: "Posted reel 19" | source: reddit | did poorly: 0.1x the usual',
+    )
+    expect(system).not.toContain('Posted reel 8')
+    expect(system.match(/x the usual/g)).toHaveLength(8)
+  })
+
+  it('shows no results when the setting is 0, without reading them', async () => {
+    const world = makeGateWorld({
+      settings: { gate_mode: 'live', gate_explore_rate: 0, gate_performance_examples: 0 },
+      performance: performanceRows(),
+    })
+    const t = setup(world, [judgeAnswer(80)])
+    await runGate(t.ctx, gateItem())
+    expect(t.generate.mock.calls[0]![0].system).not.toContain('</performance>')
+    expect(t.fake.find('from instagram_post')).toHaveLength(0)
+  })
+
+  it('never shows the judged item its own result, nor repeats an admin-labelled item', async () => {
+    const world = makeGateWorld({
+      performance: performanceRows(),
+      examples: [gateExampleRow(1, { item_id: 'post-1', title: 'Posted reel 1' })],
+    })
+    const t = setup(world, [judgeAnswer(80)])
+    await runGate(t.ctx, gateItem({ itemId: 'post-0' }))
+    const system = t.generate.mock.calls[0]![0].system
+    const blockStart = system.indexOf('<performance>\n')
+    const performance = system.slice(blockStart)
+    expect(performance).not.toContain('"Posted reel 0"')
+    expect(performance).not.toContain('"Posted reel 1"')
+    expect(performance).toContain('"Posted reel 2"')
+    expect(system.slice(0, blockStart)).toContain('"Posted reel 1"')
+  })
+
+  it('judges without results when the Instagram lookup fails', async () => {
+    const world = makeGateWorld({ performance: performanceRows(), failOn: 'from instagram_post' })
+    const t = setup(world, [judgeAnswer(80)])
+    expect(await runGate(t.ctx, gateItem())).toMatchObject({ kind: 'decided', verdict: 'reel' })
+    expect(t.generate.mock.calls[0]![0].system).not.toContain('</performance>')
+    expect(world.recorded).toHaveLength(1)
+  })
+
+  it('shows no results until the account has enough measured posts', async () => {
+    const world = makeGateWorld({ performance: performanceRows().slice(0, 11) })
+    const t = setup(world, [judgeAnswer(80)])
+    await runGate(t.ctx, gateItem())
+    expect(t.generate.mock.calls[0]![0].system).not.toContain('</performance>')
+  })
+
   it('retries a malformed answer once and charges both calls to the decision', async () => {
-    const t = setup(makeGateWorld(), ['not json at all', judgeAnswer(8)])
+    const t = setup(makeGateWorld(), ['not json at all', judgeAnswer(80)])
     expect(await runGate(t.ctx, gateItem())).toMatchObject({ kind: 'decided', verdict: 'reel' })
     expect(t.generate).toHaveBeenCalledTimes(2)
     const costs = t.spend().map((q) => Number(q.params[2]))
@@ -401,7 +457,7 @@ describe('runGate', () => {
   })
 
   it('fails open when the answer is still malformed after the retry', async () => {
-    const t = setup(makeGateWorld(), ['nope', '{"signals": {}}'])
+    const t = setup(makeGateWorld(), ['nope', '{"reasons": ["no score here"]}'])
     expect(await runGate(t.ctx, gateItem())).toEqual({ kind: 'skipped', reason: 'error' })
     expect(t.generate).toHaveBeenCalledTimes(2)
     expect(t.spend()).toHaveLength(2)
@@ -417,7 +473,7 @@ describe('runGate', () => {
         gate_max_cost_usd_per_item: 0.012,
       },
     })
-    const t = setup(world, ['not json', judgeAnswer(8)], {
+    const t = setup(world, ['not json', judgeAnswer(80)], {
       usage: { inputTokens: 2000, outputTokens: 600 },
     })
     expect(await runGate(t.ctx, gateItem())).toEqual({ kind: 'skipped', reason: 'error' })
@@ -430,7 +486,7 @@ describe('runGate', () => {
     const world = makeGateWorld({
       settings: { gate_mode: 'live', gate_explore_rate: 0, gate_model: 'claude-opus-5-5' },
     })
-    const t = setup(world, [judgeAnswer(2)])
+    const t = setup(world, [judgeAnswer(20)])
     expect(await runGate(t.ctx, gateItem())).toEqual({ kind: 'skipped', reason: 'over_budget' })
     expect(t.judge).not.toHaveBeenCalled()
     expect(t.spend()).toHaveLength(0)
@@ -453,7 +509,7 @@ describe('runGate', () => {
     const world = makeGateWorld({
       settings: { gate_mode: 'live', gate_explore_rate: 0, gate_model: 'claude-sonnet-5-5' },
     })
-    const t = setup(world, [judgeAnswer(8)])
+    const t = setup(world, [judgeAnswer(80)])
     const evidence = Array.from({ length: 40 }, () => 'word '.repeat(200))
     expect(await runGate(t.ctx, gateItem({ evidence }))).toMatchObject({ verdict: 'reel' })
     const request = t.generate.mock.calls[0]![0]
@@ -498,7 +554,7 @@ describe('runGate', () => {
     ['the latest decision cannot be read', 'from "gate_decision"'],
     ['the decision cannot be stored', 'insert into "gate_decision"'],
   ])('fails open when %s', async (_name, failOn) => {
-    const t = setup(makeGateWorld({ failOn }), [judgeAnswer(2)])
+    const t = setup(makeGateWorld({ failOn }), [judgeAnswer(20)])
     expect(await runGate(t.ctx, gateItem())).toEqual({ kind: 'skipped', reason: 'error' })
   })
 
@@ -511,7 +567,7 @@ describe('runGate', () => {
 
   it('reuses the decision of this pass on a redelivery instead of judging twice', async () => {
     const since = new Date(Date.now() - 60_000)
-    const t = setup(makeGateWorld(), [judgeAnswer(2)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20)])
     const first = await runGate(t.ctx, gateItem({ inStatusSince: since }))
     const second = await runGate(t.ctx, gateItem({ inStatusSince: since }))
     expect(second).toEqual(first)

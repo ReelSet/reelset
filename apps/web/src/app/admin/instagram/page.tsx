@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { ADMIN_ROUTES } from '@/lib/admin/nav'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { mediaUrl } from '@/lib/media'
+import { INSIGHTS_PERMISSION_NOTE } from '@/lib/instagram/stats'
 import { workerConfigFromEnv } from '@/lib/instagram/worker-client'
 import { Empty, Flash, PageHeader, Pager, Section } from '@/components/admin/ui'
 import { AutoRefresh } from '@/components/admin/pipeline/AutoRefresh'
@@ -74,6 +75,8 @@ export default async function InstagramPage({ searchParams }: Props) {
         ? 'This reel is already in the queue.'
         : null
   const notConnected = account?.state !== 'connected'
+  const officialRecord = publisher === 'official' ? account : otherAccount
+  const insightsMissing = officialRecord?.insightsPermission === false
 
   return (
     <div>
@@ -149,6 +152,9 @@ export default async function InstagramPage({ searchParams }: Props) {
       ) : null}
 
       <Section title={`Queue and history · ${queue.length}`}>
+        {insightsMissing ? (
+          <p className="mb-2 max-w-prose text-xs text-faint">{INSIGHTS_PERMISSION_NOTE}</p>
+        ) : null}
         {queue.length === 0 ? (
           <Empty>No posts yet. Select a reel below to compose one.</Empty>
         ) : (

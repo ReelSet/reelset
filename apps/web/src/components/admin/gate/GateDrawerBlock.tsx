@@ -59,7 +59,6 @@ function JudgeNow({
 }
 
 function Judgement({ gate, itemStatus, returnTo, tz }: Props & { gate: GateView }) {
-  const judged = gate.signals.some((signal) => signal.value !== null)
   return (
     <>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -71,7 +70,7 @@ function Judgement({ gate, itemStatus, returnTo, tz }: Props & { gate: GateView 
       </div>
       {gate.manual ? <p className="text-xs text-muted">{MANUAL_HINT}</p> : null}
       {gate.explored ? <p className="text-xs text-muted">{EXPLORED_HINT}</p> : null}
-      {judged ? <SignalBars signals={gate.signals} /> : null}
+      {gate.signals.length > 0 ? <SignalBars signals={gate.signals} /> : null}
       {gate.reasons.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {gate.reasons.map((reason) => (

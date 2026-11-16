@@ -233,6 +233,14 @@ model InstagramPost {
   postedAt          DateTime?               @map("posted_at") @db.Timestamptz(6)
   deleteRequestedAt DateTime?               @map("delete_requested_at") @db.Timestamptz(6)
   updatedAt         DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  likeCount         Int?                    @map("like_count")
+  commentsCount     Int?                    @map("comments_count")
+  viewCount         Int?                    @map("view_count")
+  reach             Int?
+  saves             Int?
+  shares            Int?
+  statsAt           DateTime?               @map("stats_at") @db.Timestamptz(6)
+  insightsAt        DateTime?               @map("insights_at") @db.Timestamptz(6)
 
   item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 

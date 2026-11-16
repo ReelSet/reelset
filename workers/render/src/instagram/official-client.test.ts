@@ -172,6 +172,74 @@ describe('official instagram client requests', () => {
     expect(t.requests[1]?.url.searchParams.get('since')).toBe('1794819600')
   })
 
+  it('lists a page of media with likes and comments and hands back only the cursor', async () => {
+    const t = fakeApi(() => ({
+      json: {
+        data: [
+          {
+            id: 'm1',
+            shortcode: 'DfzR6tcCO8s',
+            permalink: 'https://www.instagram.com/reel/DfzR6tcCO8s/',
+            like_count: 12,
+            comments_count: 3,
+          },
+          { id: 'm2' },
+        ],
+        paging: {
+          cursors: { before: 'b', after: 'cursor-2' },
+          next: `https://graph.facebook.com/v27.0/1/media?access_token=${TOKEN}&after=cursor-2`,
+        },
+      },
+    }))
+    const page = await t.client.listMediaStats(TOKEN, IG_ID, 'cursor-1')
+    expect(page).toEqual({
+      media: [
+        {
+          id: 'm1',
+          shortcode: 'DfzR6tcCO8s',
+          permalink: 'https://www.instagram.com/reel/DfzR6tcCO8s/',
+          likes: 12,
+          comments: 3,
+        },
+        { id: 'm2', shortcode: null, permalink: null, likes: null, comments: null },
+      ],
+      next: 'cursor-2',
+    })
+    const [req] = t.requests
+    expect(req?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/${IG_ID}/media`)
+    expect(req?.url.searchParams.get('fields')).toBe(
+      'id,shortcode,permalink,like_count,comments_count',
+    )
+    expect(req?.url.searchParams.get('after')).toBe('cursor-1')
+    expect(req?.url.searchParams.get('limit')).toBe('50')
+  })
+
+  it('reports the last page of media as having no next cursor', async () => {
+    const t = fakeApi(() => ({ json: { data: [], paging: { cursors: { after: 'x' } } } }))
+    expect((await t.client.listMediaStats(TOKEN, IG_ID, null)).next).toBeNull()
+    expect(t.requests[0]?.url.searchParams.has('after')).toBe(false)
+  })
+
+  it('reads reel insights by metric name', async () => {
+    const t = fakeApi(() => ({
+      json: {
+        data: [
+          { name: 'views', period: 'lifetime', values: [{ value: 4321 }] },
+          { name: 'reach', period: 'lifetime', values: [{ value: 3000 }] },
+          { name: 'saved', period: 'lifetime', values: [{ value: 7 }] },
+        ],
+      },
+    }))
+    expect(await t.client.getMediaInsights(TOKEN, 'm1')).toEqual({
+      views: 4321,
+      reach: 3000,
+      saves: 7,
+      shares: null,
+    })
+    expect(t.requests[0]?.url.pathname).toBe(`/${IG_GRAPH_VERSION}/m1/insights`)
+    expect(t.requests[0]?.url.searchParams.get('metric')).toBe('views,reach,saved,shares')
+  })
+
   it('deletes a media object', async () => {
     const t = fakeApi(() => ({ json: { success: true, deleted_id: 'm1' } }))
     expect(await t.client.deleteMedia(TOKEN, 'm1')).toBe(true)

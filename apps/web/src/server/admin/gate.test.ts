@@ -12,6 +12,7 @@ vi.mock('@reelset/core', async (orig) => {
     recordGateDecision: vi.fn(actual.recordGateDecision),
     labelGateDecision: vi.fn(actual.labelGateDecision),
     clearGateLabel: vi.fn(actual.clearGateLabel),
+    listInstagramPerformance: vi.fn(),
   }
 })
 
@@ -22,6 +23,7 @@ const {
   disagreeAndMakeReel,
   labelDecision,
   makeReelAnyway,
+  performanceExampleStatus,
   resetGateSetting,
   saveGateSettings,
   testGateTuning,
@@ -326,36 +328,24 @@ describe('gate settings commands', () => {
     })
     expect(queries[0]!.parameters[1]).toBe(JSON.stringify(core.DEFAULT_GATE_INSTRUCTIONS))
     expect((await resetGateSetting(db, { name: 'daily_reel_cap' }, log)).ok).toBe(false)
+    expect((await resetGateSetting(db, { name: 'weights' }, log)).ok).toBe(false)
     expect(queries).toHaveLength(1)
   })
 })
 
 describe('testGateTuning', () => {
-  const judged = (mark: number, label: string | null) => ({
-    signals: {
-      hook: mark,
-      visual: mark,
-      novelty: mark,
-      audience: mark,
-      clarity: mark,
-      stakes: mark,
-    },
-    score: mark * 10,
+  const judged = (score: number, label: string | null) => ({
+    score,
     threshold: 55,
-    verdict: mark * 10 >= 55 ? 'reel' : 'source_only',
+    verdict: score >= 55 ? 'reel' : 'source_only',
     label,
     source: 'github',
   })
-  const fields = {
-    [GATE_FIELD.threshold]: '70',
-    ...Object.fromEntries(
-      Object.keys(core.DEFAULT_GATE_WEIGHTS).map((key) => [GATE_FIELD.weight(key), '1']),
-    ),
-  }
+  const fields = { [GATE_FIELD.threshold]: '70' }
 
-  it('re-scores stored decisions under the typed values and writes nothing', async () => {
+  it('re-cuts stored current-version scores at the typed threshold and writes nothing', async () => {
     const { db, queries } = run({
-      judged: [judged(8, 'agree'), judged(6, 'disagree'), judged(3, null)],
+      judged: [judged(80, 'agree'), judged(60, 'disagree'), judged(30, null)],
     })
     const out = await testGateTuning(db, fields, log)
     if (!out.ok) throw new Error(out.message)
@@ -371,6 +361,8 @@ describe('testGateTuning', () => {
     expect(queries.every((q) => q.sql.startsWith('select'))).toBe(true)
     const sample = queries.find((q) => sqlHas(q, 'from "gate_decision"'))!
     expect(sample.sql).toContain('"gate_decision"."score" is not null')
+    expect(sample.sql).toContain('"gate_decision"."prompt_version" = $')
+    expect(sample.parameters).toContain(core.GATE_PROMPT_VERSION)
     expect(sample.parameters).toEqual(expect.arrayContaining(['model', 'explore', 200]))
   })
 
@@ -384,7 +376,43 @@ describe('testGateTuning', () => {
   it('fails soft when the gate table is missing', async () => {
     const { db } = run({ gateTable: false })
     expect(await testGateTuning(db, fields, log)).toMatchObject({ ok: false })
-    const tuning = { threshold: 55, weights: core.DEFAULT_GATE_WEIGHTS }
+    const tuning = { threshold: 55 }
     expect(await thresholdSuggestion(db, tuning, log)).toBeNull()
+  })
+})
+
+describe('performanceExampleStatus', () => {
+  const post = (n: number) => ({
+    itemId: `i${n}`,
+    title: `Reel ${n}`,
+    source: 'github',
+    postedAt: new Date('2026-11-01T00:00:00Z'),
+    likes: n * 10,
+    comments: n,
+    views: n * 1000,
+    shares: null,
+    saves: null,
+  })
+  const posts = (count: number) => Array.from({ length: count }, (_, n) => post(n + 1))
+  const listed = vi.mocked(core.listInstagramPerformance)
+
+  it('counts the results the judge is shown and names the metric', async () => {
+    listed.mockResolvedValue(posts(20))
+    const status = await performanceExampleStatus(run().db, 8, log)
+    expect(status?.metric).toBe('views')
+    expect(status?.inUse).toBe(core.selectPerformanceExamples(posts(20), { limit: 8 }).length)
+    expect(status?.inUse).toBeGreaterThan(0)
+  })
+
+  it('reports none when the setting is 0 or there are too few posts', async () => {
+    listed.mockResolvedValue(posts(20))
+    expect((await performanceExampleStatus(run().db, 0, log))?.inUse).toBe(0)
+    listed.mockResolvedValue(posts(3))
+    expect((await performanceExampleStatus(run().db, 8, log))?.inUse).toBe(0)
+  })
+
+  it('returns null instead of throwing when the posts cannot be read', async () => {
+    listed.mockRejectedValue(new Error('relation does not exist'))
+    expect(await performanceExampleStatus(run().db, 8, log)).toBeNull()
   })
 })

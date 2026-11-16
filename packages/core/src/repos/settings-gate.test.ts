@@ -23,6 +23,7 @@ describe('gate settings', () => {
       SETTINGS.gateEffort,
       SETTINGS.gateExploreRate,
       SETTINGS.gateExampleCount,
+      SETTINGS.gatePerformanceExamples,
       SETTINGS.gateMaxCostUsdPerItem,
     ].map((setting) => setting.key)
     expect(keys).toEqual([
@@ -35,6 +36,7 @@ describe('gate settings', () => {
       'gate_effort',
       'gate_explore_rate',
       'gate_example_count',
+      'gate_performance_examples',
       'gate_max_cost_usd_per_item',
     ])
     const prefixed = Object.values(SETTINGS).filter((s) =>
@@ -55,6 +57,9 @@ describe('gate settings', () => {
     expect(parseSetting(SETTINGS.gateEffort, undefined, log)).toBe('low')
     expect(parseSetting(SETTINGS.gateExploreRate, undefined, log)).toBe(0.05)
     expect(parseSetting(SETTINGS.gateExampleCount, undefined, log)).toBe(8)
+    expect(parseSetting(SETTINGS.gatePerformanceExamples, undefined, log)).toBe(8)
+    expect(parseSetting(SETTINGS.gatePerformanceExamples, 13, log)).toBe(8)
+    expect(parseSetting(SETTINGS.gatePerformanceExamples, 0, log)).toBe(0)
     expect(parseSetting(SETTINGS.gateMaxCostUsdPerItem, undefined, log)).toBe(0.01)
   })
 

@@ -2,6 +2,7 @@ import { ItemLink } from '@/components/admin/drawer/DrawerLink'
 import { isLostLookupPending } from '@reelset/core'
 import { Ago } from '@/components/admin/pipeline/Elapsed'
 import { cancelPostAction, deletePostAction, retryPostAction } from '@/app/admin/instagram/actions'
+import { statsParts } from '@/lib/instagram/stats'
 import { postBadge } from '@/lib/instagram/status'
 import { ConfirmForm } from './ConfirmForm'
 import { ArrowUpRightIcon } from '@/components/ui/icons'
@@ -17,6 +18,10 @@ export type QueueRow = {
   posted_at: Date | string | null
   delete_requested_at: Date | string | null
   started_at?: Date | string | null
+  like_count: number | null
+  comments_count: number | null
+  view_count: number | null
+  stats_at: Date | string | null
   etaAt?: Date | null
 }
 
@@ -43,6 +48,7 @@ export function QueueList({
           row.status === 'failed' &&
           isLostLookupPending(row.error, row.started_at ? new Date(row.started_at) : null, now)
         const badge = postBadge(row.status, row.delete_requested_at !== null)
+        const stats = row.posted_at && row.stats_at ? statsParts(row) : []
         return (
           <li
             key={row.id}
@@ -64,6 +70,14 @@ export function QueueList({
                 {row.posted_at ? 'posted ' : 'queued '}
                 <Ago at={new Date(row.posted_at ?? row.created_at).toISOString()} />
               </p>
+              {stats.length > 0 && row.stats_at ? (
+                <p className="mt-0.5 text-xs text-muted">
+                  <span className="tabular-nums">{stats.join(' · ')}</span>
+                  <span className="text-faint">
+                    {' · '}stats updated <Ago at={new Date(row.stats_at).toISOString()} />
+                  </span>
+                </p>
+              ) : null}
               {row.status === 'queued' && row.etaAt ? (
                 <p className="mt-0.5 text-xs text-muted">
                   {etaLabel(row.etaAt, now)} (posts are spaced 10 min apart)

@@ -38,7 +38,6 @@ function ItemLine({ item }: { item: CheckedItem }) {
 
 function ScoreCard({ check }: { check: Extract<LinkCheck, { kind: 'card' }> }) {
   const { item, gate } = check
-  const judged = gate.signals.some((signal) => signal.value !== null)
   return (
     <div className="space-y-3">
       <ItemLine item={item} />
@@ -49,7 +48,7 @@ function ScoreCard({ check }: { check: Extract<LinkCheck, { kind: 'card' }> }) {
           {check.judgedNow ? 'Judged just now' : 'Already judged; this is the newest judgement'}
         </span>
       </div>
-      {judged ? (
+      {gate.signals.length > 0 ? (
         <div className="max-w-md">
           <SignalBars signals={gate.signals} />
         </div>

@@ -1,3 +1,4 @@
+import { GATE_PROMPT_VERSION } from '@reelset/core'
 import { ChartCard } from '@/components/admin/charts/ChartCard'
 import { LineSeriesChart } from '@/components/admin/charts/LineSeriesChart'
 import { CHART_COLORS } from '@/components/admin/charts/theme'
@@ -71,7 +72,8 @@ export function GateOverview({ overview, tz }: { overview: Overview; tz: string 
         <Stat label="Gate spend" value={fmtUsd(stats.costUsd)} />
       </div>
       <p className="text-xs text-faint">
-        These numbers cover automatic decisions only. Manual checks so far:{' '}
+        The judge now runs prompt version {GATE_PROMPT_VERSION}; this range can include decisions
+        from earlier versions. These numbers cover automatic decisions only. Manual checks so far:{' '}
         <span className="tabular-nums text-muted">{counts.manual.toLocaleString('en-US')}</span>{' '}
         (analysis only, listed in the queue with a Manual tag; the review counts include them).
       </p>

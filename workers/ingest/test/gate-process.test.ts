@@ -38,7 +38,7 @@ function setup(
 
 describe('processItem with the gate', () => {
   it('live mode: a rejected item ends source_only with its chunks embedded and no script', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20)])
     const outcome = await processItem(t.deps, ITEM_ID, 1)
 
     expect(outcome).toBe('source_only')
@@ -80,7 +80,7 @@ describe('processItem with the gate', () => {
   })
 
   it('live mode: a reel requested while the gate was judging wins; the verdict is recorded as not applied', async () => {
-    const judge = makeJudge([judgeAnswer(2)])
+    const judge = makeJudge([judgeAnswer(20)])
     const gateWorld = makeGateWorld()
     const gate = gateQueries(gateWorld)
     const t = makeDeps(makeWorld(), [validOutput()], (q) => {
@@ -99,7 +99,7 @@ describe('processItem with the gate', () => {
   })
 
   it('live mode: the reject re-checks for a request under a row lock before it transitions', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2)])
+    const t = setup(makeGateWorld(), [judgeAnswer(20)])
     await processItem(t.deps, ITEM_ID, 1)
     const lock = t.fake.queries.findIndex((q) => q.sql.includes('for update'))
     const transition = t.fake.queries.findIndex((q) =>
@@ -111,7 +111,7 @@ describe('processItem with the gate', () => {
   })
 
   it('live mode: a passed item carries on to its script and render', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(8)])
+    const t = setup(makeGateWorld(), [judgeAnswer(80)])
     expect(await processItem(t.deps, ITEM_ID, 1)).toBe('rendered_enqueued')
     expect(transitionTargets(t.fake.queries)).toEqual(['summarized', 'embedded'])
     expect(t.generate).toHaveBeenCalledTimes(1)
@@ -120,7 +120,7 @@ describe('processItem with the gate', () => {
 
   it('shadow mode: a rejected item still gets its script, and the decision is recorded', async () => {
     const t = setup(makeGateWorld({ settings: { gate_mode: 'shadow', gate_explore_rate: 0 } }), [
-      judgeAnswer(2),
+      judgeAnswer(20),
     ])
     expect(await processItem(t.deps, ITEM_ID, 1)).toBe('rendered_enqueued')
     expect(transitionTargets(t.fake.queries)).toEqual(['summarized', 'embedded'])
@@ -195,7 +195,7 @@ describe('processItem with the gate', () => {
   })
 
   it('live mode: a never-rendered item back in found is gated as usual', async () => {
-    const t = setup(makeGateWorld(), [judgeAnswer(2)], [], makeWorld({ renderedAt: null }))
+    const t = setup(makeGateWorld(), [judgeAnswer(20)], [], makeWorld({ renderedAt: null }))
     expect(await processItem(t.deps, ITEM_ID, 1)).toBe('source_only')
     expect(t.judgeGenerate).toHaveBeenCalledTimes(1)
     expect(t.gateWorld.recorded).toHaveLength(1)

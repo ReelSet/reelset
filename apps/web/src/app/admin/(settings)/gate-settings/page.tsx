@@ -1,10 +1,9 @@
 import {
   GATE_INSTRUCTIONS_MAX_CHARS,
   GATE_INSTRUCTIONS_MIN_CHARS,
+  GATE_PROMPT_VERSION,
   GATE_SCORE_MAX,
-  GATE_SIGNALS,
   GATE_SOURCE_RULE_MODES,
-  GATE_WEIGHT_MAX,
   SETTINGS,
   SOURCES,
   errorFields,
@@ -24,7 +23,7 @@ import { gateCostMarks, gateSettingMax, isGateSettingDefault } from '@/lib/admin
 import { SUGGEST_MIN_LABELS } from '@/lib/admin/gate-tuning'
 import { GATE_MIGRATION_FIRST, GATE_MODE_COPY, GATE_TABLE_MISSING } from '@/lib/admin/gate-view'
 import { ADMIN_ROUTES } from '@/lib/admin/nav'
-import { thresholdSuggestion } from '@/server/admin/gate'
+import { performanceExampleStatus, thresholdSuggestion } from '@/server/admin/gate'
 import { gateReviewCounts, type GateReviewCounts } from '@/server/admin/gate-queries'
 import { assertAdmin } from '@/server/admin/guard'
 import { getDb } from '@/server/db'
@@ -40,6 +39,7 @@ const JUDGE_SETTINGS = [
   'effort',
   'exploreRate',
   'exampleCount',
+  'performanceExamples',
   'maxCostUsdPerItem',
 ] as const
 
@@ -58,18 +58,19 @@ export default async function GateSettingsPage({ searchParams }: Props) {
   const db = getDb()
   const log = routeLog('admin/gate-settings')
   const config = await loadGateConfig(db, log)
-  const [suggestion, counts] = await Promise.all([
+  const [suggestion, counts, performance] = await Promise.all([
     thresholdSuggestion(db, config, log),
     reviewCountsOrNull(db, log),
+    performanceExampleStatus(db, config.performanceExamples, log),
   ])
   const judge = {
     model: config.model,
     effort: config.effort,
     exploreRatePercent: Math.round(config.exploreRate * PERCENT * 100) / 100,
     exampleCount: config.exampleCount,
+    performanceExamples: config.performanceExamples,
     maxCostUsdPerItem: config.maxCostUsdPerItem,
   }
-  const tuning = { threshold: config.threshold, weights: config.weights }
 
   return (
     <div>
@@ -100,17 +101,13 @@ export default async function GateSettingsPage({ searchParams }: Props) {
           isDefault={isGateSettingDefault('mode', config.mode)}
         />
         <TuningCard
-          key={JSON.stringify(tuning)}
-          {...tuning}
-          signals={GATE_SIGNALS}
+          key={config.threshold}
+          threshold={config.threshold}
           scoreMax={GATE_SCORE_MAX}
-          weightMax={GATE_WEIGHT_MAX}
+          promptVersion={GATE_PROMPT_VERSION}
           suggestion={suggestion}
           suggestMinLabels={SUGGEST_MIN_LABELS}
-          isDefault={
-            isGateSettingDefault('threshold', config.threshold) &&
-            isGateSettingDefault('weights', config.weights)
-          }
+          isDefault={isGateSettingDefault('threshold', config.threshold)}
         />
         <SourceRulesCard
           key={JSON.stringify(config.sourceRules)}
@@ -135,9 +132,11 @@ export default async function GateSettingsPage({ searchParams }: Props) {
           limits={{
             exploreRatePercentMax: gateSettingMax('exploreRate') * PERCENT,
             exampleCountMax: gateSettingMax('exampleCount'),
+            performanceExamplesMax: gateSettingMax('performanceExamples'),
             maxCostUsdPerItemMax: gateSettingMax('maxCostUsdPerItem'),
           }}
           costMarks={gateCostMarks(config.instructions.length)}
+          performance={performance}
           isDefault={JUDGE_SETTINGS.every((name) => isGateSettingDefault(name, config[name]))}
         />
       </div>

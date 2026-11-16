@@ -45,6 +45,7 @@ const config = (over: Partial<GateConfig> = {}): GateConfig => ({
   effort: 'low',
   exploreRate: 0.05,
   exampleCount: 8,
+  performanceExamples: 8,
   maxCostUsdPerItem: 0.01,
   ...over,
 })
@@ -75,7 +76,7 @@ describe('gate constants', () => {
   })
 
   it('ships default instructions inside the editable bounds and a fixed prompt version', () => {
-    expect(GATE_PROMPT_VERSION).toBe('gate-v1')
+    expect(GATE_PROMPT_VERSION).toBe('gate-v2')
     expect(DEFAULT_GATE_INSTRUCTIONS.length).toBeGreaterThan(GATE_INSTRUCTIONS_MIN_CHARS)
     expect(DEFAULT_GATE_INSTRUCTIONS.length).toBeLessThan(GATE_INSTRUCTIONS_MAX_CHARS)
   })
@@ -263,13 +264,13 @@ describe('gateConfigHash', () => {
     const hash = await gateConfigHash(config())
     const changes: Partial<GateConfig>[] = [
       { threshold: 60 },
-      { weights: { ...DEFAULT_GATE_WEIGHTS, hook: 5 } },
       { sourceRules: { ...DEFAULT_GATE_SOURCE_RULES, hn: { mode: 'always_reel' } } },
       { instructions: `${DEFAULT_GATE_INSTRUCTIONS} More.` },
       { model: 'claude-sonnet-5-5' },
       { effort: 'high' },
       { exploreRate: 0.1 },
       { exampleCount: 4 },
+      { performanceExamples: 0 },
       { maxCostUsdPerItem: 0.02 },
     ]
     for (const change of changes) expect(await gateConfigHash(config(change))).not.toBe(hash)

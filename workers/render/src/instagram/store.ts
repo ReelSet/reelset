@@ -4,6 +4,11 @@ import {
   clearOfficialIgToken,
   getEncryptedOfficialToken,
   getOfficialIgAccount,
+  getStatsSyncedAt,
+  listPostsForStats,
+  setPostInsights,
+  setPostStats,
+  setStatsSyncedAt,
   getPostContainerId,
   setEncryptedOfficialToken,
   setOfficialIgAccount,
@@ -30,6 +35,8 @@ import {
   type IgAccount,
   type Logger,
   type LostPost,
+  type PostForStats,
+  type PostInsights,
 } from '@reelset/core'
 
 export type { ClaimedPost, LostPost }
@@ -63,6 +70,12 @@ export type IgStore = {
   setOfficialAccount(account: IgAccount): Promise<void>
   getContainerId(postId: string): Promise<string | null>
   setContainerId(postId: string, containerId: string | null): Promise<void>
+  /** Instagram numbers per post, synced from the official API. */
+  getStatsSyncedAt(): Promise<Date | null>
+  setStatsSyncedAt(at: Date): Promise<void>
+  listPostsForStats(): Promise<PostForStats[]>
+  setPostStats(id: string, stats: { likes: number | null; comments: number | null }): Promise<void>
+  setPostInsights(id: string, insights: PostInsights | null): Promise<void>
 }
 
 export function createIgStore(db: Database, log: Logger): IgStore {
@@ -93,5 +106,10 @@ export function createIgStore(db: Database, log: Logger): IgStore {
     setOfficialAccount: (account) => setOfficialIgAccount(db, account),
     getContainerId: (postId) => getPostContainerId(db, postId),
     setContainerId: (postId, containerId) => setPostContainerId(db, postId, containerId),
+    getStatsSyncedAt: () => getStatsSyncedAt(db),
+    setStatsSyncedAt: (at) => setStatsSyncedAt(db, at),
+    listPostsForStats: () => listPostsForStats(db),
+    setPostStats: (id, stats) => setPostStats(db, id, stats),
+    setPostInsights: (id, insights) => setPostInsights(db, id, insights),
   }
 }

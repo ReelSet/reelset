@@ -144,6 +144,10 @@ export async function postQueue(db: Database) {
       'instagram_post.started_at',
       'instagram_post.posted_at',
       'instagram_post.delete_requested_at',
+      'instagram_post.like_count',
+      'instagram_post.comments_count',
+      'instagram_post.view_count',
+      'instagram_post.stats_at',
       sql<string | null>`(select r.poster_key from render r where r.item_id = instagram_post.item_id
         and r.video_key = instagram_post.video_key limit 1)`.as('poster_key'),
     ])

@@ -24,6 +24,7 @@ import { igConfigured, withIgDeps } from './instagram/wire'
 import { DOWNLOAD_PREFIX, handleDownload } from './download'
 import { runInstagramQueue } from './instagram/service'
 import { refreshOfficialToken } from './instagram/official-service'
+import { syncInstagramStats } from './instagram/stats-sync'
 import { createAutoPostDeps, queueAutoInstagramPosts } from './instagram/auto'
 import { handleTranscript, handleYoutubeSearch, matchRoute } from './routes'
 import {
@@ -213,6 +214,13 @@ export default {
             log.error(errorFields(err), 'instagram access token refresh crashed')
           }
           await env.IG_RUN.send({ reason: 'cron' })
+          // After the queue run is handed off, so a slow or failing stats sync never delays a post.
+          try {
+            const stats = await withIgDeps(env, boxFor(env, log), log, syncInstagramStats)
+            if (stats.ran) log.info({ stats }, 'instagram stats sync ran')
+          } catch (err) {
+            log.error(errorFields(err), 'instagram stats sync failed')
+          }
         })().catch((err) => log.error(errorFields(err), 'instagram queue run enqueue failed')),
       )
     }
