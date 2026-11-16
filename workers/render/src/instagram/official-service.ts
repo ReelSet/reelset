@@ -47,8 +47,7 @@ const NO_ACCOUNT_MESSAGE =
   'This token has no Instagram account assigned. In the Meta app dashboard, add the account under "Generate access tokens" and generate the token for it.'
 const ACCOUNT_GONE_MESSAGE =
   'The Instagram account is no longer shared with this token. Generate a new token and paste it.'
-const EXPIRY_UNKNOWN_NOTE =
-  'Token expiry cannot be read without the META_APP_ID and META_APP_SECRET worker secrets.'
+const EXPIRY_UNKNOWN_NOTE = 'Expiry date unknown: add META_APP_ID and META_APP_SECRET to see it.'
 const NEVER_EXPIRES_NOTE = 'This token does not expire.'
 const STILL_PROCESSING_NOTE =
   'Instagram is still processing the video. Publishing continues on the next run.'

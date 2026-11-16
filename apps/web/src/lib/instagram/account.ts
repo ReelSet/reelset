@@ -91,7 +91,7 @@ function describeOfficialAccount(account: IgAccount | null): AccountView {
       return {
         ...base,
         tone: 'ok',
-        headline: `Connected as @${account.username} (official API)`,
+        headline: `Connected as @${account.username} via the official Instagram API`,
         detail: account.message,
       }
     case 'needs_login':
@@ -198,7 +198,7 @@ export function accountFlash(account: IgAccount): { ok: boolean; message: string
   if (account.state === 'connected')
     return {
       ok: true,
-      message: `Connected as @${account.username}${account.publisher === 'official' ? ' (official API)' : ''}`,
+      message: `Connected as @${account.username}${account.publisher === 'official' ? ' via the official Instagram API' : ''}`,
     }
   const view = describeAccount(account, true, account.publisher)
   const advice = view.suggestGraphApi ? ` ${GRAPH_API_ADVICE}` : ''

@@ -13,15 +13,15 @@ const DOT = { ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger', muted: 'bg-fain
 
 export function AccountCard({
   account,
-  officialAccount,
+  otherAccount,
   publisher,
   checkError,
   configured,
   returnTo,
 }: {
   account: IgAccount | null
-  /** The official API connection, shown as a side panel while the unofficial publisher is active. */
-  officialAccount: IgAccount | null
+  /** The publisher that is not in use: shown as a collapsed side panel. */
+  otherAccount: IgAccount | null
   publisher: InstagramPublisher
   checkError: IgCheckError | null
   configured: boolean
@@ -29,6 +29,8 @@ export function AccountCard({
 }) {
   const official = publisher === 'official'
   const view = describeAccount(account, configured, publisher)
+  const officialAccount = official ? null : otherAccount
+  const unofficialView = official ? describeAccount(otherAccount, true) : null
   const proxy = proxyLabel(account)
   const lastError =
     checkError && (!account || Date.parse(checkError.at) > Date.parse(account.checkedAt))
@@ -118,7 +120,7 @@ export function AccountCard({
       {configured && official && account?.state === 'connected' ? (
         <details className="group mt-4 border-t border-line pt-3">
           <summary className="cursor-pointer select-none text-xs text-muted transition hover:text-fg">
-            Replace the access token or disconnect
+            Replace access token
           </summary>
           <div className="mt-3 flex flex-col gap-4">
             <TokenForm returnTo={returnTo} />
@@ -152,7 +154,11 @@ export function AccountCard({
           </summary>
           <div className="mt-3 flex flex-col gap-2">
             {officialAccount?.message ? (
-              <p className="text-xs text-warn">{officialAccount.message}</p>
+              <p
+                className={`text-xs ${officialAccount.state === 'connected' ? 'text-faint' : 'text-warn'}`}
+              >
+                {officialAccount.message}
+              </p>
             ) : null}
             <p className="flex flex-wrap gap-x-3 text-xs text-faint">
               <TokenExpiry account={officialAccount} />
@@ -162,6 +168,22 @@ export function AccountCard({
               </span>
             </p>
             <TokenForm returnTo={returnTo} />
+          </div>
+        </details>
+      ) : null}
+
+      {configured && unofficialView ? (
+        <details className="group mt-3 border-t border-line pt-3">
+          <summary className="cursor-pointer select-none text-xs text-muted transition hover:text-fg">
+            Unofficial login (not in use)
+          </summary>
+          <div className="mt-3 flex flex-col gap-2">
+            <p className="text-xs text-faint">
+              Posts go out through the official Instagram API, so this login is not needed. Its last
+              state: {unofficialView.headline}. It is only used again if instagram_publisher is set
+              back to unofficial in Settings.
+            </p>
+            <CredentialsForm returnTo={returnTo} />
           </div>
         </details>
       ) : null}

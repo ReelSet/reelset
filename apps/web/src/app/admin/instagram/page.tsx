@@ -22,6 +22,7 @@ import {
   readAccount,
   readCheckError,
   readOfficialAccount,
+  readUnofficialAccount,
   readPublisher,
 } from '@/server/admin/instagram'
 import { routeLog } from '@/server/logger'
@@ -47,10 +48,10 @@ export default async function InstagramPage({ searchParams }: Props) {
   const mediaBase = mediaBaseUrl()
 
   const publisher = await readPublisher(db, routeLog('admin/instagram'))
-  const [account, officialAccount, checkError, reels, rawQueue, lastPosted, composer] =
+  const [account, otherAccount, checkError, reels, rawQueue, lastPosted, composer] =
     await Promise.all([
       readAccount(db, publisher),
-      publisher === 'official' ? Promise.resolve(null) : readOfficialAccount(db),
+      publisher === 'official' ? readUnofficialAccount(db) : readOfficialAccount(db),
       readCheckError(db),
       publishedReels(db, page.offset),
       postQueue(db),
@@ -85,7 +86,7 @@ export default async function InstagramPage({ searchParams }: Props) {
 
       <AccountCard
         publisher={publisher}
-        officialAccount={officialAccount}
+        otherAccount={otherAccount}
         account={account}
         checkError={checkError}
         configured={configured}

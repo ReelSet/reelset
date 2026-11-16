@@ -166,6 +166,7 @@ export const readPublisher = (db: Database, log: Logger) =>
 export const readAccount = (db: Database, publisher: InstagramPublisher = 'unofficial') =>
   getIgAccountFor(db, publisher)
 export const readOfficialAccount = (db: Database) => getOfficialIgAccount(db)
+export const readUnofficialAccount = (db: Database) => getIgAccountFor(db, 'unofficial')
 export const readCheckError = (db: Database) => getIgCheckError(db)
 
 export async function queueInstagramPost(

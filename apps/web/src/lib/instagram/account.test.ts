@@ -159,7 +159,7 @@ describe('official publisher', () => {
   it('describes the token states without offering the password login', () => {
     expect(describeAccount(official, true, 'official')).toMatchObject({
       tone: 'ok',
-      headline: 'Connected as @reelset (official API)',
+      headline: 'Connected as @reelset via the official Instagram API',
       canConnect: false,
     })
     expect(describeAccount({ ...official, state: 'needs_login' }, true, 'official')).toMatchObject({
@@ -173,7 +173,7 @@ describe('official publisher', () => {
   it('flashes with the official wording', () => {
     expect(accountFlash(official)).toEqual({
       ok: true,
-      message: 'Connected as @reelset (official API)',
+      message: 'Connected as @reelset via the official Instagram API',
     })
     expect(accountFlash({ ...official, state: 'needs_login' }).message).toMatch(
       /^Access token rejected/,
