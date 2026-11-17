@@ -8,6 +8,7 @@ export const NOVA_USD_PER_SECOND = 0.0052 / 60
 export const AURA_CHUNK_CHARS = 1500
 export const AURA_AI_ATTEMPTS = 2
 export const KOKORO_VOICE = 'af_heart'
+export const CHATTERBOX_VOICE = 'chatterbox-nano'
 export const MAX_NARRATION_SECONDS = 98
 export const SHORTEN_MARGIN_SECONDS = 5
 export const MAX_SHORTEN_ATTEMPTS = 2
@@ -80,10 +81,11 @@ export function narrationText(script: ReelScript): string {
   return [script.hook, ...script.beats.map((b) => b.text), script.outro].join(' ')
 }
 
-/** The render-key voice: switching provider or speaker changes it, so reels re-render. */
+/** The render-key voice: switching provider or speaker changes it, so reels re-render. The Chatterbox
+ * narrator (tts_chatterbox_voice) is left out on purpose so a switch only affects new renders. */
 export function effectiveVoice(provider: TtsProvider, speaker: string, edgeVoice: string): string {
   if (provider === 'aura2') return `aura2-${speaker}`
-  if (provider === 'chatterbox') return 'chatterbox-nano'
+  if (provider === 'chatterbox') return CHATTERBOX_VOICE
   return provider === 'kokoro' ? `kokoro-${KOKORO_VOICE}` : edgeVoice
 }
 

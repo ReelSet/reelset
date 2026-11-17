@@ -26,9 +26,10 @@ export async function loadTtsConfig(
   log: Logger,
 ): Promise<TtsConfig> {
   const edgeVoice = env.TTS_VOICE ?? DEFAULT_VOICE
-  const [requested, speaker] = await Promise.all([
+  const [requested, speaker, chatterboxVoice] = await Promise.all([
     getSetting(db, SETTINGS.ttsProvider, log),
     getSetting(db, SETTINGS.ttsAuraSpeaker, log),
+    getSetting(db, SETTINGS.ttsChatterboxVoice, log),
   ])
   const { CHATTERBOX_URL: url, CHATTERBOX_TOKEN: token } = env
   const provider = selectProvider(requested, env.AI, Boolean(url && token))
@@ -45,7 +46,7 @@ export async function loadTtsConfig(
         ? {
             generate: (script, jobLog) =>
               generateChatterbox(
-                { url, token, fetch: (u, init) => fetch(u, init) },
+                { url, token, voice: chatterboxVoice, fetch: (u, init) => fetch(u, init) },
                 script,
                 jobLog,
               ),

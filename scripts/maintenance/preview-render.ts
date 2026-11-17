@@ -96,7 +96,12 @@ try {
   const narration =
     provider === 'chatterbox' && chatterboxUrl && chatterboxToken
       ? await generateChatterbox(
-          { url: chatterboxUrl, token: chatterboxToken, fetch: (u, i) => fetch(u, i) },
+          {
+            url: chatterboxUrl,
+            token: chatterboxToken,
+            voice: await getSetting(db, SETTINGS.ttsChatterboxVoice, log),
+            fetch: (u, i) => fetch(u, i),
+          },
           script,
           log,
         )

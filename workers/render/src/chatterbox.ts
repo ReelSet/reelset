@@ -1,14 +1,14 @@
-import type { Logger, ReelScript } from '@reelset/core'
+import type { ChatterboxVoice, Logger, ReelScript } from '@reelset/core'
 import { RenderJobError } from './errors'
 import type { Narration, TimedWord } from './tts'
 
-export const CHATTERBOX_VOICE = 'chatterbox-nano'
 export const CHATTERBOX_TIMEOUT_MS = 8 * 60 * 1000
 const MAX_AUDIO_BASE64_CHARS = 8_000_000
 
 export type ChatterboxConfig = {
   url: string
   token: string
+  voice: ChatterboxVoice
   fetch: (url: string, init: RequestInit) => Promise<Response>
   timeoutMs?: number
 }
@@ -55,7 +55,10 @@ export async function generateChatterbox(
   const expectedWords = segments.join(' ').split(/\s+/).filter(Boolean).length
   const started = Date.now()
   const fail = (reason: string, extra: object = {}): never => {
-    log.error({ reason, ms: Date.now() - started, ...extra }, 'chatterbox narration failed')
+    log.error(
+      { reason, voice: config.voice, ms: Date.now() - started, ...extra },
+      'chatterbox narration failed',
+    )
     throw new RenderJobError('tts_unavailable', `chatterbox tts failed: ${reason}`)
   }
 
@@ -64,7 +67,7 @@ export async function generateChatterbox(
     response = await config.fetch(config.url, {
       method: 'POST',
       headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ segments }),
+      body: JSON.stringify({ segments, voice: config.voice }),
       signal: AbortSignal.timeout(config.timeoutMs ?? CHATTERBOX_TIMEOUT_MS),
     })
   } catch (err) {
@@ -98,6 +101,7 @@ export async function generateChatterbox(
   log.info(
     {
       provider: 'chatterbox',
+      voice: config.voice,
       chars,
       audioSeconds,
       synthSeconds: body?.synthSeconds,

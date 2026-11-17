@@ -35,6 +35,9 @@ describe('model settings', () => {
     expect(parseSetting(SETTINGS.scriptModel, 'claude-opus-5-5', log)).toBe('claude-opus-5-5')
     expect(parseSetting(SETTINGS.askModel, 'claude-3-haiku', log)).toBe('claude-haiku-5-5')
     expect(parseSetting(SETTINGS.scriptEffort, 'max', log)).toBe('medium')
+    expect(parseSetting(SETTINGS.ttsChatterboxVoice, undefined, log)).toBe('genz')
+    expect(parseSetting(SETTINGS.ttsChatterboxVoice, 'af_heart', log)).toBe('af_heart')
+    expect(parseSetting(SETTINGS.ttsChatterboxVoice, 'narrator', log)).toBe('genz')
   })
 
   it('stores under stable keys', () => {

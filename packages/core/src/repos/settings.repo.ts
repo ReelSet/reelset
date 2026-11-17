@@ -1,6 +1,7 @@
 import { sql } from 'kysely'
 import { z } from 'zod'
 import type { Database } from '../db/client'
+import { DEFAULT_CHATTERBOX_VOICE, chatterboxVoiceSchema } from '../domain/chatterbox-voice'
 import {
   DEFAULT_CLAUDE_MODEL,
   claudeEffortSchema,
@@ -127,6 +128,7 @@ export const SETTINGS = {
   imageVetModel: def('image_vet_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   askModel: def('ask_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   ttsAuraSpeaker: def('tts_aura_speaker', z.string().regex(/^[a-z]{3,20}$/), 'hera'),
+  ttsChatterboxVoice: def('tts_chatterbox_voice', chatterboxVoiceSchema, DEFAULT_CHATTERBOX_VOICE),
   renderUpgradeEnabled: def('render_upgrade_enabled', z.boolean(), false),
   instagramAutoPost: def('instagram_auto_post', z.boolean(), true),
   instagramAutoPostGate: def('instagram_auto_post_gate', z.boolean(), false),

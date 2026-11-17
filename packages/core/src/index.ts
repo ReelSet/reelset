@@ -100,6 +100,12 @@ export {
   type ClaudeTokenUsage,
 } from './domain/claude-model'
 export {
+  CHATTERBOX_VOICES,
+  DEFAULT_CHATTERBOX_VOICE,
+  chatterboxVoiceSchema,
+  type ChatterboxVoice,
+} from './domain/chatterbox-voice'
+export {
   SETTINGS,
   getSetting,
   parseSetting,

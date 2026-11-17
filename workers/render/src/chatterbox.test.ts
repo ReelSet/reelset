@@ -21,6 +21,7 @@ const okBody = { audioBase64: btoa('mp3'), words, audioSeconds: 3.2, synthSecond
 const config = (response: Response | Error) => ({
   url: 'https://tts.test/synthesize',
   token: 'secret',
+  voice: 'genz' as const,
   fetch: vi.fn(async () => {
     if (response instanceof Error) throw response
     return response
@@ -34,7 +35,7 @@ describe('chatterboxSegments', () => {
 })
 
 describe('generateChatterbox', () => {
-  it('posts the segments with the bearer token and returns audio with one word per token', async () => {
+  it('posts the segments and narrator voice with the bearer token and returns audio with one word per token', async () => {
     const cfg = config(Response.json(okBody))
     const out = await generateChatterbox(cfg, script, silentLog)
     const [url, init] = cfg.fetch.mock.calls[0] as unknown as [string, RequestInit]
@@ -42,6 +43,7 @@ describe('generateChatterbox', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer secret')
     expect(JSON.parse(init.body as string)).toEqual({
       segments: ['Two words.', 'First beat here.', 'Bye.'],
+      voice: 'genz',
     })
     expect(new TextDecoder().decode(out.audio)).toBe('mp3')
     expect(out.words).toHaveLength(6)
