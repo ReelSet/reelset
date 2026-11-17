@@ -81,7 +81,7 @@ export function ComparisonBarChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            allowDecimals={unit === 'usd'}
+            allowDecimals={unit !== 'count'}
             tickFormatter={(v: number) => formatCompact(v, unit)}
           />
           <Tooltip

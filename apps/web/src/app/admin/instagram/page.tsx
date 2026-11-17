@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { queuedPostEtas } from '@reelset/core'
 import { z } from 'zod'
-import { ADMIN_ROUTES } from '@/lib/admin/nav'
+import { ADMIN_ROUTES, INSTAGRAM_TABS } from '@/lib/admin/nav'
 import { pageHref, parsePage } from '@/lib/admin/pagination'
 import { mediaUrl } from '@/lib/media'
 import { INSIGHTS_PERMISSION_NOTE } from '@/lib/instagram/stats'
 import { workerConfigFromEnv } from '@/lib/instagram/worker-client'
+import { AdminTabs } from '@/components/admin/AdminTabs'
 import { Empty, Flash, PageHeader, Pager, Section } from '@/components/admin/ui'
 import { AutoRefresh } from '@/components/admin/pipeline/AutoRefresh'
 import { AccountCard } from '@/components/admin/instagram/AccountCard'
@@ -99,6 +100,7 @@ export default async function InstagramPage({ searchParams }: Props) {
         description="Pick a finished reel, check the caption, queue it. Posts go out one at a time."
         actions={<AutoRefresh renderedAt={now.toISOString()} />}
       />
+      <AdminTabs tabs={INSTAGRAM_TABS} label="Instagram sections" />
 
       <AccountCard
         publisher={publisher}

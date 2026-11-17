@@ -77,7 +77,7 @@ export function MainAreaChart({ points, unit, label, color, showPrevious }: Prop
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            allowDecimals={unit === 'usd'}
+            allowDecimals={unit !== 'count'}
             tickFormatter={(v: number) => formatCompact(v, unit)}
           />
           <Tooltip

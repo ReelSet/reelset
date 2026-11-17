@@ -4,6 +4,7 @@ import {
   NAV_GROUPS,
   PIPELINE_TABS,
   SETTINGS_TABS,
+  activeTabHref,
   isActivePath,
   isGroupActive,
   navBadges,
@@ -75,5 +76,14 @@ describe('gate routes', () => {
     expect(safeAdminPath(starred)).toBe(starred)
     expect(safeAdminPath(`${ADMIN_ROUTES.gate}?q=<script>`)).toBe(ADMIN_ROUTES.pipeline)
     expect(safeAdminPath(ADMIN_ROUTES.gateSettings)).toBe(ADMIN_ROUTES.gateSettings)
+  })
+})
+
+describe('activeTabHref', () => {
+  it('lights only the nested Insights tab, not its parent Queue tab', () => {
+    const tabs = group('instagram').tabs
+    expect(activeTabHref(ADMIN_ROUTES.instagramInsights, tabs)).toBe(ADMIN_ROUTES.instagramInsights)
+    expect(activeTabHref(ADMIN_ROUTES.instagram, tabs)).toBe(ADMIN_ROUTES.instagram)
+    expect(activeTabHref('/admin/spend', tabs)).toBeNull()
   })
 })

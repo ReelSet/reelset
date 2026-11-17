@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { isActivePath, type AdminTab } from '@/lib/admin/nav'
+import { activeTabHref, type AdminTab } from '@/lib/admin/nav'
 
 /** Underlined link tabs for one admin group; the current route carries aria-current. */
 export function AdminTabs({ tabs, label }: { tabs: readonly AdminTab[]; label: string }) {
   const pathname = usePathname()
+  const activeHref = activeTabHref(pathname, tabs)
   return (
     <nav
       aria-label={label}
@@ -14,7 +15,7 @@ export function AdminTabs({ tabs, label }: { tabs: readonly AdminTab[]; label: s
     >
       <ul className="flex min-w-max gap-5 border-b border-line">
         {tabs.map((tab) => {
-          const active = isActivePath(pathname, tab.href)
+          const active = tab.href === activeHref
           return (
             <li key={tab.href}>
               <Link

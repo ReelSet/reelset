@@ -1,11 +1,11 @@
 'use client'
 
-import { formatMetricValue, type MetricMeta, type MetricSeries } from '@/lib/admin/stats'
+import { formatMetricValue, type MetricDisplay, type MetricSeries } from '@/lib/admin/stats'
 import { DeltaChip } from './DeltaChip'
 import { Sparkline } from './Sparkline'
 
 type Props = {
-  meta: MetricMeta
+  meta: MetricDisplay
   series: MetricSeries
   color: string
   selected: boolean

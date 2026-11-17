@@ -19,6 +19,7 @@ import {
 } from '@reelset/core'
 import { sql } from 'kysely'
 import { validateQueueRequest } from '@/lib/instagram/caption'
+import type { InsightRow } from '@/lib/instagram/insights'
 import type { CommandResult } from '@/server/admin/commands'
 
 export const REELS_PAGE_SIZE = 24
@@ -28,7 +29,7 @@ const UNIQUE_VIOLATION = '23505'
 const STALE_PREVIEW_MESSAGE =
   'This reel was re-rendered after you opened it. Reload and check the preview, then queue again.'
 
-const itemSource = sql<string>`coalesce(
+export const itemSource = sql<string>`coalesce(
   (select m.source::text from mention m where m.item_id = item.id order by m.score desc nulls last limit 1),
   case when split_part(item.canonical_key, ':', 1) in (${sql.raw(
     Object.values(Source)
@@ -308,4 +309,43 @@ export async function retryFailedPost(
     ok: true,
     message: 'Queued again. It posts within about 5 minutes, at least 10 minutes after the last.',
   }
+}
+
+/** Posted reels from `sinceDay` on, with the numbers Instagram last reported for each. */
+export async function insightRows(db: Database, sinceDay: string, tz: string) {
+  const { rows } = await sql<{
+    id: string
+    item_id: string
+    title: string
+    source: string
+    permalink: string | null
+    posted_at: Date
+    view_count: number | null
+    reach: number | null
+    like_count: number | null
+    comments_count: number | null
+    saves: number | null
+    shares: number | null
+  }>`
+    select p.id, p.item_id, item.title, ${itemSource} as source, p.permalink, p.posted_at,
+      p.view_count, p.reach, p.like_count, p.comments_count, p.saves, p.shares
+    from instagram_post p
+    join item on item.id = p.item_id
+    where p.status in ('posted', 'deleting')
+      and p.posted_at >= (${sinceDay}::date)::timestamp at time zone ${tz}
+    order by p.posted_at desc`.execute(db)
+  return rows.map((r): InsightRow => ({
+    id: r.id,
+    itemId: r.item_id,
+    title: r.title,
+    source: r.source,
+    permalink: r.permalink,
+    postedAt: new Date(r.posted_at),
+    views: r.view_count,
+    reach: r.reach,
+    likes: r.like_count,
+    comments: r.comments_count,
+    saves: r.saves,
+    shares: r.shares,
+  }))
 }

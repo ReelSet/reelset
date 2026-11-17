@@ -7,7 +7,7 @@ export const DEFAULT_RANGE_DAYS: RangeDays = 30
 export type MetricKey =
   'newUsers' | 'activeUsers' | 'views' | 'interactions' | 'asks' | 'rendered' | 'requests' | 'spend'
 
-export type MetricUnit = 'count' | 'usd'
+export type MetricUnit = 'count' | 'usd' | 'percent'
 
 export type MetricMeta = {
   key: MetricKey
@@ -15,6 +15,8 @@ export type MetricMeta = {
   unit: MetricUnit
   tone: 'growth' | 'neutral'
 }
+
+export type MetricDisplay = Pick<MetricMeta, 'label' | 'unit' | 'tone'>
 
 export const METRICS: readonly MetricMeta[] = [
   { key: 'newUsers', label: 'New users', unit: 'count', tone: 'growth' },
@@ -110,10 +112,12 @@ export function buildSeries(
 
 export function formatMetricValue(value: number, unit: MetricUnit): string {
   if (unit === 'usd') return `$${value.toFixed(value < 1 ? 4 : 2)}`
+  if (unit === 'percent') return `${value.toFixed(1)}%`
   return Math.round(value).toLocaleString('en-US')
 }
 
 export function formatCompact(value: number, unit: MetricUnit): string {
+  if (unit === 'percent') return `${value.toFixed(value >= 10 ? 0 : 1)}%`
   if (unit === 'usd')
     return `$${value >= 100 ? Math.round(value) : value.toFixed(value < 1 ? 2 : 1)}`
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(

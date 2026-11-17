@@ -12,6 +12,7 @@ export const ADMIN_ROUTES = {
   ingest: '/admin/ingest',
   generate: '/admin/generate',
   instagram: '/admin/instagram',
+  instagramInsights: '/admin/instagram/insights',
   settings: '/admin/settings',
   director: '/admin/director',
   gateSettings: '/admin/gate-settings',
@@ -46,6 +47,11 @@ export const PIPELINE_TABS: readonly AdminTab[] = [
   { href: ADMIN_ROUTES.gate, label: 'Gate' },
   { href: ADMIN_ROUTES.renders, label: 'Renders' },
   { href: ADMIN_ROUTES.ingest, label: 'Sources' },
+]
+
+export const INSTAGRAM_TABS: readonly AdminTab[] = [
+  { href: ADMIN_ROUTES.instagram, label: 'Queue' },
+  { href: ADMIN_ROUTES.instagramInsights, label: 'Insights' },
 ]
 
 export const SETTINGS_TABS: readonly AdminTab[] = [
@@ -87,7 +93,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'Instagram',
     icon: 'instagram',
     href: ADMIN_ROUTES.instagram,
-    tabs: [{ href: ADMIN_ROUTES.instagram, label: 'Instagram' }],
+    tabs: INSTAGRAM_TABS,
     badge: 'instagram',
   },
   {
@@ -121,6 +127,13 @@ export function isActivePath(pathname: string, href: string): boolean {
   const target = stripAdminPrefix(href)
   if (target === '/') return current === '/'
   return current === target || current.startsWith(`${target}/`)
+}
+
+/** The one tab owning the path: the longest matching href, so a nested tab does not light its parent. */
+export function activeTabHref(pathname: string, tabs: readonly AdminTab[]): string | null {
+  const matches = tabs.filter((t) => isActivePath(pathname, t.href))
+  matches.sort((a, b) => b.href.length - a.href.length)
+  return matches[0]?.href ?? null
 }
 
 export function isGroupActive(pathname: string, group: NavGroup): boolean {

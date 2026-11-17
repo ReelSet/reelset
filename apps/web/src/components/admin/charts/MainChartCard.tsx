@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   formatMetricValue,
-  type MetricMeta,
+  type MetricDisplay,
   type MetricSeries,
   type RangeDays,
 } from '@/lib/admin/stats'
@@ -12,7 +12,7 @@ import { DeltaChip } from './DeltaChip'
 import { MainAreaChart } from './MainAreaChart'
 import { CHART_COLORS } from './theme'
 
-type Props = { meta: MetricMeta; series: MetricSeries; color: string; range: RangeDays }
+type Props = { meta: MetricDisplay; series: MetricSeries; color: string; range: RangeDays }
 
 function CompareToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
