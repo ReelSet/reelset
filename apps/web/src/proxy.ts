@@ -11,16 +11,14 @@ import {
 } from '@/lib/auth/cookie-options'
 import { RETURN_PATH_HEADER } from '@/lib/auth/return-url'
 import { routeForHost } from '@/lib/host-routing'
+import { shouldRefresh } from '@/lib/auth/token-exp'
 import { legacyReelRedirect } from '@/lib/reel-url'
-import { SESSION_COOKIE, parseSessionId, sessionCookieOptions } from '@/lib/session'
-
-const ADMIN_HOST = process.env.ADMIN_HOST ?? 'admin.reelset.app'
 
 export async function proxy(request: NextRequest) {
   const route = routeForHost({
     host: request.headers.get('host'),
     pathname: request.nextUrl.pathname,
-    adminHost: ADMIN_HOST,
+    adminHost: process.env.ADMIN_HOST ?? 'admin.reelset.app',
   })
   if (route.kind === 'not_found') {
     return new NextResponse('Not found', { status: 404 })
@@ -60,7 +58,9 @@ export async function proxy(request: NextRequest) {
   const domain = sharedCookieDomain(process.env.AUTH_COOKIE_DOMAIN, host)
   const refreshed = new Set<string>()
 
-  if (url && anonKey && authCookies.length > 0) {
+  if (authCookies.length === 0) return response
+
+  if (url && anonKey && shouldRefresh(authCookies)) {
     const supabase = createServerClient(url, anonKey, {
       cookieOptions: authCookieOptions(process.env.AUTH_COOKIE_DOMAIN, host),
       cookies: {
@@ -76,10 +76,12 @@ export async function proxy(request: NextRequest) {
       },
     })
     await supabase.auth.getUser()
+  }
 
+  if (domain) {
     // Move sessions created before the shared domain existed: re-set host-only cookies on the
     // shared domain and expire the host-only copies, once per browser (marker cookie).
-    if (domain && request.cookies.get(AUTH_DOMAIN_MARKER)?.value !== '1') {
+    if (request.cookies.get(AUTH_DOMAIN_MARKER)?.value !== '1') {
       for (const { name, value } of authCookies) {
         response.headers.append('set-cookie', expireCookie(name))
         if (refreshed.has(name)) continue
@@ -102,26 +104,15 @@ export async function proxy(request: NextRequest) {
           secure: true,
         }),
       )
-    } else if (domain && refreshed.size > 0) {
+    } else if (refreshed.size > 0) {
       for (const name of refreshed) response.headers.append('set-cookie', expireCookie(name))
     }
-  }
-
-  if (!parseSessionId(request.cookies.get(SESSION_COOKIE)?.value)) {
-    response.headers.append(
-      'set-cookie',
-      serializeCookie(SESSION_COOKIE, crypto.randomUUID(), {
-        maxAge: sessionCookieOptions.maxAge,
-        httpOnly: true,
-        secure: sessionCookieOptions.secure,
-      }),
-    )
   }
   return response
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|api/events|api/mcp|api/showcase|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|api/events|api/mcp|api/showcase|api/reel|api/avatar|api/views|api/feed|api/ask|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|llms.txt|llms-full.txt|.*opengraph-image.*|apple-icon.png|icon-.*\\.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
