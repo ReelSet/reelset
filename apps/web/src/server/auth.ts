@@ -1,4 +1,5 @@
 import { UserRole, errorFields } from '@reelset/core'
+import { cache } from 'react'
 import { providerProfile } from '@/lib/profile-edit'
 import { signupInfoFrom, type SignupInfo } from '@/lib/auth/signup-info'
 import { isAdminEmail } from '@/lib/auth/admin-emails'
@@ -61,26 +62,51 @@ export async function ensureProfile(
   knownProfiles.add(key)
 }
 
-export async function getOptionalUser(): Promise<AuthUser | null> {
-  const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data.user) return null
+type SessionClaims = {
+  sub?: unknown
+  email?: unknown
+  app_metadata?: Record<string, unknown> | null
+  user_metadata?: Record<string, unknown> | null
+}
 
-  const provider = providerProfile(data.user.user_metadata)
-  const user: AuthUser = {
-    id: data.user.id,
-    email: data.user.email ?? null,
+/** Maps verified JWT claims to the user; null when they lack a subject. */
+export function userFromClaims(claims: SessionClaims | null | undefined): AuthUser | null {
+  if (!claims || typeof claims.sub !== 'string' || !claims.sub) return null
+  const provider = providerProfile(claims.user_metadata)
+  return {
+    id: claims.sub,
+    email: typeof claims.email === 'string' && claims.email ? claims.email : null,
     providerName: provider.name,
     providerAvatar: provider.avatar,
   }
+}
+
+// getClaims verifies the JWT locally against the cached JWKS (no Auth round trip for asymmetric
+// keys); cache() runs it once per render even when layout and page both ask.
+export const getOptionalUser = cache(async (): Promise<AuthUser | null> => {
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase.auth.getClaims()
+  if (error || !data) return null
+  const claims = data.claims as SessionClaims
+  const user = userFromClaims(claims)
+  if (!user) return null
   try {
-    await ensureProfile(user.id, user.email, signupInfoFrom(data.user))
+    await ensureProfile(
+      user.id,
+      user.email,
+      signupInfoFrom({
+        id: user.id,
+        email: user.email,
+        app_metadata: claims.app_metadata,
+        user_metadata: claims.user_metadata,
+      }),
+    )
   } catch (err) {
     log.error({ profileId: user.id, ...errorFields(err) }, 'profile upsert failed')
     throw err
   }
   return user
-}
+})
 
 export async function requireUser(returnTo = '/'): Promise<AuthUser> {
   const user = await getOptionalUser()
@@ -88,14 +114,14 @@ export async function requireUser(returnTo = '/'): Promise<AuthUser> {
   return user
 }
 
-export async function getUserRole(userId: string): Promise<UserRole | null> {
+export const getUserRole = cache(async (userId: string): Promise<UserRole | null> => {
   const row = await getDb()
     .selectFrom('profile')
     .select('role')
     .where('id', '=', userId)
     .executeTakeFirst()
   return row?.role ?? null
-}
+})
 
 export async function requireAdmin(returnTo = '/admin'): Promise<AuthUser> {
   const user = await requireUser(returnTo)
