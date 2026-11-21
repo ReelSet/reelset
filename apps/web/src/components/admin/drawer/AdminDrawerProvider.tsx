@@ -2,7 +2,8 @@
 
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DRAWER_EXIT_MS, DRAWER_LIVE_REFRESH_MS } from '@/lib/admin/drawer-config'
+import { DRAWER_EXIT_MS } from '@/lib/admin/drawer-config'
+import { DRAWER_LIVE_REFRESH_MS, itemDrawerIsLive } from '@/lib/admin/live-refresh'
 import {
   adminReturnPath,
   drawerHash,
@@ -140,17 +141,18 @@ export function AdminDrawerProvider({ children }: { children: React.ReactNode })
     setRefreshKey((n) => n + 1)
   }, [flash])
 
-  const isOpen = target !== null
+  const liveItemId = target?.kind === 'item' ? target.id : null
   useEffect(() => {
-    if (!isOpen) return
+    if (!liveItemId) return
     const tick = () => {
       if (document.visibilityState !== 'visible') return
-      invalidateStores()
+      if (!itemDrawerIsLive(itemStore.peek(liveItemId))) return
+      itemStore.invalidateAll()
       setRefreshKey((n) => n + 1)
     }
     const id = setInterval(tick, DRAWER_LIVE_REFRESH_MS)
     return () => clearInterval(id)
-  }, [isOpen])
+  }, [liveItemId])
 
   useEffect(() => () => clearTimeout(exitTimer.current), [])
 
