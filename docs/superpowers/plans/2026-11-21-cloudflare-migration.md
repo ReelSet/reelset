@@ -495,7 +495,20 @@ The current records are A `reelset.app` -> `216.198.79.1` (Vercel, DNS-only) and
    - Enable Web Analytics (automatic setup for the zone) if the toggle is available.
 6. **Wait for the certificates:** `curl -sI https://reelset.app` should return `server: cloudflare` and 200, then run Part E.
 
-Rollback (about 5 minutes):
+### Rollback
+
+Recorded on 2026-11-21 before the cutover (public resolution via 1.1.1.1; the wrangler OAuth token
+has no DNS read scope, so the record IDs were not read):
+
+| Name | Type | Value | Proxy |
+| --- | --- | --- | --- |
+| `reelset.app` | A | `216.198.79.1` | DNS-only |
+| `admin.reelset.app` | CNAME | `5bf357ca727ecb12.vercel-dns-017.com` | DNS-only |
+| `www.reelset.app` | none | (no record) | n/a |
+
+Before the change `https://reelset.app` answered `402` from `server: Vercel`.
+
+Steps (about 5 minutes):
 
 - Remove the custom domains: delete the `routes` and redeploy, or use Dashboard > Domains & Routes > remove.
 - Recreate A `reelset.app` -> `216.198.79.1` and CNAME `admin` -> `5bf357ca727ecb12.vercel-dns-017.com`, both DNS-only.
