@@ -4,9 +4,6 @@ import { CopyButton } from '@/components/generate/CopyButton'
 import { Accent, Hero, SectionTitle, SiteFooter } from '@/components/marketing/blocks'
 import { McpConnect } from '@/components/marketing/McpConnect'
 import { BoltIcon, ClockIcon, PlayIcon, ShareIcon, SparkleIcon } from '@/components/ui/icons'
-import { getOptionalUser } from '@/server/auth'
-
-export const dynamic = 'force-dynamic'
 
 const DESCRIPTION =
   'Connect Claude Code, Cursor, Claude Desktop or Windsurf to Reelset over MCP and let your agent turn any link into a reel.'
@@ -48,8 +45,7 @@ const TOOLS = [
 
 const PROMPT = 'Make a reel from this repo and give me the link: https://github.com/vercel/next.js'
 
-export default async function McpPage() {
-  const user = await getOptionalUser().catch(() => null)
+export default function McpPage() {
   return (
     <main className="pb-10">
       <Hero
@@ -101,7 +97,7 @@ export default async function McpPage() {
 
       <section id="connect" className="mx-auto w-full max-w-2xl scroll-mt-6 px-5 py-10">
         <SectionTitle kicker="Setup" title="Connect in two steps" />
-        <McpConnect signedIn={Boolean(user)} />
+        <McpConnect />
       </section>
 
       <section className="mx-auto w-full max-w-2xl px-5">

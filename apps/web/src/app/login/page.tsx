@@ -1,15 +1,14 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { LoginForm } from '@/components/auth/LoginForm'
-import { safeReturnPath } from '@/lib/auth/return-url'
+import { LoginFromQuery } from '@/components/auth/LoginFromQuery'
 
-export const dynamic = 'force-dynamic'
-export const metadata: Metadata = { title: 'Sign in' }
+export const metadata: Metadata = { title: 'Sign in', robots: { index: false, follow: true } }
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ next?: string; error?: string }>
-}) {
-  const params = await searchParams
-  return <LoginForm next={safeReturnPath(params.next)} failed={params.error === 'callback'} />
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginForm next="/" failed={false} />}>
+      <LoginFromQuery />
+    </Suspense>
+  )
 }

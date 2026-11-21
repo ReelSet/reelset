@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { CopyButton } from '@/components/generate/CopyButton'
 import { ApiKeys } from '@/components/profile/ApiKeys'
+import { useAuthHint } from '@/components/ui/useAuthHint'
 
 const URL_MCP = 'https://reelset.app/api/mcp'
 
@@ -64,7 +65,8 @@ const CLIENTS: Client[] = [
   },
 ]
 
-export function McpConnect({ signedIn }: { signedIn: boolean }) {
+export function McpConnect() {
+  const signedIn = useAuthHint()
   const [active, setActive] = useState('claude-code')
   const [token, setToken] = useState<string | null>(null)
   const client = CLIENTS.find((c) => c.id === active) ?? CLIENTS[0]!

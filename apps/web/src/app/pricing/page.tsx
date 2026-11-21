@@ -1,11 +1,10 @@
 import type { Metadata } from 'next'
 import { Faq, Hero, Accent, SectionTitle, SiteFooter } from '@/components/marketing/blocks'
 import { PricingCards } from '@/components/marketing/PricingCards'
-import { formatInZone, nextUtcMonthStart } from '@/lib/time/zone'
-import { getOptionalUser } from '@/server/auth'
-import { viewerTimeZone } from '@/server/timezone'
+import { LocalTime } from '@/components/ui/LocalTime'
+import { nextUtcMonthStart } from '@/lib/time/zone'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 const DESCRIPTION =
   'Reelset is free: 1,000 credits every month, about 10 reels, MCP access and MP4 downloads. Need more? Request credits.'
@@ -17,14 +16,20 @@ export const metadata: Metadata = {
   openGraph: { title: 'Pricing | Reelset', description: DESCRIPTION, url: '/pricing' },
 }
 
-const faqItems = (tz: string) => [
+const faqItems = (resetAt: Date) => [
   {
     q: 'What is a credit?',
     a: 'Credits pay for reels you make from your own links. One reel costs 100 credits, so the free 1,000 covers about 10 reels a month. Watching the feed is always free.',
   },
   {
     q: 'When do credits reset?',
-    a: `On the 1st of every month at 00:00 UTC (${formatInZone(nextUtcMonthStart(), tz, 'time')} your time) you get a fresh 1,000. Unused credits do not roll over.`,
+    a: (
+      <>
+        On the 1st of every month at 00:00 UTC (
+        <LocalTime value={resetAt.toISOString()} style="time" /> your time) you get a fresh 1,000.
+        Unused credits do not roll over.
+      </>
+    ),
   },
   {
     q: 'Can I get more credits?',
@@ -44,9 +49,7 @@ const faqItems = (tz: string) => [
   },
 ]
 
-export default async function PricingPage() {
-  const user = await getOptionalUser().catch(() => null)
-  const tz = await viewerTimeZone()
+export default function PricingPage() {
   return (
     <main className="pb-10">
       <Hero
@@ -58,10 +61,10 @@ export default async function PricingPage() {
         }
         sub="No card, no trial clock. Credits refill every month. Ask when you need more."
       />
-      <PricingCards signedIn={Boolean(user)} />
+      <PricingCards />
       <section className="mx-auto w-full max-w-2xl px-5 py-14">
         <SectionTitle kicker="FAQ" title="Good questions" />
-        <Faq items={faqItems(tz)} />
+        <Faq items={faqItems(nextUtcMonthStart())} />
       </section>
       <SiteFooter />
     </main>

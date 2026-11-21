@@ -1,5 +1,8 @@
+'use client'
+
 import { RequestCredits } from '@/components/generate/RequestCredits'
 import { BoltIcon, CheckIcon } from '@/components/ui/icons'
+import { useAuthHint } from '@/components/ui/useAuthHint'
 import { CtaLink } from './blocks'
 
 const INCLUDED = [
@@ -10,7 +13,8 @@ const INCLUDED = [
   'Failed reels are refunded',
 ]
 
-export function PricingCards({ signedIn }: { signedIn: boolean }) {
+export function PricingCards() {
+  const signedIn = useAuthHint()
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4 px-5 md:grid-cols-[1.2fr_1fr]">
       <section className="relative overflow-hidden rounded-lg border border-accent/40 bg-surface p-6">

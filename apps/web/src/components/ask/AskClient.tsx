@@ -5,6 +5,7 @@ import { useRef, useState } from 'react'
 import type { AskResponse, AskStreamEvent } from '@/lib/api-types'
 import { createSseParser } from '@/lib/ask/sse'
 import { track } from '@/lib/client/track'
+import { useAuthHint } from '@/components/ui/useAuthHint'
 import { ArrowRightIcon, ClockIcon, HomeIcon, SparkleIcon } from '@/components/ui/icons'
 import { stripCitationMarks } from '@/lib/ask/citation-marks'
 import { AnswerView } from './AnswerView'
@@ -61,12 +62,15 @@ type State =
   | { phase: 'failed'; message: string; title?: string; partial?: string }
 
 export function AskClient({
-  signedIn = false,
+  signedIn: given,
   suggestions,
 }: {
+  /** Left undefined on the cached /ask page: the rs_auth hint cookie decides. */
   signedIn?: boolean
   suggestions: string[]
 }) {
+  const hinted = useAuthHint()
+  const signedIn = given ?? hinted
   const conversationId = useRef<string | null>(null)
   const [question, setQuestion] = useState('')
   const [state, setState] = useState<State>({ phase: 'idle' })

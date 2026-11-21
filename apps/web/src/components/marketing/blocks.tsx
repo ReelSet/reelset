@@ -167,7 +167,7 @@ export function PricingTeaser() {
   )
 }
 
-export function Faq({ items }: { items: { q: string; a: string }[] }) {
+export function Faq({ items }: { items: { q: string; a: React.ReactNode }[] }) {
   return (
     <div className="divide-y divide-line rounded-lg border border-line bg-surface">
       {items.map((f) => (
