@@ -55,3 +55,4 @@ scripts/smoke/.settings-backup.json
 .tmp-*
 *.tmp
 nohup.out
+workers/render/container/remotion/

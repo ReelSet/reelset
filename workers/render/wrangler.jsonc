@@ -41,6 +41,5 @@
   "vars": {
     "TTS_VOICE": "en-US-AriaNeural",
     "BOX_URLS": "https://box1.reelset.app,https://box2.reelset.app",
-    "CHATTERBOX_URL": "https://modal-workspace--reelset-chatterbox-chatterbox-web.us-east.modal.run/synthesize",
   },
 }

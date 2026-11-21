@@ -4,13 +4,18 @@ Secrets and ids live in `reelset/.env.local` (git-ignored). Nothing here is secr
 
 ## Domains
 
-| Host                | Serves                                                |
-| ------------------- | ----------------------------------------------------- |
-| `reelset.app`       | Worker `reelset-web` (Custom Domain)                  |
-| `admin.reelset.app` | Same Worker, host-routed to `/admin` by `proxy.ts`    |
-| `media.reelset.app` | R2 bucket `reelset-media` (custom domain, SSL active) |
+| Host                           | Serves                                                   |
+| ------------------------------ | -------------------------------------------------------- |
+| `reelset.app`                  | Worker `reelset-web` (Custom Domain)                     |
+| `admin.reelset.app`            | Same Worker, host-routed to `/admin` by `proxy.ts`       |
+| `media.reelset.app`            | R2 bucket `reelset-media` (custom domain, SSL active)    |
+| `ingest.reelset.app`           | Worker `reelset-ingest` (token-gated `/internal/*` only) |
+| `render-api.reelset.app`       | Worker `reelset-render`                                  |
+| `resend-forwarder.reelset.app` | Worker `resend-forwarder` (Resend webhook)               |
 
 DNS is on Cloudflare (zone `reelset.app`). The two web hosts are Workers Custom Domains: Cloudflare owns their DNS records and certificates, so there are no A/CNAME records to edit by hand.
+
+`workers.dev` and preview URLs are off for every Worker (`workers_dev: false`, `preview_urls: false`); Workers are reached only through the custom domains above and service bindings. Keep it that way so no account-specific hostname is public. Values that name a personal account (for example the Modal endpoint `CHATTERBOX_URL` on `reelset-render`) are secrets, not `vars`.
 
 ## Cloudflare (account `deea05d3…`, Workers Paid)
 
