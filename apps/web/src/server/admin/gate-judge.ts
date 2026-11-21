@@ -13,6 +13,7 @@ import {
 } from '@/lib/admin/gate-judge'
 import { VERDICT_LABELS, fmtGateScore, type GateView } from '@/lib/admin/gate-view'
 import { shortIdRange } from '@/lib/reel-url'
+import { cfEnv, serviceFetch, type WebBindings } from '@/server/cf'
 import type { CommandResult } from './commands'
 import { itemSource } from './queries'
 
@@ -21,15 +22,19 @@ export type JudgeFn = (itemId: string, log: Logger) => Promise<JudgeOutcome>
 const CHANGES_NOTHING = 'Nothing about the item or its reel changed.'
 
 /** Asks the ingest worker to judge one item now; the row it stores is a manual, never-applied judgement. */
-export async function requestGateJudgement(itemId: string, log: Logger): Promise<JudgeOutcome> {
+export async function requestGateJudgement(
+  itemId: string,
+  log: Logger,
+  bindings: WebBindings | undefined = cfEnv(),
+): Promise<JudgeOutcome> {
   const base = process.env.INGEST_INTERNAL_URL
   const token = process.env.INGEST_INTERNAL_TOKEN
-  if (!base || !token) {
+  if ((!base && !bindings?.INGEST) || !token) {
     log.warn({ itemId }, 'gate judge not configured')
     return { ok: false, code: 'not_configured' }
   }
   try {
-    const res = await fetch(`${base.replace(/\/+$/, '')}${JUDGE_PATH}`, {
+    const res = await serviceFetch(bindings?.INGEST, base, JUDGE_PATH, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ itemId }),

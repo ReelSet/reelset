@@ -24,6 +24,20 @@ describe('workerConfigFromEnv', () => {
   })
 })
 
+describe('workerConfigFromEnv with bindings', () => {
+  it('routes through the RENDER binding when present, and needs the token', async () => {
+    const binding = { fetch: vi.fn(async () => Response.json(account)) }
+    const env = { IG_ADMIN_URL: 'https://x.app', IG_ADMIN_TOKEN: 't' }
+    expect(workerConfigFromEnv({ IG_ADMIN_URL: 'https://x.app' }, { RENDER: binding })).toBeNull()
+    const cfg = workerConfigFromEnv(env, { RENDER: binding })!
+    expect(await checkInstagramAccount(cfg)).toEqual({ ok: true, value: account })
+    expect((binding.fetch.mock.calls[0] as unknown as [string])[0]).toBe(
+      'https://internal/admin/ig/status',
+    )
+    expect(workerConfigFromEnv(env, {})).toEqual({ baseUrl: 'https://x.app', token: 't' })
+  })
+})
+
 describe('worker client', () => {
   it('sends the bearer token and the 2FA code', async () => {
     const fetchMock = vi.fn(async () => Response.json(account))

@@ -76,6 +76,19 @@ describe('requestGateJudgement', () => {
     expect(await requestGateJudgement(ITEM, log)).toEqual({ ok: false, code: 'unreachable' })
   })
 
+  it('uses the INGEST service binding when present', async () => {
+    vi.stubEnv('INGEST_INTERNAL_URL', '')
+    const binding = { fetch: vi.fn(async () => Response.json({ ok: true, decision })) }
+    expect(await requestGateJudgement(ITEM, log, { INGEST: binding })).toEqual({
+      ok: true,
+      decision,
+    })
+    const [url, init] = binding.fetch.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://internal/internal/gate/judge')
+    expect(init.headers).toMatchObject({ authorization: 'Bearer secret-token' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('does not call out when the worker is not configured', async () => {
     vi.stubEnv('INGEST_INTERNAL_TOKEN', '')
     expect(await requestGateJudgement(ITEM, log)).toEqual({ ok: false, code: 'not_configured' })

@@ -1,5 +1,6 @@
 import { igAccountSchema, type IgAccount } from '@reelset/core'
 import { z } from 'zod'
+import { cfEnv, type WebBindings } from '@/server/cf'
 
 export const WORKER_TIMEOUT_MS = { status: 60_000, connect: 280_000, run: 8_000 }
 
@@ -7,12 +8,20 @@ export type WorkerConfig = { baseUrl: string; token: string; fetch?: typeof fetc
 
 export type WorkerResult<T> = { ok: true; value: T } | { ok: false; message: string }
 
+/** Prefers the RENDER service binding on Workers, which skips the public hop on 280 s connects. */
 export function workerConfigFromEnv(
   env: Record<string, string | undefined> = process.env,
+  bindings: WebBindings | undefined = cfEnv(),
 ): WorkerConfig | null {
   const baseUrl = env.IG_ADMIN_URL?.trim()
   const token = env.IG_ADMIN_TOKEN?.trim()
-  return baseUrl && token ? { baseUrl: baseUrl.replace(/\/$/, ''), token } : null
+  if (!token) return null
+  const render = bindings?.RENDER
+  if (render) {
+    const viaBinding = (url: string, init?: RequestInit) => render.fetch(url, init)
+    return { baseUrl: 'https://internal', token, fetch: viaBinding as typeof fetch }
+  }
+  return baseUrl ? { baseUrl: baseUrl.replace(/\/$/, ''), token } : null
 }
 
 async function call<T>(
