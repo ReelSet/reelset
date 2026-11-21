@@ -26,9 +26,11 @@ export async function cropToAvatar(file: File): Promise<PickedAvatar> {
     AVATAR_SIZE,
   )
   bitmap.close()
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, 'image/webp', 0.9),
-  )
+  const encode = (type: string) =>
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.9))
+  // Safari cannot encode WebP and silently hands back a PNG; JPEG is much smaller than that.
+  let blob = await encode('image/webp')
+  if (blob && blob.type !== 'image/webp') blob = await encode('image/jpeg')
   if (!blob) throw new Error('encode')
   return { blob, previewUrl: URL.createObjectURL(blob) }
 }

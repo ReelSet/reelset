@@ -1,8 +1,7 @@
 import pino from 'pino'
-import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import type { Database } from '@reelset/core'
-import { AVATAR_MAX_BYTES } from '@/lib/profile-edit'
+import { AVATAR_STORED_MAX_BYTES } from '@/lib/profile-edit'
 import { removeAvatar, saveAvatar, saveDetails } from './profile-edit'
 
 const log = pino({ level: 'silent' })
@@ -34,10 +33,29 @@ function fakeDb(opts: { claim?: boolean } = {}) {
   return { db: db as unknown as Database, calls }
 }
 
-async function png(w = 600, h = 300) {
-  return sharp({ create: { width: w, height: h, channels: 3, background: '#c8f751' } })
-    .png()
-    .toBuffer()
+/** A VP8X WebP header; the server reads only the header, so no pixel data is needed. */
+function webp(w = 256, h = 256) {
+  const le24 = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff]
+  const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0))
+  return Uint8Array.from([
+    ...ascii('RIFF'),
+    0,
+    0,
+    0,
+    0,
+    ...ascii('WEBPVP8X'),
+    10,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    ...le24(w - 1),
+    ...le24(h - 1),
+    ...new Array(16).fill(0),
+  ])
 }
 
 describe('saveDetails', () => {
@@ -67,21 +85,38 @@ describe('saveDetails', () => {
 })
 
 describe('saveAvatar', () => {
-  it('re-encodes a valid image to a 256px square webp', async () => {
+  it('stores a square webp of at most 256 px as uploaded', async () => {
     const { db, calls } = fakeDb()
-    expect(await saveAvatar(db, 'p', await png(), log)).toEqual({ ok: true, value: undefined })
+    const body = webp()
+    expect(await saveAvatar(db, 'p', body, log)).toEqual({ ok: true, value: undefined })
     const insert = calls.find((c) => c.op === 'insert:values')!.values as {
       bytes: Buffer
       content_type: string
     }
-    const meta = await sharp(insert.bytes).metadata()
-    expect([meta.format, meta.width, meta.height]).toEqual(['webp', 256, 256])
+    expect(Buffer.compare(insert.bytes, Buffer.from(body))).toBe(0)
     expect(insert.content_type).toBe('image/webp')
+  })
+
+  it('keeps the sniffed type for the Safari JPEG fallback', async () => {
+    const { db, calls } = fakeDb()
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 128, 0, 128, 3, 0, 0, 0])
+    expect(await saveAvatar(db, 'p', jpeg, log)).toEqual({ ok: true, value: undefined })
+    const insert = calls.find((c) => c.op === 'insert:values')!.values as { content_type: string }
+    expect(insert.content_type).toBe('image/jpeg')
+  })
+
+  it('rejects images that are not a small square', async () => {
+    const { db, calls } = fakeDb()
+    expect(await saveAvatar(db, 'p', webp(600, 300), log)).toMatchObject({ error: 'unsupported' })
+    expect(await saveAvatar(db, 'p', webp(512, 512), log)).toMatchObject({ error: 'unsupported' })
+    expect(calls).toHaveLength(0)
   })
 
   it('rejects oversized, empty, non-image and corrupt uploads', async () => {
     const { db, calls } = fakeDb()
-    expect(await saveAvatar(db, 'p', new Uint8Array(AVATAR_MAX_BYTES + 1), log)).toMatchObject({
+    expect(
+      await saveAvatar(db, 'p', new Uint8Array(AVATAR_STORED_MAX_BYTES + 1), log),
+    ).toMatchObject({
       error: 'too_large',
     })
     expect(await saveAvatar(db, 'p', new Uint8Array(0), log)).toMatchObject({ error: 'invalid' })
@@ -94,7 +129,7 @@ describe('saveAvatar', () => {
 
   it('does not write when rate limited', async () => {
     const { db, calls } = fakeDb({ claim: false })
-    expect(await saveAvatar(db, 'p', await png(), log)).toMatchObject({ error: 'rate_limited' })
+    expect(await saveAvatar(db, 'p', webp(), log)).toMatchObject({ error: 'rate_limited' })
     expect(calls.some((c) => c.op === 'insert:values')).toBe(false)
   })
 })

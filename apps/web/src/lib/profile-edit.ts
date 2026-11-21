@@ -5,6 +5,8 @@ export const NAME_MAX = 40
 export const BIO_MAX = 160
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024
 export const AVATAR_SIZE = 256
+// The browser accepts originals up to AVATAR_MAX_BYTES, then uploads a 256 px square (~20 KB).
+export const AVATAR_STORED_MAX_BYTES = 512 * 1024
 export const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 export const EDITS_PER_HOUR = 20
 

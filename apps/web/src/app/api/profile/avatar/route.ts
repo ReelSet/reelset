@@ -1,12 +1,11 @@
 import { errorFields } from '@reelset/core'
-import { AVATAR_MAX_BYTES } from '@/lib/profile-edit'
+import { AVATAR_STORED_MAX_BYTES } from '@/lib/profile-edit'
 import { authErrorResponse, requireUser } from '@/server/auth'
 import { getDb } from '@/server/db'
 import { routeLog } from '@/server/logger'
 import { removeAvatar, saveAvatar, type EditResult } from '@/server/profile-edit'
 
 export const dynamic = 'force-dynamic'
-export const runtime = 'nodejs'
 
 const STATUS = { invalid: 400, too_large: 413, unsupported: 415, rate_limited: 429 } as const
 
@@ -16,7 +15,7 @@ function respond(result: EditResult) {
 }
 
 async function readBody(request: Request): Promise<Uint8Array | null> {
-  if (Number(request.headers.get('content-length') ?? 0) > AVATAR_MAX_BYTES) return null
+  if (Number(request.headers.get('content-length') ?? 0) > AVATAR_STORED_MAX_BYTES) return null
   const reader = request.body?.getReader()
   if (!reader) return new Uint8Array(0)
   const chunks: Uint8Array[] = []
@@ -25,13 +24,19 @@ async function readBody(request: Request): Promise<Uint8Array | null> {
     const { done, value } = await reader.read()
     if (done) break
     size += value.byteLength
-    if (size > AVATAR_MAX_BYTES) {
+    if (size > AVATAR_STORED_MAX_BYTES) {
       await reader.cancel()
       return null
     }
     chunks.push(value)
   }
-  return Buffer.concat(chunks)
+  const out = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
 }
 
 export async function POST(request: Request) {
