@@ -321,9 +321,14 @@ async function handleRequest(
     return 'failed'
   }
 
-  if (state.status === 'found') await kickItem(deps, state.id, req.id, il)
+  const started = state.status === 'found' && (await kickItem(deps, state.id, req.id, il))
   await setReelRequestResult(db, req.id, { status: 'processing', itemId: state.id }, ['resolving'])
-  il.info({ extraSources: mentions.length - 1 }, 'reel request attached to item')
+  if (!started) {
+    // Joining a reel that is already being made costs nothing extra, like an already-rendered one.
+    await refundRequest(db, req.id, il)
+    il.info('item already in progress, request joined it and was refunded')
+  }
+  il.info({ extraSources: mentions.length - 1, started }, 'reel request attached to item')
   return 'processing'
 }
 

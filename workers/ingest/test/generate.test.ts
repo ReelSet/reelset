@@ -384,6 +384,7 @@ describe('processReelRequests', () => {
 
     expect(queue.send).toHaveBeenCalledTimes(1)
     expect(queue.send).toHaveBeenCalledWith({ itemId: 'item-1', attempt: 1 })
+    expect(fake.find('"refunded" =')).toHaveLength(0)
     expect(requestResults(fake)[0]).toMatchObject({ status: 'processing' })
     expect(requestResults(fake)[0]!.params).toContain('item-1')
   })
@@ -497,6 +498,7 @@ describe('processReelRequests', () => {
     expect(queue.send).not.toHaveBeenCalled()
     expect(fake.find('insert into "item_event"')).toHaveLength(0)
     expect(requestResults(fake)[0]!.params).toContain('item-5')
+    expect(fake.find('"refunded" =')).toHaveLength(1)
   })
 
   it('still kicks an existing public item that was never admitted, without changing visibility', async () => {
@@ -509,6 +511,7 @@ describe('processReelRequests', () => {
     await processReelRequests(deps)
 
     expect(queue.send).toHaveBeenCalledWith({ itemId: 'item-6', attempt: 1 })
+    expect(fake.find('"refunded" =')).toHaveLength(0)
     expect(fake.queries.some((q) => /update "item" set .*"visibility"/.test(q.sql))).toBe(false)
   })
 
