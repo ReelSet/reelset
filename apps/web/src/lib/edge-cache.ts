@@ -29,3 +29,42 @@ export function edgeCacheKey(req: Request): string {
   url.hash = ''
   return `https://${url.host}${url.pathname}${url.search}`
 }
+
+/** Parses a single `bytes=` range against a known size; null when absent, multi-part or unsatisfiable. */
+export function parseByteRange(
+  header: string,
+  size: number,
+): { start: number; end: number } | null {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim())
+  if (!m || (m[1] === '' && m[2] === '') || size <= 0) return null
+  let start: number
+  let end: number
+  if (m[1] === '') {
+    start = Math.max(0, size - Number(m[2]))
+    end = size - 1
+  } else {
+    start = Number(m[1])
+    end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1)
+  }
+  return start <= end && start < size ? { start, end } : null
+}
+
+/**
+ * Answers a Range request from a full 200: production `caches.default.match` returns the whole
+ * body, and Safari will not play video from a server that ignores Range.
+ */
+export async function withRange(full: Response, range: string | null): Promise<Response> {
+  if (!range || full.status !== 200) return full
+  const body = await full.arrayBuffer()
+  const r = parseByteRange(range, body.byteLength)
+  const headers = new Headers(full.headers)
+  headers.set('accept-ranges', 'bytes')
+  if (!r) {
+    headers.set('content-range', `bytes */${body.byteLength}`)
+    headers.delete('content-length')
+    return new Response(null, { status: 416, headers })
+  }
+  headers.set('content-range', `bytes ${r.start}-${r.end}/${body.byteLength}`)
+  headers.set('content-length', String(r.end - r.start + 1))
+  return new Response(body.slice(r.start, r.end + 1), { status: 206, headers })
+}

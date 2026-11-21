@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { edgeCacheKey, isEdgeCacheableRequest, isEdgeCacheableResponse } from './edge-cache'
+import {
+  edgeCacheKey,
+  isEdgeCacheableRequest,
+  isEdgeCacheableResponse,
+  parseByteRange,
+  withRange,
+} from './edge-cache'
 
 const ADMIN = 'admin.reelset.app'
 const get = (path: string, headers: Record<string, string> = {}, host = 'reelset.app') =>
@@ -64,5 +70,50 @@ describe('edgeCacheKey', () => {
     const a = get('/api/avatar/x?v=2&a=1#f', { range: 'bytes=0-1', cookie: 'rs_tz=UTC' })
     expect(edgeCacheKey(a)).toBe('https://reelset.app/api/avatar/x?a=1&v=2')
     expect(edgeCacheKey(get('/llms.txt'))).toBe('https://reelset.app/llms.txt')
+  })
+})
+
+describe('parseByteRange', () => {
+  it('handles open, closed and suffix ranges', () => {
+    expect(parseByteRange('bytes=0-1', 10)).toEqual({ start: 0, end: 1 })
+    expect(parseByteRange('bytes=4-', 10)).toEqual({ start: 4, end: 9 })
+    expect(parseByteRange('bytes=-3', 10)).toEqual({ start: 7, end: 9 })
+    expect(parseByteRange('bytes=5-99', 10)).toEqual({ start: 5, end: 9 })
+  })
+
+  it('rejects multi-part, malformed and unsatisfiable ranges', () => {
+    expect(parseByteRange('bytes=0-1,4-5', 10)).toBeNull()
+    expect(parseByteRange('items=0-1', 10)).toBeNull()
+    expect(parseByteRange('bytes=-', 10)).toBeNull()
+    expect(parseByteRange('bytes=10-', 10)).toBeNull()
+    expect(parseByteRange('bytes=5-2', 10)).toBeNull()
+  })
+})
+
+describe('withRange', () => {
+  const full = () =>
+    new Response('0123456789', { headers: { 'content-type': 'video/mp4', 'x-edge-cache': 'HIT' } })
+
+  it('returns the response untouched without a Range header or for a non-200', async () => {
+    const res = full()
+    expect(await withRange(res, null)).toBe(res)
+    const partial = new Response('x', { status: 206 })
+    expect(await withRange(partial, 'bytes=0-0')).toBe(partial)
+  })
+
+  it('slices a 206 with content-range and keeps the other headers', async () => {
+    const res = await withRange(full(), 'bytes=2-4')
+    expect(res.status).toBe(206)
+    expect(await res.text()).toBe('234')
+    expect(res.headers.get('content-range')).toBe('bytes 2-4/10')
+    expect(res.headers.get('content-length')).toBe('3')
+    expect(res.headers.get('content-type')).toBe('video/mp4')
+    expect(res.headers.get('x-edge-cache')).toBe('HIT')
+  })
+
+  it('answers 416 for an unsatisfiable range', async () => {
+    const res = await withRange(full(), 'bytes=20-')
+    expect(res.status).toBe(416)
+    expect(res.headers.get('content-range')).toBe('bytes */10')
   })
 })
