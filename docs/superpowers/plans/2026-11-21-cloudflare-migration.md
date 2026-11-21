@@ -448,6 +448,28 @@ Run everything from `apps/web`, with `unset CLOUDFLARE_API_TOKEN` first. Never p
    - Expected: auth flows fail here (see Risks), and the Cache API shows MISS only.
 6. **Delete the temp files when Part E passes:** `rm /private/tmp/claude-501/reelset-web.build.env /private/tmp/claude-501/reelset-web.secrets.json /private/tmp/claude-501/reelset-vercel.env`. Also delete any `apps/web/.env*` that the Vercel CLI wrote.
 
+### Part C: as built (2026-11-21)
+
+- **Secrets.** The merged files were built as planned (the direct DB host was reachable, so the
+  build env keeps it). `wrangler secret bulk` set the 8 secrets; the JSON is deleted.
+  `/private/tmp/claude-501/reelset-web.build.env` (mode 600) is kept for the Part D redeploy.
+- **`deploy:cf` needs a local Hyperdrive string.** `opennextjs-cloudflare deploy` reads bindings
+  through `getPlatformProxy`, which refuses a Hyperdrive binding without
+  `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`. `deploy:cf` and `upload:cf` now
+  default it to `DATABASE_URL`, which the build env provides. The "DOQueueHandler is not
+  exported" warning comes from that local proxy; the deployed worker exports it.
+- **Range from the edge cache.** In production `caches.default.match` returns the full 200 for a
+  Range request (only miniflare answered 206), and Safari will not play video from a server that
+  ignores Range. `worker.ts` now slices hits and misses itself (`withRange` in
+  `W/lib/edge-cache.ts`: single `bytes=` ranges, 416 when unsatisfiable). Tested.
+- **Smoke on workers.dev** (version after the Range fix): every public page, OG PNG, sitemap
+  (754 URLs), robots, llms, manifest, `/api/feed`, `/login`, `/mcp`, `/pricing` 200 with no
+  Set-Cookie; `/auth/callback` with and without a bad code 307s to `/login?error=callback`;
+  `/api/ask` 401 with `loginUrl` when anonymous; `/api/mcp` 401; `/admin` 404 on a non-admin
+  host as `routeForHost` dictates; `/api/reel` and `/api/showcase` edge MISS then HIT, Range 206.
+  Tail over a 50-URL crawl: no exceptions, cold ISR renders 250-580 ms CPU (first isolates),
+  the recrawl p50 7 ms and max 51 ms CPU.
+
 ## Part D: DNS cutover
 
 The current records are A `reelset.app` -> `216.198.79.1` (Vercel, DNS-only) and CNAME `admin` -> `5bf357ca727ecb12.vercel-dns-017.com` (DNS-only). There is no `www`. Zone `93d415b2cc23c22f5c705fc3c008bbeb`, account `deea05d376a100365fb3e5fed18053ee`.
