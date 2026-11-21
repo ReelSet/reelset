@@ -12,6 +12,7 @@
     "build:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build",
     "preview:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build && CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-$DATABASE_URL} opennextjs-cloudflare deploy",
+    "deploy:canary": "bash scripts/deploy-canary.sh",
     "upload:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build && CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-$DATABASE_URL} opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv --include-runtime false --strict-vars false cloudflare-env.d.ts"
   },

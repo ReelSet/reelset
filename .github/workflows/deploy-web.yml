@@ -51,14 +51,6 @@ jobs:
           cache: npm
       - if: steps.creds.outputs.ready == 'true'
         run: npm ci
-      - name: Build and deploy reelset-web (OpenNext)
+      - name: Upload, canary-test at 0% and promote reelset-web
         if: steps.creds.outputs.ready == 'true'
-        run: npm run deploy:cf -w @reelset/web
-      - name: Smoke test reelset.app
-        if: steps.creds.outputs.ready == 'true'
-        run: |
-          for path in / /t /login /sitemap.xml /robots.txt /api/feed /opengraph-image; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cookie: a=b' "https://reelset.app$path")
-            echo "$path -> $code"
-            [ "$code" = 200 ] || { echo "::error::$path returned $code"; exit 1; }
-          done
+        run: npm run deploy:canary -w @reelset/web

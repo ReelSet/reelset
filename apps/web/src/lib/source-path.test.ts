@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isUnknownSourcePath, sourceRewritePath } from './source-path'
+import { SOURCES } from '@reelset/core'
+import { PROXY_SOURCES, isUnknownSourcePath, sourceRewritePath } from './source-path'
 
 describe('sourceRewritePath', () => {
   it('maps the topics index and a topic page to their source segment', () => {
@@ -37,4 +38,18 @@ describe('unknown sources', () => {
     expect(isUnknownSourcePath('/t/rust')).toBe(false)
     expect(isUnknownSourcePath('/t/by')).toBe(false)
   })
+})
+
+it('keeps the proxy source list equal to the core enum', () => {
+  expect([...PROXY_SOURCES].sort()).toEqual([...SOURCES].sort())
+})
+
+it('keeps proxy.ts and its lib imports free of @reelset/core', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const files = ['proxy.ts', 'lib/source-path.ts', 'lib/reel-url.ts', 'lib/host-routing.ts']
+  for (const file of files) {
+    const text = readFileSync(resolve(__dirname, '..', file), 'utf8')
+    expect(text, file).not.toMatch(/from '@reelset\/core'/)
+  }
 })

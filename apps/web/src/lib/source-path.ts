@@ -1,12 +1,15 @@
 // Client-safe. The topic pages serve `?source=` filters from internal path segments so each
 // variant is its own cached page: proxy.ts rewrites `/t?source=x` to `/t/by/x` and
 // `/t/<topic>?source=x` to `/t/<topic>/by/x`. Only real sources get a segment, so crawlers
-// cannot mint one cached page per made-up source.
-import { SOURCES } from '@reelset/core'
+// cannot mint one cached page per made-up source. The list is local because proxy.ts must not
+// import @reelset/core (it drags pg and pino into the middleware bundle and 500s on Workers);
+// source-path.test.ts keeps it equal to the core enum.
 
 export const SOURCE_SEGMENT = 'by'
 
-const KNOWN = new Set<string>(SOURCES)
+export const PROXY_SOURCES = ['hn', 'github', 'news', 'reddit', 'youtube', 'papers'] as const
+
+const KNOWN = new Set<string>(PROXY_SOURCES)
 const TOPIC_SHAPE = /^[^/]+$/
 const SOURCE_PATH = /^\/t\/(?:[^/]+\/)?by\/([^/]+)\/?$/
 
