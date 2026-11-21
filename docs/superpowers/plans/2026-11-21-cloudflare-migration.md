@@ -495,6 +495,27 @@ The current records are A `reelset.app` -> `216.198.79.1` (Vercel, DNS-only) and
    - Enable Web Analytics (automatic setup for the zone) if the toggle is available.
 6. **Wait for the certificates:** `curl -sI https://reelset.app` should return `server: cloudflare` and 200, then run Part E.
 
+### Part D: as built (2026-11-21)
+
+- **Routes.** Both custom domains are in `apps/web/wrangler.jsonc` and `deploy:cf` attached them
+  (no "externally managed DNS" error, so the API fallback was not needed).
+- **Cookie crash after cutover.** Every request with a `Cookie` header threw (500 / 1101), so no
+  signed-in user, magic-link callback or admin page worked. The OpenNext converters do
+  `import cookieParser from "cookie"`; cookie@1.1.1 is TS-compiled CJS with `__esModule` and no
+  `default`, so esbuild's interop gives `undefined.parse`. An npm override to cookie 0.7.2 under
+  `@opennextjs/aws` does not take (npm keeps the hoisted 1.1.1 and marks it invalid). Instead
+  `apps/web/scripts/patch-opennext-cookie.mjs` rewrites both converters to a namespace import;
+  `build:cf`, `preview:cf`, `deploy:cf` and `upload:cf` run it first. It is idempotent and fails
+  the build if the import is not found (so an OpenNext upgrade that changes the file is noticed).
+- **Verified live** (version `4b3e1b4a`): `/`, `/t`, `/login`, `/robots.txt`, `/llms.txt`,
+  `/sitemap.xml`, `/api/feed` return 200 with no cookie, `Cookie: a=b`, and an `sb-*-auth-token`
+  cookie; `admin.reelset.app/` 307s to `/login?next=%2F`; `/auth/callback?code=bad` 307s to
+  `/login?error=callback`. `wrangler tail` over that run: 80 requests, 0 exceptions, CPU p50
+  16 ms, max 648 ms (cold isolate).
+- **Vercel domains detached.** `reelset.app` and `admin.reelset.app` were removed from the paused
+  Vercel project with `vercel api -X DELETE /v9/projects/reelset/domains/<host>`; the project
+  itself and `reelset-drab.vercel.app` are kept.
+
 ### Rollback
 
 Recorded on 2026-11-21 before the cutover (public resolution via 1.1.1.1; the wrangler OAuth token
@@ -512,7 +533,8 @@ Steps (about 5 minutes):
 
 - Remove the custom domains: delete the `routes` and redeploy, or use Dashboard > Domains & Routes > remove.
 - Recreate A `reelset.app` -> `216.198.79.1` and CNAME `admin` -> `5bf357ca727ecb12.vercel-dns-017.com`, both DNS-only.
-- Vercel serves again only after the pause lifts (new billing cycle or upgrade). The Vercel project and its domains are kept, so no reconfiguration is needed.
+- Re-attach the domains to Vercel: `vercel api -X POST /v10/projects/reelset/domains` with body `{"name":"reelset.app"}` and again for `admin.reelset.app` (they were detached after the cutover).
+- Vercel serves again only after the pause lifts (new billing cycle or upgrade).
 - R2, D1 and the DO hold cache only and can stay.
 
 ## Part E: verification checklist

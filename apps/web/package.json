@@ -9,10 +9,10 @@
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:cf": "opennextjs-cloudflare build",
-    "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy:cf": "opennextjs-cloudflare build && CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-$DATABASE_URL} opennextjs-cloudflare deploy",
-    "upload:cf": "opennextjs-cloudflare build && CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-$DATABASE_URL} opennextjs-cloudflare upload",
+    "build:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build",
+    "preview:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build && CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-$DATABASE_URL} opennextjs-cloudflare deploy",
+    "upload:cf": "node scripts/patch-opennext-cookie.mjs && opennextjs-cloudflare build && CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-$DATABASE_URL} opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv --include-runtime false --strict-vars false cloudflare-env.d.ts"
   },
   "dependencies": {
