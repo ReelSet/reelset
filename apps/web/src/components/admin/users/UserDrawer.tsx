@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { appHref } from '@/lib/admin/app-url'
 import { fmtDate, truncate } from '@/lib/admin/format'
 import type { UserDrawerData, UserPreview } from '@/lib/admin/drawer-types'
 import { providerLabel } from '@/lib/admin/user-display'
@@ -62,9 +62,9 @@ function Requests({ rows, tz }: { rows: UserDrawerData['requests']; tz: string }
             <span>
               via {r.via} · {r.credits_charged} credits{r.refunded ? ' (refunded)' : ''}
             </span>
-            <Link href={`/create/${r.id}`} className="text-accent hover:underline">
+            <a href={appHref(`/create/${r.id}`)} className="text-accent hover:underline">
               Open
-            </Link>
+            </a>
           </div>
           {r.error && <p className="mt-1 text-danger">{truncate(r.error, 120)}</p>}
         </li>
