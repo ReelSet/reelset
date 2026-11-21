@@ -159,6 +159,53 @@ Run `npm run typecheck && npm test` after every step.
 
 **A13. Remove Vercel analytics.** Remove `<Analytics />` from `W/app/layout.tsx` and drop `@vercel/analytics` from `apps/web/package.json`.
 
+### Part A: as built (2026-11-21)
+
+Done in commits 7631ca0..193a620. Checked locally with `next build` and `next start`: every
+public route is `○`/`●` ISR and sends no Set-Cookie. Changes from the plan above:
+
+- **Build-time DB.** `db.<ref>.supabase.co` is IPv6-only and does not resolve here. The pooler
+  that works is `aws-1-us-west-2.pooler.supabase.com:6543`, user `postgres.<ref>` (transaction
+  mode). Part C can use it directly without probing.
+- **A2.** The proxy also keeps the `rs_auth` hint in sync. It sets the hint when `sb-*` cookies
+  exist without it, and clears it when it is present with no session, so sessions from before
+  this change get the hint.
+- **A3.** `getOptionalUser` and `getUserRole` use React `cache()`. The JWKS cache in auth-js is
+  module-global (plain data), so it is safe on Workers.
+- **A4, query reading.** `?topic=`/`?source=` are read from `window.location` after mount, not
+  from `useSearchParams` in `<Suspense>`. Suspense would have dropped the whole feed and the
+  `ReelPanel` out of the server HTML.
+- **A4, caching.**
+  - `unstable_cache` lowers the page's revalidate to its own and adds its tags to the page.
+    So the anonymous feed is cached per page period: 300 s on `/`, 3600 s on `/r/*`.
+  - The reel page combines that one shared anonymous page with `cachedFocusItem(id)`, so it
+    does not rank once per slug.
+  - Tags: `reel:<shortid>` (`reelTag()` in `lib/cache-tags.ts` accepts a uuid or a short id)
+    on the reel page, the OG fields and the focus card, and `feed` (`FEED_TAG`) on the
+    anonymous feeds. B6 should call `revalidateTag(reelTag(id))` and `revalidateTag(FEED_TAG)`.
+  - `/api/feed` takes `?focus=<uuid>` for the signed-in refetch on `/r/*`.
+- **A5.** `?source=` stays exact instead of becoming a filter over rendered cards (cards only
+  know their lead source, and shelves and counts depend on the source).
+  - `proxy.ts` rewrites `/t?source=s` to `/t/by/s` and `/t/<topic>?source=s` to
+    `/t/<topic>/by/s` (`lib/source-path.ts`). Those routes are separate ISR pages that
+    validate with `parseSource` and redirect unknown values to the base page.
+  - The `seo-cache` period went from 60 s to 300 s to match the pages.
+  - `AppShell` is now static. `ViewerAppShell` (server avatar) is kept for `/profile` and
+    `/create`.
+- **A6.** `/create` stays dynamic: its layout reads the tz cookie and it gates on auth. `/login`
+  is static, reads its query in the browser and is now `noindex`.
+- **A7.** If the database is unreachable during `next build`, the sitemap falls back to the
+  static pages instead of failing the build. At runtime a failure still throws, so the last
+  good sitemap keeps being served.
+- **A8.** No custom fonts were loaded, so nothing changed there. `twitter:image` points at
+  `<path>/opengraph-image`.
+- **A9.** The internal `/t/by/` and `/t/*/by/` paths are disallowed as well.
+- **A11.** The item drawer also keeps polling while a render is `queued` or `rendering`, even
+  when the item is `rendered`. User drawers no longer poll.
+- **A12.** `/api/reel/[id]` uses `s-maxage=3600`, not 86400, so a takedown leaves every edge
+  cache within the reel page's ISR hour. The Cache API cannot be purged across colos from the
+  Worker.
+
 ## Part B: Cloudflare port
 
 **B1. Dependencies.**
