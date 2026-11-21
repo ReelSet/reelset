@@ -7,7 +7,7 @@
 - `packages/core` — Prisma schema + migrations, generated Kysely types, `createDb`, logger, domain rules (source enum, item status machine, render key, embeddings), `transitionItem`. Every other package imports `@reelset/core`.
 - `workers/ingest` — Cloudflare Cron + Queues: fetch sources, normalize, dedupe, score, LLM TLDR + reel script, embed.
 - `workers/render` — Cloudflare Queue consumer + Container (`workers/render/container`: youtube-transcript-api, edge-tts, FFmpeg) -> MP4 in R2.
-- `apps/web` — Next.js PWA on Vercel: feed, auth (Supabase), likes, /api/ask, /api/events, /admin.
+- `apps/web` — Next.js PWA on Cloudflare Workers (OpenNext): feed, auth (Supabase), likes, /api/ask, /api/events, /admin.
 
 ## Rules
 

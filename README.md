@@ -85,7 +85,7 @@ turned into a TLDR and a reel script before rendering.
 
 | Path                                   | What it is                                                               |
 | -------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/web`                             | Next.js app (reader, create, MCP server at `/api/mcp`, admin) on Vercel  |
+| `apps/web`                             | Next.js app (reader, create, MCP server at `/api/mcp`, admin) on Workers |
 | `workers/ingest`                       | Cloudflare Worker that discovers and ingests projects                    |
 | `workers/render`                       | Cloudflare Worker + container that renders reels (Skia renderer, Python) |
 | `packages/core`                        | Shared database schema, migrations and types                             |
@@ -113,7 +113,17 @@ Secrets live in `.env.local` / `.dev.vars` and are never committed.
 
 ## Deploy
 
-See [docs/infra.md](docs/infra.md) for domains, Cloudflare, Supabase and Vercel setup. The web app deploys from `main` via the Vercel Git integration (root directory `apps/web`).
+See [docs/infra.md](docs/infra.md) for domains, Cloudflare, Supabase and the legacy Vercel setup.
+
+The web app runs on the Cloudflare Worker `reelset-web` (OpenNext) and deploys from a local machine:
+
+```bash
+set -a; . <build env file>; set +a       # NEXT_PUBLIC_*, AUTH_COOKIE_DOMAIN, MEDIA_PUBLIC_BASE_URL, DATABASE_URL
+npm run deploy:cf -w @reelset/web       # build, populate the R2/D1 caches, deploy
+npm run preview:cf -w @reelset/web      # local workerd preview
+```
+
+Never run plain `wrangler deploy` for `apps/web`: it skips `populateCache`, so the incremental and tag caches go stale.
 
 ## Community
 

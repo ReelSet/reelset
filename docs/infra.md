@@ -6,18 +6,20 @@ Secrets and ids live in `reelset/.env.local` (git-ignored). Nothing here is secr
 
 | Host                | Serves                                                |
 | ------------------- | ----------------------------------------------------- |
-| `reelset.app`       | Web app (Vercel)                                      |
-| `admin.reelset.app` | Same Vercel app, host-routed to `/admin`              |
+| `reelset.app`       | Worker `reelset-web` (Custom Domain)                  |
+| `admin.reelset.app` | Same Worker, host-routed to `/admin` by `proxy.ts`    |
 | `media.reelset.app` | R2 bucket `reelset-media` (custom domain, SSL active) |
 
-DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey cloud).
+DNS is on Cloudflare (zone `reelset.app`). The two web hosts are Workers Custom Domains: Cloudflare owns their DNS records and certificates, so there are no A/CNAME records to edit by hand.
 
 ## Cloudflare (account `deea05d3…`, Workers Paid)
 
 - Queues: `ingest-items`, `ingest-items-dlq`, `render-jobs`, `render-jobs-dlq`
 - R2: `reelset-media`, custom domain `media.reelset.app`
-- Hyperdrive: `reelset-db` (id in `.env.local` as `HYPERDRIVE_ID`) -> Supabase direct connection
-- Workers: `reelset-ingest`, `reelset-render` (deployed)
+- Hyperdrive: `reelset-db` (id in `.env.local` as `HYPERDRIVE_ID`; `reelset-web` binds `cf0f4b14…`) -> Supabase direct connection
+- R2: `reelset-next-cache` (OpenNext incremental cache, cache only)
+- D1: `reelset-next-tags` (OpenNext tag cache, cache only)
+- Workers: `reelset-web`, `reelset-ingest`, `reelset-render` (deployed)
 
 ## Supabase (project `ydcasrnilwtvtcfveamz`)
 
@@ -27,22 +29,57 @@ DNS is on Cloudflare (zone `reelset.app`). Vercel records must be DNS-only (grey
 - Auth email goes through Resend SMTP (`smtp.resend.com:465`, user `resend`, password = `RESEND_API_KEY`), sent as `Reelset <login@reelset.app>` from the verified `reelset.app` domain. Rate limit is 100 emails/hour (`auth.rate_limit.email_sent`).
 - Auth config lives in `supabase/config.toml`; branded email templates (magic link, confirm signup, email change) live in `supabase/templates/`. Apply with `RESEND_API_KEY=... npx supabase config push --remote ydcasrnilwtvtcfveamz`. Run it without `--yes` first to read the diff; keep `config.toml` aligned with the remote so the push changes only what you mean to. The SMTP password is read from `env(RESEND_API_KEY)` and is never committed.
 - Templates use `{{ .ConfirmationURL }}` (PKCE); the app's `/auth/callback` accepts both `code` and `token_hash`.
-- The direct DB host is IPv6-only; Vercel needs the transaction pooler URL (see `.env.example`).
+- The direct DB host is IPv6-only; Vercel needed the transaction pooler URL (see `.env.example`). Hyperdrive connects to the direct host.
 
-## Vercel (apps/web)
+## Web (Cloudflare Workers, OpenNext)
 
-- No `vercel.json`. Project setting Root Directory = `apps/web`, "Include files outside the Root Directory" on (default), Framework Preset Next.js.
-- Vercel detects the npm workspaces lockfile at the repo root and runs `npm install` there, so `@reelset/core` resolves; `next.config.ts` has `transpilePackages: ['@reelset/core']`.
-- Build/output commands stay default (`next build`). `npm run build -w @reelset/web` passes locally.
-- Env vars: see the web list in `docs/contracts.md` (`DATABASE_URL` must be the transaction pooler URL; set `ADMIN_EMAILS` and `ADMIN_HOST`). Ask needs `CLAUDE_API_KEY` for answers and `GEMINI_API_KEY` for question embeddings; `GEMINI_MODEL` is not read by web.
-- Generate-a-reel and MCP (`/api/mcp`, Streamable HTTP, Bearer `rs_live_...` API keys): `RESEND_API_KEY` (credit-request emails to the `admin_email` setting, sent from `notifications@reelset.app`; missing key = warn log, no email), `INGEST_INTERNAL_URL` and `INGEST_INTERNAL_TOKEN` (the web app POSTs `/internal/generate/kick` on the ingest worker so a new request starts at once; best effort, the 5-minute cron is the fallback; the token equals the ingest worker's `SELFCHECK_TOKEN`).
+`apps/web` runs on the Worker `reelset-web` through `@opennextjs/cloudflare`. Config: `apps/web/wrangler.jsonc`, `apps/web/open-next.config.ts`, entry `apps/web/worker.ts`.
+
+- Bindings:
+  - `HYPERDRIVE` (`reelset-db`): the runtime database. `server/db.ts` opens one client per request; never share a pg pool across requests on Workers.
+  - `NEXT_INC_CACHE_R2_BUCKET` (R2 `reelset-next-cache`, wrapped in `withRegionalCache` long-lived), `NEXT_TAG_CACHE_D1` (D1 `reelset-next-tags`), `NEXT_CACHE_DO_QUEUE` (Durable Object `DOQueueHandler`, ISR revalidation), `WORKER_SELF_REFERENCE` (service binding to itself).
+  - `INGEST` and `RENDER`: service bindings to `reelset-ingest` and `reelset-render`. When present they replace the public `INGEST_INTERNAL_URL` / `IG_ADMIN_URL` calls.
+  - `ASSETS`: `.open-next/assets`.
+- Vars (in `wrangler.jsonc`, not secret): `ADMIN_HOST`, `AUTH_COOKIE_DOMAIN`, `MEDIA_PUBLIC_BASE_URL`, `GEMINI_EMBEDDING_MODEL`, `IG_ADMIN_URL`, `INGEST_INTERNAL_URL`, `LOG_LEVEL`.
+- Secrets (`wrangler secret bulk`, names only): `CLAUDE_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `INGEST_INTERNAL_TOKEN`, `IG_ADMIN_TOKEN`, `ADMIN_EMAILS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. There is no `DATABASE_URL` secret: Hyperdrive replaces it.
+- Build-time env (read by `next build`, inlined or used for prerender): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `AUTH_COOKIE_DOMAIN` (becomes `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` through `next.config.ts`), `MEDIA_PUBLIC_BASE_URL`, `DATABASE_URL` (prerender, and the local Hyperdrive string `deploy:cf` passes to wrangler). Keep them in a temp file outside the repo (for example `/private/tmp/claude-501/reelset-web.build.env`, from `vercel env pull` or `.env.local`) and delete it after the deploy.
+- Deploy (from the repo root, never plain `wrangler deploy`: it skips OpenNext's `populateCache`, so the R2/D1 caches are left stale):
+
+```bash
+unset CLOUDFLARE_API_TOKEN
+set -a; . /private/tmp/claude-501/reelset-web.build.env; set +a
+npm run deploy:cf -w @reelset/web     # patch-opennext-cookie, opennextjs-cloudflare build, populateCache, deploy
+npx wrangler secret bulk <secrets.json> # only when a secret changes; creates a new version
+```
+
+- Other scripts: `preview:cf` (local workerd preview against the real database), `upload:cf` (new version without promoting it), `build:cf`, `cf-typegen`. Each runs `scripts/patch-opennext-cookie.mjs` first (OpenNext's `cookie` default import is `undefined` with cookie@1.1.1 and throws 1101 on every request with a `Cookie` header; the script fails the build if an OpenNext upgrade changes the file). `npm run build -w @reelset/web` stays plain `next build`.
+- `limits.cpu_ms` is 10000: a cost guard so a runaway render fails fast. The heaviest legitimate path (an OG render) takes about 300 ms.
+- Caching:
+  - Public pages (`/`, `/r/*`, `/t`, `/t/*`, sitemap, OG images) are ISR. Anonymous responses carry no `Set-Cookie`; per-user state is fetched on the client when the `rs_auth=1` hint cookie is set. `enableCacheInterception` serves hits without loading NextServer.
+  - Takedowns call `expireReels` (`server/cache-revalidate.ts`), which revalidates the `reel:<id>` tags in D1, so a hidden reel drops from `/r/<slug>` at once.
+  - Edge-cache allowlist (`worker.ts` + `src/lib/edge-cache.ts`, Cache API per colo): GET only, not `ADMIN_HOST`, paths `/api/reel/*`, `/api/avatar/*`, `/api/showcase/*`, `/llms.txt`, `/llms-full.txt`, no `sb-*-auth-token` cookie, no `authorization` or `rsc` header. The response must be 200, no `set-cookie`, `cache-control` with `public` and `s-maxage`. Range requests are answered as 206 slices of the cached 200. Responses carry `x-edge-cache: HIT|MISS`. The Cache API is a no-op on `*.workers.dev`; check HITs on the custom domains.
+  - `public/_headers`: `/_next/static/*` is `public,max-age=31536000,immutable`.
+- Logs and metrics: `npx wrangler tail reelset-web --format json`; dashboard > Workers > reelset-web > Metrics (observability on, head sampling 1).
+- Rollback (about 5 minutes; only works once the Vercel pause lifts):
+  - Remove the custom domains: delete `routes` from `wrangler.jsonc` and redeploy, or Dashboard > Domains & Routes > remove.
+  - Recreate A `reelset.app` -> `216.198.79.1` and CNAME `admin` -> `5bf357ca727ecb12.vercel-dns-017.com`, both DNS-only.
+  - Re-attach the domains to Vercel: `vercel api -X POST /v10/projects/reelset/domains` with body `{"name":"reelset.app"}`, then again for `admin.reelset.app`.
+  - A bad Worker version alone: `npx wrangler rollback` (or Dashboard > Deployments) to the previous version.
+  - R2 `reelset-next-cache`, D1 `reelset-next-tags` and the DO hold cache only and can stay.
 - PWA icons live in `apps/web/public` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) and are referenced by `src/app/manifest.ts`.
+- Generate-a-reel and MCP (`/api/mcp`, Streamable HTTP, Bearer `rs_live_...` API keys): `RESEND_API_KEY` (credit-request emails to the `admin_email` setting, sent from `notifications@reelset.app`; missing key = warn log, no email), `INGEST_INTERNAL_TOKEN` (the web app POSTs `/internal/generate/kick` on the ingest worker, through the `INGEST` binding, so a new request starts at once; best effort, the 5-minute cron is the fallback; the token equals the ingest worker's `SELFCHECK_TOKEN`).
+
+## Legacy: Vercel (paused, kept for rollback)
+
+- Project `reelset` (root directory `apps/web`, Framework Preset Next.js, no `vercel.json`) was paused on 2026-11-21 for exceeding the Hobby 4 CPU-hour Fluid Active CPU limit. The domains were detached; the project and `reelset-drab.vercel.app` are kept. Do not delete it.
+- Its env vars are still the source for the build env: `npx --yes vercel@latest env pull <file>` from `apps/web` (link first with `vercel link --yes --project reelset`). There `DATABASE_URL` is the transaction pooler URL, because the direct DB host is IPv6-only.
+- `npm run build -w @reelset/web` is still plain `next build`, so the Vercel project builds as before.
 
 ## Still to do
 
-- Vercel project for `apps/web` + env vars + domains `reelset.app`, `admin.reelset.app`
 - Secrets: `GEMINI_API_KEY` (embeddings only), `CLAUDE_API_KEY` (scripts and image vetting), `GITHUB_TOKEN`, `ALERT_WEBHOOK_URL`; render worker `PEXELS_API_KEY` (`unset CLOUDFLARE_API_TOKEN; wrangler secret put PEXELS_API_KEY` in `workers/render`; without it reels render without stock b-roll)
 - Fill `HYPERDRIVE` id in both `wrangler.jsonc` files, then `wrangler deploy` ingest + render
+- Workers Builds CI for `reelset-web` (needs the build env duplicated as build variables)
 
 ## Render box (Oracle)
 
@@ -106,7 +143,7 @@ Admin (`/admin/instagram`) queues rows in `instagram_post`; the render worker po
 
 - Flow: admin "Queue post" inserts a `queued` row, then pokes `POST https://render-api.reelset.app/admin/ig/run`. The poke and the 5-minute cron only send a message to the `instagram-run` queue; its consumer (one run at a time, up to 15 minutes) claims one row with `FOR UPDATE SKIP LOCKED`, at least 10 minutes after the previous attempt, calls the container `/instagram/post` (video URL plus the render's poster URL, which becomes the reel cover so Instagram matches the app; a video frame is used only if the poster is missing or unusable), and writes `posted` (media_pk, permalink) or `failed`. Never run the upload in a fetch's `waitUntil`: it is cut about 30s after the response while an upload takes 30-60s, which left reels live on Instagram but stuck in `posting`. A row stuck in `posting` for 10 minutes is failed as lost, never re-sent; each run then looks up one lost row (up to 3 days old) through the container `/instagram/find` (the account's 12 newest media: same caption published after `started_at`, else the video published soonest after it within 30 minutes that no other post has recorded, because Instagram can publish a reel without its caption): found becomes `posted` with its media_pk and permalink, not found reads "safe to queue it again", a failed lookup retries next run. A reel that comes back from Instagram without the caption we sent (seen on a caption with a long link) gets it restored once with `media_edit`, after upload and when a lost reel is found; a failed restore never fails the post. Delete requests (`delete_requested_at` on a `posted` row) go through `/instagram/delete`.
 - Public surface: the worker has a custom domain `render-api.reelset.app` (DNS on Cloudflare, created by `wrangler deploy`). Only `POST /admin/ig/{status,connect,run}` answer there, each needs `Authorization: Bearer IG_ADMIN_TOKEN` (constant-time check, 404 otherwise). The internal routes (`/transcript`, `/youtube/search`, `/parse/paper`) only answer for the `render.internal` service-binding host.
-- Worker secrets: `IG_ADMIN_TOKEN`, `IG_SESSION_KEY` (32 random bytes, base64), optional fallback `IG_USERNAME` / `IG_PASSWORD` / `IG_TOTP_SECRET`. Credentials entered in /admin/instagram ("Use a different account") are stored encrypted with `IG_SESSION_KEY` and win over these; "Disconnect" forgets the session, device ids and stored credentials. `RENDER_BOX_TOKEN` (secret) is the box bearer token; `PROXY_URLS` lives on the box. Vercel env: `IG_ADMIN_URL`, `IG_ADMIN_TOKEN`. Values live in `reelset/.env.local`.
+- Worker secrets: `IG_ADMIN_TOKEN`, `IG_SESSION_KEY` (32 random bytes, base64), optional fallback `IG_USERNAME` / `IG_PASSWORD` / `IG_TOTP_SECRET`. Credentials entered in /admin/instagram ("Use a different account") are stored encrypted with `IG_SESSION_KEY` and win over these; "Disconnect" forgets the session, device ids and stored credentials. `RENDER_BOX_TOKEN` (secret) is the box bearer token; `PROXY_URLS` lives on the box. Web env: `IG_ADMIN_URL` (var), `IG_ADMIN_TOKEN` (secret). Values live in `reelset/.env.local`.
 - Session: instagrapi settings (session + device ids) plus the pinned proxy index are AES-GCM encrypted by the worker and stored in `app_setting` key `ig_session_enc`; the account card state is `app_setting` `ig_account` (no secrets). Seed from a local login with `npx tsx --env-file=.env.local scripts/maintenance/seed-ig-session.ts` (reads `~/.reelset/ig_session.json`, prints nothing sensitive).
 - Logins: only the admin "Connect" click logs in (one attempt, 2FA code typed in admin). Status checks and posts reuse the session and never log in. After 3 failed logins the card recommends the official Graph API.
 - Proxy: all instagrapi traffic goes through one pinned entry of `PROXY_URLS`. Before every call the container fetches an IP-echo endpoint through it; if the pinned proxy is dead it uses the other one (flagged "backup proxy in use") and if none answers the call is blocked with `proxy_down`. It never falls back to the direct Cloudflare IP. Risk: the proxies are datacenter IPs and Instagram flags datacenter ranges, and the saved session was created from a home IP, so the first call from the proxy can trigger a challenge.
