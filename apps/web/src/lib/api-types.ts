@@ -13,7 +13,6 @@ export type FeedItemDto = {
   id: string
   title: string
   tldr: string | null
-  transcript: string | null
   topics: string[]
   kind: string
   canonicalUrl: string

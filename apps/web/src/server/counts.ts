@@ -1,19 +1,32 @@
-import { SETTINGS, getSetting, type Database, type Logger } from '@reelset/core'
+import { SETTINGS, parseSetting, type Database, type Logger, type SettingDef } from '@reelset/core'
 import type { CountRules } from '@/lib/counts'
 
+const COUNT_SETTINGS = [
+  SETTINGS.showViewCount,
+  SETTINGS.viewCountThreshold,
+  SETTINGS.showLikeCount,
+  SETTINGS.likeCountThreshold,
+  SETTINGS.showSaveCount,
+  SETTINGS.saveCountThreshold,
+] as const
+
+/** All six count settings in one round trip. */
 export async function loadCountRules(db: Database, log: Logger): Promise<CountRules> {
-  const [sv, mv, sl, ml, ss, ms] = await Promise.all([
-    getSetting(db, SETTINGS.showViewCount, log),
-    getSetting(db, SETTINGS.viewCountThreshold, log),
-    getSetting(db, SETTINGS.showLikeCount, log),
-    getSetting(db, SETTINGS.likeCountThreshold, log),
-    getSetting(db, SETTINGS.showSaveCount, log),
-    getSetting(db, SETTINGS.saveCountThreshold, log),
-  ])
+  const rows = await db
+    .selectFrom('app_setting')
+    .select(['key', 'value'])
+    .where(
+      'key',
+      'in',
+      COUNT_SETTINGS.map((s) => s.key),
+    )
+    .execute()
+  const raw = new Map(rows.map((r) => [r.key, r.value as unknown]))
+  const get = <T>(setting: SettingDef<T>) => parseSetting(setting, raw.get(setting.key), log)
   return {
-    views: { show: sv, min: mv },
-    likes: { show: sl, min: ml },
-    saves: { show: ss, min: ms },
+    views: { show: get(SETTINGS.showViewCount), min: get(SETTINGS.viewCountThreshold) },
+    likes: { show: get(SETTINGS.showLikeCount), min: get(SETTINGS.likeCountThreshold) },
+    saves: { show: get(SETTINGS.showSaveCount), min: get(SETTINGS.saveCountThreshold) },
   }
 }
 

@@ -4,8 +4,9 @@ import { getFeedItem } from '@/lib/ranking'
 import { getOptionalUser } from '@/server/auth'
 import { getDb } from '@/server/db'
 import { mediaBaseUrl } from '@/server/env'
-import { loadFeedResponse, resolveTopicLabels, toFeedDto } from '@/server/feed'
+import { loadFeedResponse, toFeedDto } from '@/server/feed'
 import { routeLog } from '@/server/logger'
+import { cachedTopicLabelsFor } from '@/server/seo-cache'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,7 @@ const querySchema = z.object({
   cursor: z.string().max(200).optional(),
   limit: z.coerce.number().int().optional(),
   item: z.guid().optional(),
+  focus: z.guid().optional(),
   topic: z.string().min(1).max(80).optional(),
   source: z.string().max(20).optional(),
 })
@@ -41,7 +43,7 @@ export async function GET(request: Request) {
 
     let labels: string[] | undefined
     if (params.data.topic) {
-      labels = await resolveTopicLabels(db, params.data.topic)
+      labels = await cachedTopicLabelsFor(params.data.topic)
       if (labels.length === 0) return Response.json({ error: 'not_found' }, { status: 404 })
     }
 
@@ -55,6 +57,7 @@ export async function GET(request: Request) {
       base,
       cursor: params.data.cursor ?? null,
       limit: params.data.limit,
+      focusId: params.data.cursor ? null : (params.data.focus ?? null),
       labels,
       source,
       log,

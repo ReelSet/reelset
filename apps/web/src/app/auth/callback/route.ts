@@ -1,5 +1,6 @@
 import { errorFields } from '@reelset/core'
 import { NextResponse, type NextRequest } from 'next/server'
+import { authHintCookie, sharedCookieDomain } from '@/lib/auth/cookie-options'
 import { safeReturnPath } from '@/lib/auth/return-url'
 import { signupInfoFrom } from '@/lib/auth/signup-info'
 import { ensureProfile } from '@/server/auth'
@@ -33,7 +34,10 @@ export async function GET(request: NextRequest) {
     }
     await ensureProfile(user.id, user.email ?? null, signupInfoFrom(user))
     log.info({ profileId: user.id }, 'login completed')
-    return apply(NextResponse.redirect(`${origin}${next}`))
+    const response = apply(NextResponse.redirect(`${origin}${next}`))
+    const domain = sharedCookieDomain(process.env.AUTH_COOKIE_DOMAIN, request.headers.get('host'))
+    response.headers.append('set-cookie', authHintCookie(domain))
+    return response
   } catch (err) {
     log.error(errorFields(err), 'auth callback failed')
     return NextResponse.redirect(`${origin}/login?error=callback`)

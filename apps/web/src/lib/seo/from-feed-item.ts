@@ -9,7 +9,7 @@ export function reelFromFeedItem(item: FeedItemDto): ReelPageData {
     title: item.title,
     tldr: item.tldr,
     hook: null,
-    transcript: item.transcript,
+    transcript: null,
     topics: item.topics,
     kind: item.kind,
     canonicalUrl: item.canonicalUrl,

@@ -117,7 +117,7 @@ export async function loadReelPage(
       .limit(MENTION_LIMIT)
       .execute(),
   ])
-  l.info({ itemId: row.id, hasVideo: row.video_key !== null }, 'reel page loaded')
+  l.debug({ itemId: row.id, hasVideo: row.video_key !== null }, 'reel page loaded')
   return {
     id: row.id,
     visibility,

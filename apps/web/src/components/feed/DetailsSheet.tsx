@@ -160,7 +160,7 @@ export function DetailsSheet({
             (reel.transcript ? (
               <TranscriptSection reel={reel} idPrefix="sheet-" />
             ) : (
-              empty('No transcript for this reel.')
+              empty(loaded ? 'No transcript for this reel.' : 'Loading transcript...')
             ))}
         </div>
       </div>

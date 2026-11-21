@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   authCookieOptions,
+  authHintCookie,
+  clearAuthHintCookies,
   expireCookie,
+  hasAuthHint,
   isAuthCookie,
   serializeCookie,
   sharedCookieDomain,
@@ -62,5 +65,35 @@ describe('cookie serialization', () => {
   it('detects supabase cookies', () => {
     expect(isAuthCookie('sb-abc-auth-token.0')).toBe(true)
     expect(isAuthCookie('rs_sid')).toBe(false)
+  })
+})
+
+describe('auth hint cookie', () => {
+  it('is readable by scripts and lives on the shared domain', () => {
+    const header = authHintCookie('.reelset.app')
+    expect(header).toBe(
+      'rs_auth=1; Path=/; Domain=.reelset.app; Max-Age=34560000; SameSite=Lax; Secure',
+    )
+    expect(header).not.toContain('HttpOnly')
+  })
+
+  it('is host-only without a shared domain', () => {
+    expect(authHintCookie(null)).toBe('rs_auth=1; Path=/; Max-Age=34560000; SameSite=Lax')
+  })
+
+  it('clears the host-only and shared copies', () => {
+    expect(clearAuthHintCookies('.reelset.app')).toEqual([
+      'rs_auth=; Path=/; Max-Age=0; SameSite=Lax',
+      'rs_auth=; Path=/; Domain=.reelset.app; Max-Age=0; SameSite=Lax; Secure',
+    ])
+    expect(clearAuthHintCookies(null)).toHaveLength(1)
+  })
+
+  it('detects the hint in a cookie header', () => {
+    expect(hasAuthHint('a=1; rs_auth=1; b=2')).toBe(true)
+    expect(hasAuthHint('rs_auth=1')).toBe(true)
+    expect(hasAuthHint('rs_auth_domain=1; rs_auth=0')).toBe(false)
+    expect(hasAuthHint('')).toBe(false)
+    expect(hasAuthHint(undefined)).toBe(false)
   })
 })

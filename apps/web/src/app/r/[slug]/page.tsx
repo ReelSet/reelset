@@ -1,7 +1,6 @@
 import Link from 'next/link'
-import { errorFields, parseSource } from '@reelset/core'
+import { errorFields } from '@reelset/core'
 import type { Metadata } from 'next'
-import { cookies } from 'next/headers'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { cache } from 'react'
 import { FeedClient } from '@/components/feed/FeedClient'
@@ -9,28 +8,26 @@ import { JsonLd, PageChrome } from '@/components/seo/PageChrome'
 import { ReelPanel } from '@/components/feed/ReelPanel'
 import { ReelArticle } from '@/components/seo/ReelArticle'
 import type { FeedResponse } from '@/lib/api-types'
-import { parseReelParam, reelPath, scopeQuery } from '@/lib/reel-url'
+import { parseReelParam, reelPath } from '@/lib/reel-url'
 import { reelJsonLd } from '@/lib/seo/json-ld'
 import { SITE_NAME, metaDescription, metaTitle } from '@/lib/seo/site'
-import { getOptionalUser } from '@/server/auth'
-import { getDb } from '@/server/db'
-import { mediaBaseUrl } from '@/server/env'
-import { loadFeedResponse, resolveTopicLabels } from '@/server/feed'
+import { leadWith } from '@/server/feed'
 import { routeLog } from '@/server/logger'
-import { loadReelPage } from '@/server/seo-queries'
+import { cachedAnonFeed, cachedFocusItem, cachedReelPage } from '@/server/seo-cache'
 
-export const dynamic = 'force-dynamic'
+// ISR per reel, built on first visit. The HTML is anonymous: FeedClient re-fetches liked/saved
+// state and the ?topic= / ?source= scope in the browser. Takedowns revalidate the reel tag.
+export const revalidate = 3600
+export const dynamicParams = true
+export const generateStaticParams = async (): Promise<{ slug: string }[]> => []
 
-type Props = {
-  params: Promise<{ slug: string }>
-  searchParams: Promise<{ topic?: string | string[]; source?: string | string[] }>
-}
+type Props = { params: Promise<{ slug: string }> }
 
-// generateMetadata and the page share one lookup per request.
+// generateMetadata and the page share one lookup per render.
 const getReel = cache(async (slug: string) => {
   const param = parseReelParam(slug)
   if (!param) return null
-  return loadReelPage(getDb(), param, mediaBaseUrl(), routeLog('r/[slug]'))
+  return cachedReelPage(param, revalidate)
 })
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -55,23 +52,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         ? [{ url: reel.videoUrl, type: 'video/mp4', width: 1080, height: 1920 }]
         : undefined,
     },
-    twitter: { card: 'summary_large_image', title, description },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [`${path}/opengraph-image`],
+    },
     ...(reel.visibility === 'private' ? { robots: { index: false, follow: false } } : {}),
   }
 }
 
-export default async function ReelRoute({ params, searchParams }: Props) {
+export default async function ReelRoute({ params }: Props) {
   const { slug } = await params
-  const query = await searchParams
-  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) || null
-  const topicParam = first(query.topic)
-  const sourceParam = parseSource(first(query.source), routeLog('r/[slug]'))
   const reel = await getReel(slug)
   if (!reel) notFound()
   const canonical = reelPath(reel)
-  if (`/r/${slug}` !== canonical) {
-    permanentRedirect(`${canonical}${scopeQuery({ topic: topicParam, source: sourceParam })}`)
-  }
+  if (`/r/${slug}` !== canonical) permanentRedirect(canonical)
 
   const jsonLd = <JsonLd data={reelJsonLd(reel)} />
   const article = <ReelArticle reel={reel} />
@@ -98,27 +94,12 @@ export default async function ReelRoute({ params, searchParams }: Props) {
 
   const log = routeLog('r/[slug]').child({ itemId: reel.id })
   let initial: FeedResponse | undefined
-  let topic: string | null = null
-  let labelsForFeed: string[] | undefined
   try {
-    await cookies()
-    const user = await getOptionalUser()
-    if (topicParam) {
-      const labels = await resolveTopicLabels(getDb(), topicParam)
-      if (labels.length > 0) {
-        topic = topicParam
-        labelsForFeed = labels
-      }
-    }
-    initial = await loadFeedResponse(getDb(), {
-      profileId: user?.id ?? null,
-      authenticated: user !== null,
-      base: mediaBaseUrl(),
-      focusId: reel.id,
-      labels: labelsForFeed,
-      source: sourceParam,
-      log,
-    })
+    const [feed, focus] = await Promise.all([
+      cachedAnonFeed(revalidate),
+      cachedFocusItem(reel.id, revalidate),
+    ])
+    initial = { ...feed, items: leadWith(feed.items, focus) }
   } catch (err) {
     log.error(errorFields(err), 'reel page feed failed, client will load it')
   }
@@ -126,13 +107,7 @@ export default async function ReelRoute({ params, searchParams }: Props) {
   return (
     <>
       {jsonLd}
-      <FeedClient
-        initial={initial}
-        about={<ReelPanel reel={reel} />}
-        aboutItemId={reel.id}
-        topic={topic}
-        source={sourceParam}
-      />
+      <FeedClient initial={initial} about={<ReelPanel reel={reel} />} aboutItemId={reel.id} />
     </>
   )
 }

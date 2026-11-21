@@ -8,6 +8,7 @@ import { ArrowUpRightIcon, CloseIcon } from '@/components/ui/icons'
 import { SourceDot, sourceMeta } from '@/components/ui/sources'
 import { topicPath, topicSlug } from '@/lib/reel-url'
 import { topicLabel } from '@/lib/seo/site'
+import { useReelDetails } from './useReelDetails'
 
 function host(url: string): string {
   try {
@@ -18,6 +19,7 @@ function host(url: string): string {
 }
 
 export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: () => void }) {
+  const transcript = useReelDetails(item.id)?.transcript
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -89,14 +91,14 @@ export function SourcesSheet({ item, onClose }: { item: FeedItemDto; onClose: ()
             </a>
           </li>
         </ul>
-        {item.transcript && (
+        {transcript && (
           <details className="group mt-5 border-t border-line pt-4">
             <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-muted transition hover:text-fg">
               Transcript
               <span className="text-xs text-faint group-open:hidden">Show</span>
               <span className="hidden text-xs text-faint group-open:inline">Hide</span>
             </summary>
-            <p className="mt-2 text-sm leading-relaxed text-muted">{item.transcript}</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">{transcript}</p>
           </details>
         )}
         {item.topics.some((t) => topicSlug(t)) && (

@@ -1,49 +1,25 @@
 import { errorFields } from '@reelset/core'
-import { cookies } from 'next/headers'
+import type { Metadata } from 'next'
 import { FeedClient } from '@/components/feed/FeedClient'
 import { JsonLd } from '@/components/seo/PageChrome'
 import type { FeedResponse } from '@/lib/api-types'
 import { siteJsonLd } from '@/lib/seo/json-ld'
 import { SITE_NAME, SITE_TAGLINE } from '@/lib/seo/site'
-import { getOptionalUser } from '@/server/auth'
-import { getDb } from '@/server/db'
-import { mediaBaseUrl } from '@/server/env'
-import { loadFeedResponse, resolveTopicLabels } from '@/server/feed'
 import { routeLog } from '@/server/logger'
+import { cachedAnonFeed } from '@/server/seo-cache'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
-// Old `/?reel=<uuid>` share links are redirected in proxy.ts before this renders.
-export default async function FeedPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ topic?: string | string[] }>
-}) {
-  const log = routeLog('feed-page')
-  const rawTopic = (await searchParams).topic
-  const topicParam = (Array.isArray(rawTopic) ? rawTopic[0] : rawTopic) || null
+export const metadata: Metadata = { alternates: { canonical: '/' } }
+
+// One anonymous shell for everyone: FeedClient re-fetches the personal or ?topic= feed in the
+// browser. Old `/?reel=<uuid>` share links are redirected in proxy.ts before this renders.
+export default async function FeedPage() {
   let initial: FeedResponse | undefined
-  let topic: string | null = null
   try {
-    await cookies()
-    const user = await getOptionalUser()
-    let labels: string[] | undefined
-    if (topicParam) {
-      const found = await resolveTopicLabels(getDb(), topicParam)
-      if (found.length > 0) {
-        topic = topicParam
-        labels = found
-      }
-    }
-    initial = await loadFeedResponse(getDb(), {
-      profileId: user?.id ?? null,
-      authenticated: user !== null,
-      base: mediaBaseUrl(),
-      labels,
-      log,
-    })
+    initial = await cachedAnonFeed(revalidate)
   } catch (err) {
-    log.error(errorFields(err), 'server feed failed, client will load it')
+    routeLog('feed-page').error(errorFields(err), 'server feed failed, client will load it')
   }
 
   return (
@@ -52,7 +28,7 @@ export default async function FeedPage({
       <h1 className="sr-only">
         {SITE_NAME}: {SITE_TAGLINE}
       </h1>
-      <FeedClient initial={initial} topic={topic} />
+      <FeedClient initial={initial} />
     </>
   )
 }

@@ -1,7 +1,6 @@
 import { elapsedMs, errorFields, type Database, type Logger } from '@reelset/core'
 import type { CreditsDto } from '@/lib/api-types'
 import { toCreditsDto } from '@/lib/credits'
-import { scriptParts } from '@/lib/seo/script'
 import { clampLimit, decodeCursor, encodeCursor } from './cursor'
 import { rankCandidates } from './scoring'
 import {
@@ -16,7 +15,6 @@ export type RankedItem = {
   id: string
   title: string
   tldr: string | null
-  transcript: string | null
   topics: string[]
   kind: string
   canonicalUrl: string
@@ -38,6 +36,8 @@ export type RankFeedParams = {
   limit: number
   labels?: readonly string[]
   source?: string | null
+  /** Shared with getFeedItem when one request needs both, so the setting is read once. */
+  minTemplate?: Promise<number>
   log?: Logger
 }
 
@@ -50,7 +50,6 @@ export function toRankedItem(row: FeedRow): RankedItem | null {
     id: row.id,
     title: row.title,
     tldr: row.tldr,
-    transcript: scriptParts(row.script).transcript,
     topics: row.topics,
     kind: row.kind,
     canonicalUrl: row.canonical_url,
@@ -86,10 +85,12 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
   const offset = cursor?.offset ?? 0
 
   try {
-    const profile = params.profileId
-      ? await loadProfileSignals(db, params.profileId)
-      : { signalCount: 0, topics: [], sources: [] }
-    const minTemplate = await loadFeedMinTemplate(db, log)
+    const [profile, minTemplate] = await Promise.all([
+      params.profileId
+        ? loadProfileSignals(db, params.profileId)
+        : { signalCount: 0, topics: [], sources: [] },
+      params.minTemplate ?? loadFeedMinTemplate(db, log),
+    ])
     const candidates = await loadCandidates(db, {
       profileId: params.profileId,
       asOf,
@@ -119,7 +120,7 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
       if (!item) log?.warn({ itemId: row.id }, 'feed row without video key dropped')
       return item ? [item] : []
     })
-    log?.info(
+    log?.debug(
       {
         count: items.length,
         offset,
@@ -140,16 +141,21 @@ export async function rankFeed(db: Database, params: RankFeedParams): Promise<Ra
 
 export async function getFeedItem(
   db: Database,
-  params: { itemId: string; profileId: string | null; log?: Logger },
+  params: {
+    itemId: string
+    profileId: string | null
+    minTemplate?: Promise<number>
+    log?: Logger
+  },
 ): Promise<RankedItem | null> {
   const log = params.log?.child({ fn: 'getFeedItem', itemId: params.itemId })
   const rows = await hydrateQuery(db, {
     profileId: params.profileId,
     itemIds: [params.itemId],
-    minTemplate: await loadFeedMinTemplate(db, log),
+    minTemplate: await (params.minTemplate ?? loadFeedMinTemplate(db, log)),
   }).execute()
   const row = rows[0]
   const item = row ? toRankedItem(row) : null
-  log?.info({ found: item !== null }, 'single feed item lookup')
+  log?.debug({ found: item !== null }, 'single feed item lookup')
   return item
 }

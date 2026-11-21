@@ -56,3 +56,27 @@ export function serializeCookie(
 export function expireCookie(name: string, domain?: string): string {
   return serializeCookie(name, '', { domain, maxAge: 0, secure: Boolean(domain) })
 }
+
+/**
+ * Non-httpOnly hint that a session exists, so cached anonymous pages know to fetch the viewer's
+ * own state in the browser. It is never trusted for access: the API still checks the session.
+ */
+export const AUTH_HINT_COOKIE = 'rs_auth'
+
+export function authHintCookie(domain: string | null | undefined): string {
+  return serializeCookie(AUTH_HINT_COOKIE, '1', {
+    domain: domain ?? undefined,
+    maxAge: AUTH_COOKIE_MAX_AGE,
+    secure: Boolean(domain),
+  })
+}
+
+/** Set-Cookie values that clear the hint on the shared domain and any host-only copy. */
+export function clearAuthHintCookies(domain: string | null | undefined): string[] {
+  const host = expireCookie(AUTH_HINT_COOKIE)
+  return domain ? [host, expireCookie(AUTH_HINT_COOKIE, domain)] : [host]
+}
+
+export function hasAuthHint(cookieHeader: string | null | undefined): boolean {
+  return (cookieHeader ?? '').split(/;\s*/).some((c) => c === `${AUTH_HINT_COOKIE}=1`)
+}

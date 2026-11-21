@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FeedItemDto, FeedResponse } from '@/lib/api-types'
+import { hasAuthHint } from '@/lib/auth/cookie-options'
 import { track } from '@/lib/client/track'
 import { DEFAULT_COUNT_RULES } from '@/lib/counts'
 import { useReelViews } from './useReelViews'
@@ -63,26 +64,25 @@ function writeStorage(storage: Storage | undefined, key: string, value: string |
 }
 
 type FeedClientProps = {
-  /** Server-rendered first page; without it the feed loads from /api/feed on mount. */
+  /**
+   * Server-rendered anonymous first page; without it the feed loads from /api/feed on mount.
+   * A signed-in viewer or a ?topic= / ?source= URL re-fetches its own page in the browser.
+   */
   initial?: FeedResponse
   /** Details panel for the reel a /r/ page opened, shown beside it on wide screens. */
   about?: React.ReactNode
   aboutItemId?: string
-  /** Topic slug when the feed is one topic's reels; every page then stays in that topic. */
-  topic?: string | null
-  /** Source (hn, github, ...) when the feed was opened from a source filter. */
-  source?: string | null
+}
+
+/** The ?topic= / ?source= scope a feed URL keeps; read in the browser so the HTML stays cacheable. */
+function scopeFromLocation(): FeedScope {
+  const query = new URLSearchParams(window.location.search)
+  return { topic: query.get('topic') || null, source: query.get('source') || null }
 }
 
 const FADE = 'linear-gradient(to bottom, black calc(100% - 28px), transparent)'
 
-export function FeedClient({
-  initial,
-  about,
-  aboutItemId,
-  topic = null,
-  source = null,
-}: FeedClientProps = {}) {
+export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}) {
   const [items, setItems] = useState<FeedItemDto[]>(initial?.items ?? [])
   const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null)
   const [phase, setPhase] = useState<Phase>(initial ? 'ready' : 'loading')
@@ -95,7 +95,9 @@ export function FeedClient({
   const [sourcesFor, setSourcesFor] = useState<FeedItemDto | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [moreState, setMoreState] = useState<'idle' | 'loading' | 'failed'>('idle')
-  const [scope, setScope] = useState<FeedScope>({ topic, source })
+  const [scope, setScope] = useState<FeedScope>({ topic: null, source: null })
+  const [scopeReady, setScopeReady] = useState(false)
+  const [signedInHint, setSignedInHint] = useState(false)
   const [followed, setFollowed] = useState<string[]>([])
   const [menuFor, setMenuFor] = useState<FeedItemDto | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -112,6 +114,8 @@ export function FeedClient({
   const controls = useRef<ReelControls | null>(null)
   const itemsRef = useRef(items)
   itemsRef.current = items
+  const activeRef = useRef(active)
+  activeRef.current = active
 
   const patchItem = useCallback((id: string, patch: Partial<FeedItemDto>) => {
     setItems((cur) => cur.map((it) => (it.id === id ? { ...it, ...patch } : it)))
@@ -240,7 +244,7 @@ export function FeedClient({
   )
 
   const applyFeed = useCallback(
-    (feed: FeedResponse) => {
+    (feed: FeedResponse, opts: { track?: boolean } = {}) => {
       const shown = visible(feed.items, scopeRef.current)
       setItems(shown)
       setCursor(feed.nextCursor)
@@ -250,7 +254,7 @@ export function FeedClient({
         feed.viewer.needsTopics && readStorage(localStorage, TOPICS_DISMISSED_KEY) === null,
       )
       setPhase('ready')
-      track({ name: 'feed_view' })
+      if (opts.track !== false) track({ name: 'feed_view' })
 
       const pending = readStorage(sessionStorage, PENDING_LIKE_KEY)
       if (pending && feed.viewer.authenticated) {
@@ -269,7 +273,7 @@ export function FeedClient({
       setActive(0)
       setMoreState('idle')
       try {
-        const res = await fetch(feedUrl(next))
+        const res = await fetch(feedUrl(next, null, aboutItemId))
         if (!res.ok) throw new Error(String(res.status))
         const feed = (await res.json()) as FeedResponse
         if (id === requestId.current) applyFeed(feed)
@@ -277,10 +281,47 @@ export function FeedClient({
         if (id === requestId.current) setPhase('error')
       }
     },
-    [applyFeed],
+    [applyFeed, aboutItemId],
   )
 
   const loadInitial = useCallback(() => loadScope(scopeRef.current), [loadScope])
+
+  // Swaps the cached anonymous page for the viewer's own without a skeleton. A scoped feed is
+  // always replaced; a personal one only while the viewer is still on the first reel, otherwise
+  // just their liked/saved flags are merged in so the reel on screen does not jump.
+  const refreshInPlace = useCallback(
+    async (at: FeedScope, scoped: boolean) => {
+      const id = ++requestId.current
+      try {
+        const res = await fetch(feedUrl(at, null, aboutItemId))
+        if (!res.ok) throw new Error(String(res.status))
+        const feed = (await res.json()) as FeedResponse
+        if (id !== requestId.current) return
+        if (scoped || activeRef.current === 0) {
+          applyFeed(feed, { track: false })
+          setActive(0)
+          setMoreState('idle')
+          scrollerRef.current?.scrollTo({ top: 0 })
+          return
+        }
+        const flags = new Map(feed.items.map((it) => [it.id, it]))
+        setItems((cur) =>
+          cur.map((it) => {
+            const own = flags.get(it.id)
+            return own ? { ...it, liked: own.liked, saved: own.saved } : it
+          }),
+        )
+        setViewer(feed.viewer)
+      } catch {
+        // The anonymous page is already on screen; an unknown topic or a failed fetch keeps it.
+        if (scoped && id === requestId.current) {
+          scopeRef.current = { topic: null, source: null }
+          setScope(scopeRef.current)
+        }
+      }
+    },
+    [aboutItemId, applyFeed],
+  )
 
   const initialRef = useRef(initial)
   const mounted = useRef(false)
@@ -288,9 +329,20 @@ export function FeedClient({
     if (mounted.current) return
     mounted.current = true
     feedback.current = parseFeedback(readStorage(localStorage, FEEDBACK_KEY))
-    if (initialRef.current) applyFeed(initialRef.current)
-    else void loadInitial()
-  }, [applyFeed, loadInitial])
+    const at = scopeFromLocation()
+    const scoped = Boolean(at.topic || at.source)
+    const hint = hasAuthHint(document.cookie)
+    scopeRef.current = at
+    setScope(at)
+    setScopeReady(true)
+    setSignedInHint(hint)
+    if (!initialRef.current) {
+      void loadInitial()
+      return
+    }
+    applyFeed(initialRef.current)
+    if (scoped || hint) void refreshInPlace(at, scoped)
+  }, [applyFeed, loadInitial, refreshInPlace])
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore.current) return
@@ -336,7 +388,7 @@ export function FeedClient({
   // "leave the feed"; the home page keeps `/` until the viewer first moves.
   useEffect(() => {
     const current = items[active]
-    if (phase !== 'ready' || !current) return
+    if (phase !== 'ready' || !current || !scopeReady) return
     const first = !urlSynced.current
     urlSynced.current = true
     if (first && window.location.pathname === '/') return
@@ -345,7 +397,7 @@ export function FeedClient({
       window.history.replaceState(null, '', href)
     }
     document.title = `${metaTitle(current.title)} | Reelset`
-  }, [active, items, phase, scope])
+  }, [active, items, phase, scope, scopeReady])
 
   const goTo = useCallback((index: number) => {
     const target = scrollerRef.current?.children[index]
@@ -411,6 +463,7 @@ export function FeedClient({
   }, [])
 
   useEffect(() => {
+    if (!signedInHint) return
     const ctl = new AbortController()
     fetch('/api/feed/following', { signal: ctl.signal })
       .then((res) => (res.ok ? (res.json() as Promise<{ following: string[] }>) : null))
@@ -420,7 +473,7 @@ export function FeedClient({
       })
       .catch(() => {})
     return () => ctl.abort()
-  }, [])
+  }, [signedInHint])
 
   const dismissHint = useCallback(() => {
     setShowHint(false)
@@ -683,9 +736,10 @@ export function FeedClient({
   )
 }
 
-function feedUrl(scope: FeedScope, cursor?: string | null): string {
+function feedUrl(scope: FeedScope, cursor?: string | null, focus?: string): string {
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)
+  else if (focus) query.set('focus', focus)
   if (scope.topic) query.set('topic', scope.topic)
   if (scope.source) query.set('source', scope.source)
   const qs = query.toString()

@@ -3,7 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import {
   AUTH_COOKIE_MAX_AGE,
   AUTH_DOMAIN_MARKER,
+  AUTH_HINT_COOKIE,
   authCookieOptions,
+  authHintCookie,
+  clearAuthHintCookies,
   expireCookie,
   isAuthCookie,
   serializeCookie,
@@ -58,7 +61,12 @@ export async function proxy(request: NextRequest) {
   const domain = sharedCookieDomain(process.env.AUTH_COOKIE_DOMAIN, host)
   const refreshed = new Set<string>()
 
-  if (authCookies.length === 0) return response
+  const hinted = request.cookies.get(AUTH_HINT_COOKIE)?.value === '1'
+  if (authCookies.length === 0) {
+    if (hinted)
+      for (const c of clearAuthHintCookies(domain)) response.headers.append('set-cookie', c)
+    return response
+  }
 
   if (url && anonKey && shouldRefresh(authCookies)) {
     const supabase = createServerClient(url, anonKey, {
@@ -108,6 +116,7 @@ export async function proxy(request: NextRequest) {
       for (const name of refreshed) response.headers.append('set-cookie', expireCookie(name))
     }
   }
+  if (!hinted) response.headers.append('set-cookie', authHintCookie(domain))
   return response
 }
 
