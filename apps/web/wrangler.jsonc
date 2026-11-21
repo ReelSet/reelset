@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "reelset-web",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-20",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "services": [
+    { "binding": "WORKER_SELF_REFERENCE", "service": "reelset-web" },
+    { "binding": "INGEST", "service": "reelset-ingest" },
+    { "binding": "RENDER", "service": "reelset-render" },
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "cf0f4b14f2394a58a23e8241137c45a4",
+    },
+  ],
+  "r2_buckets": [{ "binding": "NEXT_INC_CACHE_R2_BUCKET", "bucket_name": "reelset-next-cache" }],
+  "d1_databases": [
+    {
+      "binding": "NEXT_TAG_CACHE_D1",
+      "database_name": "reelset-next-tags",
+      "database_id": "3e89b8bd-9a85-429c-8709-566faa64ed86",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "NEXT_CACHE_DO_QUEUE", "class_name": "DOQueueHandler" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DOQueueHandler"] }],
+  "limits": { "cpu_ms": 10000 },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "upload_source_maps": true,
+  "vars": {
+    "ADMIN_HOST": "admin.reelset.app",
+    "AUTH_COOKIE_DOMAIN": ".reelset.app",
+    "MEDIA_PUBLIC_BASE_URL": "https://media.reelset.app",
+    "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",
+    "IG_ADMIN_URL": "https://render-api.reelset.app",
+    "INGEST_INTERNAL_URL": "https://ingest.reelset.app",
+    "LOG_LEVEL": "info",
+  },
+}
