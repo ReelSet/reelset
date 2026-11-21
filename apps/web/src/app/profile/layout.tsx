@@ -1,5 +1,5 @@
-import { AppShell } from '@/components/ui/AppShell'
+import { ViewerAppShell } from '@/components/ui/AppShell'
 
 export default function SectionLayout({ children }: { children: React.ReactNode }) {
-  return <AppShell>{children}</AppShell>
+  return <ViewerAppShell>{children}</ViewerAppShell>
 }

@@ -7,7 +7,7 @@ import { SourceDot, SOURCES } from '@/components/ui/sources'
 type Props = { authenticated?: boolean; avatar?: { url: string | null; initial: string } }
 
 /** The one desktop left rail. Feed and AppShell both render it so nothing shifts between pages. */
-export function SideRail({ authenticated = false, avatar }: Props) {
+export function SideRail({ authenticated, avatar }: Props) {
   return (
     <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col justify-between px-8 py-10 lg:flex">
       <div>

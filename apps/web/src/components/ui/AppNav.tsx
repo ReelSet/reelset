@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { HashIcon, HomeIcon, PlusIcon, SparkleIcon, UserIcon } from '@/components/ui/icons'
 import { buildLoginUrl } from '@/lib/auth/return-url'
+import { useAuthHint } from '@/components/ui/useAuthHint'
 
 type NavAvatar = { url: string | null; initial: string }
 type Tab = { href: string; label: string; icon: typeof HomeIcon; match: (path: string) => boolean }
@@ -35,7 +36,13 @@ function tabs(path: string, authenticated: boolean): Tab[] {
   ]
 }
 
+/** `authenticated` left undefined means: trust the rs_auth hint cookie (cached pages). */
 type NavProps = { authenticated?: boolean; translucent?: boolean; avatar?: NavAvatar }
+
+function useAuthenticated(authenticated: boolean | undefined): boolean {
+  const hinted = useAuthHint()
+  return authenticated ?? hinted
+}
 
 export const NAV_AVATAR_CACHE = 'reelset:nav-avatar'
 
@@ -85,7 +92,8 @@ function TabIcon({
   return <Avatar url={avatar.url} initial={avatar.initial} className={avatarClass} />
 }
 
-export function SideNav({ authenticated = false, avatar }: NavProps) {
+export function SideNav({ authenticated: given, avatar }: NavProps) {
+  const authenticated = useAuthenticated(given)
   const path = usePathname()
   const navAvatar = useNavAvatar(authenticated, avatar)
   return (
@@ -115,7 +123,8 @@ export function SideNav({ authenticated = false, avatar }: NavProps) {
   )
 }
 
-export function BottomTabs({ authenticated = false, translucent = false, avatar }: NavProps) {
+export function BottomTabs({ authenticated: given, translucent = false, avatar }: NavProps) {
+  const authenticated = useAuthenticated(given)
   const path = usePathname()
   const navAvatar = useNavAvatar(authenticated, avatar)
   return (

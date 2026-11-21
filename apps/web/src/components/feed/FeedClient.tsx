@@ -552,7 +552,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
 
   const shell = (children: React.ReactNode, canNavigate = false) => (
     <div className="h-dvh w-full lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-10 lg:pr-8">
-      <SideRail authenticated={viewer.authenticated} />
+      <SideRail authenticated={viewer.authenticated || signedInHint} />
 
       <div className="relative h-dvh w-full overflow-hidden bg-black [--bar:calc(3.5rem+env(safe-area-inset-bottom))] lg:my-4 lg:h-[calc(100dvh-2rem)] lg:w-[calc((100dvh-2rem)*9/16)] lg:rounded-[28px] lg:border lg:border-line lg:shadow-[0_24px_80px_-20px_rgba(0,0,0,.8)] lg:[--bar:0px]">
         {children}
@@ -620,7 +620,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
           <dd>Like</dd>
         </dl>
       </aside>
-      <BottomTabs translucent authenticated={viewer.authenticated} />
+      <BottomTabs translucent authenticated={viewer.authenticated || signedInHint} />
     </div>
   )
 

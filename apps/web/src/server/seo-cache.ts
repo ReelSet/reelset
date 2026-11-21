@@ -16,11 +16,12 @@ import {
   loadReelPage,
 } from '@/server/seo-queries'
 
-const SEO_REVALIDATE_SECONDS = 60
+// Matches the ISR period of the /t pages and the home page: unstable_cache lowers a page's
+// revalidate to its own, so a shorter value here would regenerate those pages more often.
+const SEO_REVALIDATE_SECONDS = 300
 
 const options = { revalidate: SEO_REVALIDATE_SECONDS }
 
-// Filter clicks repeat these aggregate queries; a minute of staleness is invisible on browse pages.
 export const cachedTopicLabels = unstable_cache(
   (source: string | null) => listTopicLabels(getDb(), source),
   ['seo-topic-labels'],

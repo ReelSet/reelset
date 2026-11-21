@@ -16,6 +16,7 @@ import { RETURN_PATH_HEADER } from '@/lib/auth/return-url'
 import { routeForHost } from '@/lib/host-routing'
 import { shouldRefresh } from '@/lib/auth/token-exp'
 import { legacyReelRedirect } from '@/lib/reel-url'
+import { sourceRewritePath } from '@/lib/source-path'
 
 export async function proxy(request: NextRequest) {
   const route = routeForHost({
@@ -47,8 +48,21 @@ export async function proxy(request: NextRequest) {
   }
 
   request.headers.set(RETURN_PATH_HEADER, request.nextUrl.pathname + request.nextUrl.search)
-  const rewriteUrl = route.kind === 'rewrite' ? request.nextUrl.clone() : null
-  if (rewriteUrl && route.kind === 'rewrite') rewriteUrl.pathname = route.pathname
+  let rewriteUrl: URL | null = null
+  if (route.kind === 'rewrite') {
+    rewriteUrl = request.nextUrl.clone()
+    rewriteUrl.pathname = route.pathname
+  } else {
+    const sourcePath = sourceRewritePath(
+      request.nextUrl.pathname,
+      request.nextUrl.searchParams.get('source'),
+    )
+    if (sourcePath) {
+      rewriteUrl = request.nextUrl.clone()
+      rewriteUrl.pathname = sourcePath
+      rewriteUrl.searchParams.delete('source')
+    }
+  }
   const passOn = () =>
     rewriteUrl ? NextResponse.rewrite(rewriteUrl, { request }) : NextResponse.next({ request })
 
