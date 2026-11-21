@@ -52,6 +52,7 @@ npm run deploy:cf -w @reelset/web     # patch-opennext-cookie, opennextjs-cloudf
 npx wrangler secret bulk <secrets.json> # only when a secret changes; creates a new version
 ```
 
+- Auto-deploy: `.github/workflows/deploy-web.yml` runs `deploy:cf` after CI passes on `main` (and on manual dispatch), then smoke-tests reelset.app. Repo secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts, R2, D1 edit + Account Settings read; zone reelset.app Workers Routes edit), `DATABASE_URL` (transaction pooler), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`; repo variable `CLOUDFLARE_ACCOUNT_ID`. Without the token the job warns and skips.
 - Other scripts: `preview:cf` (local workerd preview against the real database), `upload:cf` (new version without promoting it), `build:cf`, `cf-typegen`. Each runs `scripts/patch-opennext-cookie.mjs` first (OpenNext's `cookie` default import is `undefined` with cookie@1.1.1 and throws 1101 on every request with a `Cookie` header; the script fails the build if an OpenNext upgrade changes the file). `npm run build -w @reelset/web` stays plain `next build`.
 - `limits.cpu_ms` is 10000: a cost guard so a runaway render fails fast. The heaviest legitimate path (an OG render) takes about 300 ms.
 - Caching:

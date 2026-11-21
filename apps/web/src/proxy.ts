@@ -15,8 +15,8 @@ import {
 import { RETURN_PATH_HEADER } from '@/lib/auth/return-url'
 import { routeForHost } from '@/lib/host-routing'
 import { shouldRefresh } from '@/lib/auth/token-exp'
-import { legacyReelRedirect } from '@/lib/reel-url'
-import { sourceRewritePath } from '@/lib/source-path'
+import { legacyReelRedirect, reelRewritePath } from '@/lib/reel-url'
+import { isUnknownSourcePath, sourceRewritePath } from '@/lib/source-path'
 
 export async function proxy(request: NextRequest) {
   const route = routeForHost({
@@ -34,6 +34,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(target)
   }
 
+  let reelTarget: string | null = null
   if (route.kind === 'next') {
     const legacy = legacyReelRedirect(
       request.nextUrl.pathname,
@@ -45,6 +46,18 @@ export async function proxy(request: NextRequest) {
       target.search = ''
       return NextResponse.redirect(target, 308)
     }
+    if (isUnknownSourcePath(request.nextUrl.pathname)) {
+      return new NextResponse('Not found', { status: 404 })
+    }
+    const reel = reelRewritePath(request.nextUrl.pathname)
+    if (reel?.kind === 'not_found') return new NextResponse('Not found', { status: 404 })
+    if (request.nextUrl.pathname.includes('/opengraph-image')) {
+      if (!reel) return NextResponse.next()
+      const target = request.nextUrl.clone()
+      target.pathname = reel.pathname
+      return NextResponse.rewrite(target)
+    }
+    if (reel) reelTarget = reel.pathname
   }
 
   request.headers.set(RETURN_PATH_HEADER, request.nextUrl.pathname + request.nextUrl.search)
@@ -52,6 +65,9 @@ export async function proxy(request: NextRequest) {
   if (route.kind === 'rewrite') {
     rewriteUrl = request.nextUrl.clone()
     rewriteUrl.pathname = route.pathname
+  } else if (reelTarget) {
+    rewriteUrl = request.nextUrl.clone()
+    rewriteUrl.pathname = reelTarget
   } else {
     const sourcePath = sourceRewritePath(
       request.nextUrl.pathname,
@@ -136,6 +152,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|api/events|api/mcp|api/showcase|api/reel|api/avatar|api/views|api/feed|api/ask|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|llms.txt|llms-full.txt|.*opengraph-image.*|apple-icon.png|icon-.*\\.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|api/events|api/mcp|api/showcase|api/reel|api/avatar|api/views|api/feed|api/ask|favicon.ico|manifest.webmanifest|sitemap.xml|robots.txt|llms.txt|llms-full.txt|opengraph-image.*|apple-icon.png|icon-.*\\.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }

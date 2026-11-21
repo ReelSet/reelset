@@ -1,0 +1,64 @@
+name: Deploy web
+
+# Runs after CI passes on main, so a red build never reaches reelset.app.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.repository == 'ReelSet/reelset' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      AUTH_COOKIE_DOMAIN: .reelset.app
+      MEDIA_PUBLIC_BASE_URL: https://media.reelset.app
+      LOG_LEVEL: warn
+    steps:
+      - name: Check deploy credentials
+        id: creds
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN secret or CLOUDFLARE_ACCOUNT_ID variable is missing; skipping deploy"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v5
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.creds.outputs.ready == 'true'
+        run: npm ci
+      - name: Build and deploy reelset-web (OpenNext)
+        if: steps.creds.outputs.ready == 'true'
+        run: npm run deploy:cf -w @reelset/web
+      - name: Smoke test reelset.app
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          for path in / /t /login /sitemap.xml /robots.txt /api/feed /opengraph-image; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cookie: a=b' "https://reelset.app$path")
+            echo "$path -> $code"
+            [ "$code" = 200 ] || { echo "::error::$path returned $code"; exit 1; }
+          done

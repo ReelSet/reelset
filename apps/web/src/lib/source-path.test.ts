@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sourceRewritePath } from './source-path'
+import { isUnknownSourcePath, sourceRewritePath } from './source-path'
 
 describe('sourceRewritePath', () => {
   it('maps the topics index and a topic page to their source segment', () => {
@@ -20,5 +20,21 @@ describe('sourceRewritePath', () => {
     expect(sourceRewritePath('/t', 'GitHub')).toBeNull()
     expect(sourceRewritePath('/t', '../admin')).toBeNull()
     expect(sourceRewritePath('/t', 'x')).toBeNull()
+  })
+})
+
+describe('unknown sources', () => {
+  it('does not rewrite a made-up ?source=', () => {
+    expect(sourceRewritePath('/t', 'zz')).toBeNull()
+    expect(sourceRewritePath('/t/rust', 'abcdefgh')).toBeNull()
+  })
+
+  it('flags direct hits on a made-up source segment only', () => {
+    expect(isUnknownSourcePath('/t/by/zz')).toBe(true)
+    expect(isUnknownSourcePath('/t/rust/by/abcdefgh')).toBe(true)
+    expect(isUnknownSourcePath('/t/by/github')).toBe(false)
+    expect(isUnknownSourcePath('/t/rust/by/hn')).toBe(false)
+    expect(isUnknownSourcePath('/t/rust')).toBe(false)
+    expect(isUnknownSourcePath('/t/by')).toBe(false)
   })
 })

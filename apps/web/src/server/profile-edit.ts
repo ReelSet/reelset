@@ -7,6 +7,7 @@ import {
   profileDetailsSchema,
   sniffImageType,
 } from '@/lib/profile-edit'
+import { stripImageMetadata } from '@/lib/image-metadata'
 import { imageSize } from '@/lib/image-size'
 
 export type EditResult<T = undefined> =
@@ -75,7 +76,15 @@ export async function saveAvatar(
     log.warn({ profileId, type, ...size }, 'avatar rejected: not a square of at most AVATAR_SIZE')
     return { ok: false, error: 'unsupported' }
   }
-  const output = Buffer.from(body.buffer, body.byteOffset, body.byteLength)
+  const clean = stripImageMetadata(body, type)
+  if (!clean) {
+    log.warn({ profileId, type, bytes: body.byteLength }, 'avatar rejected: malformed segments')
+    return { ok: false, error: 'unsupported' }
+  }
+  if (clean.byteLength !== body.byteLength) {
+    log.info({ profileId, removed: body.byteLength - clean.byteLength }, 'avatar metadata stripped')
+  }
+  const output = Buffer.from(clean.buffer, clean.byteOffset, clean.byteLength)
   if (!(await claimEdit(db, profileId))) {
     log.warn({ profileId }, 'avatar edit rate limited')
     return { ok: false, error: 'rate_limited' }

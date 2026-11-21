@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { errorFields } from '@reelset/core'
 import type { Metadata } from 'next'
-import { notFound, permanentRedirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { FeedClient } from '@/components/feed/FeedClient'
 import { JsonLd, PageChrome } from '@/components/seo/PageChrome'
@@ -66,8 +66,6 @@ export default async function ReelRoute({ params }: Props) {
   const { slug } = await params
   const reel = await getReel(slug)
   if (!reel) notFound()
-  const canonical = reelPath(reel)
-  if (`/r/${slug}` !== canonical) permanentRedirect(canonical)
 
   const jsonLd = <JsonLd data={reelJsonLd(reel)} />
   const article = <ReelArticle reel={reel} />

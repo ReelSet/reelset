@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  reelRewritePath,
   legacyReelRedirect,
   parseReelParam,
   reelHref,
@@ -99,5 +100,41 @@ describe('legacyReelRedirect', () => {
     expect(legacyReelRedirect('/', null)).toBeNull()
     expect(legacyReelRedirect('/', 'not-a-reel')).toBeNull()
     expect(legacyReelRedirect('/ask', ID)).toBeNull()
+  })
+})
+
+describe('reelRewritePath', () => {
+  it('serves every slug spelling and the uuid from the short id', () => {
+    expect(reelRewritePath('/r/some-title-1a2b3c4d')).toEqual({
+      kind: 'rewrite',
+      pathname: '/r/1a2b3c4d',
+    })
+    expect(reelRewritePath('/r/made-up-junk-1a2b3c4d')).toEqual({
+      kind: 'rewrite',
+      pathname: '/r/1a2b3c4d',
+    })
+    expect(reelRewritePath('/r/1A2B3C4D')).toEqual({ kind: 'rewrite', pathname: '/r/1a2b3c4d' })
+    expect(reelRewritePath('/r/1a2b3c4d-0000-4000-8000-000000000000')).toEqual({
+      kind: 'rewrite',
+      pathname: '/r/1a2b3c4d',
+    })
+  })
+
+  it('keeps the opengraph image suffix', () => {
+    expect(reelRewritePath('/r/some-title-1a2b3c4d/opengraph-image')).toEqual({
+      kind: 'rewrite',
+      pathname: '/r/1a2b3c4d/opengraph-image',
+    })
+  })
+
+  it('leaves the short id path itself and other paths alone', () => {
+    expect(reelRewritePath('/r/1a2b3c4d')).toBeNull()
+    expect(reelRewritePath('/r/1a2b3c4d/opengraph-image')).toBeNull()
+    expect(reelRewritePath('/t/rust')).toBeNull()
+  })
+
+  it('rejects params that cannot name a reel', () => {
+    expect(reelRewritePath('/r/not-a-reel')).toEqual({ kind: 'not_found' })
+    expect(reelRewritePath('/r/%E0%A4%A')).toEqual({ kind: 'not_found' })
   })
 })

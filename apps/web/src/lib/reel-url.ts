@@ -63,6 +63,25 @@ export function parseReelParam(raw: string): ReelParam | null {
   return { shortId: match[2], slug: match[1] ?? '', id: null }
 }
 
+export type ReelRewrite = { kind: 'rewrite'; pathname: string } | { kind: 'not_found' } | null
+
+const REEL_PATH = /^\/r\/([^/]+)(\/opengraph-image[^/]*)?\/?$/
+
+/**
+ * Every spelling of a reel URL (any slug text, the uuid) is served from `/r/<shortId>`, so the
+ * ISR cache holds one entry per reel instead of one per slug a crawler invents. The page sets
+ * the canonical link and the feed fixes the address bar.
+ */
+export function reelRewritePath(pathname: string): ReelRewrite {
+  const match = REEL_PATH.exec(pathname)
+  if (!match) return null
+  const param = parseReelParam(match[1]!)
+  if (!param) return { kind: 'not_found' }
+  const suffix = match[2] ?? ''
+  const target = `/r/${param.shortId}${suffix}`
+  return target === pathname ? null : { kind: 'rewrite', pathname: target }
+}
+
 /** Inclusive uuid bounds for a short id, so the lookup is a primary-key range scan. */
 export function shortIdRange(short: string): [string, string] {
   return [`${short}-0000-0000-0000-000000000000`, `${short}-ffff-ffff-ffff-ffffffffffff`]
