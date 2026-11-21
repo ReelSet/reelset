@@ -6,6 +6,10 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "preview_urls": true,
+  "routes": [
+    { "pattern": "reelset.app", "custom_domain": true },
+    { "pattern": "admin.reelset.app", "custom_domain": true },
+  ],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "services": [
     { "binding": "WORKER_SELF_REFERENCE", "service": "reelset-web" },
