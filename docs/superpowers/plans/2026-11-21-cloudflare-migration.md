@@ -33,7 +33,7 @@ Branch `cloudflare-migration`. Do not push. Paths are relative to the repo root;
 13. **Service bindings `INGEST` -> `reelset-ingest` and `RENDER` -> `reelset-render`, with URL fallback.** This skips the public hop and the 524 risk on long Instagram connect and gate-judge calls.
 14. **`limits.cpu_ms: 10000`.** This is a cost guard: a runaway render fails fast. The heaviest legitimate path (an OG render) is about 300 ms.
 15. **Leave the Vercel project untouched.** Do not delete it or its domains; it is the rollback target.
-16. **Deploy from local with `npm run deploy -w @reelset/web`.** Workers Builds CI would need build secrets duplicated in the dashboard. Adding CI is a follow-up.
+16. **Deploy from local with `npm run deploy:cf -w @reelset/web`.** Workers Builds CI would need build secrets duplicated in the dashboard. Adding CI is a follow-up.
 
 ## Risks
 
@@ -374,6 +374,61 @@ export default {
 - `npx wrangler deploy --dry-run --outdir /private/tmp/claude-501/reelset-web-size` and record gzip size.
 - Commit per logical unit (deps+config, db, sharp, MCP, bindings, edge cache).
 
+### Part B: as built (2026-11-21)
+
+Checked locally: `npm test`, `npm run typecheck`, `opennextjs-cloudflare build` (all public routes
+still `○`/`●`), `wrangler deploy --dry-run` at **4.65 MiB gzip** (21 MiB raw), and
+`opennextjs-cloudflare preview` against the real database through a local Hyperdrive string. `/`,
+`/t`, `/t/<topic>`, `/t?source=`, `/r/<slug>` (MISS, then a 15 ms interception hit), its OG PNG,
+`/opengraph-image`, `/sitemap.xml`, `/robots.txt`, `/llms.txt`, `/api/feed`, `/api/reel/<uuid>`
+(edge `MISS` then `HIT`), `/api/mcp` (401), the admin host (307 to login) and `/_next/static`
+(immutable) all answered correctly with no Set-Cookie on anonymous pages, and pino loaded. Changes
+from the plan:
+
+- **Resources exist.** R2 `reelset-next-cache` and D1 `reelset-next-tags`
+  (`3e89b8bd-9a85-429c-8709-566faa64ed86`, already in `wrangler.jsonc`) are created, and the D1
+  `revalidations` table has OpenNext's current schema (`stale` and `expire` columns too; the
+  `CREATE TABLE` in B4 is out of date). Part C step 2 only needs a check.
+- **Scripts** are `build:cf`, `preview:cf`, `deploy:cf`, `upload:cf` and `cf-typegen`; `build`
+  stays `next build`, so the Vercel project still builds as before. Part C/D use `deploy:cf`.
+- **`@opennextjs/cloudflare` (pinned 1.20.18) and `wrangler` are devDependencies.** Both are build
+  tools; the only runtime import (`getCloudflareContext`) is bundled.
+- **Types.** `cf-typegen` runs with `--include-runtime false --strict-vars false`: the full runtime
+  types replace the DOM `Response` and break app code. `cloudflare-env.d.ts` is git-ignored; app
+  code reads bindings through the small `WebBindings` type in `W/server/cf.ts`, and `worker.ts`
+  imports the generated `.open-next/worker.js` under `@ts-ignore` so typecheck passes before and
+  after a build.
+- **No `initOpenNextCloudflareForDev()`.** Under `next dev` the DB falls back to `DATABASE_URL`
+  and the workers to their URLs, so it adds nothing, and with a Hyperdrive binding it would demand
+  a local connection string. `preview:cf` needs
+  `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` (the pooler URL) in the shell.
+- **DB (B7).** `resolveDbSource` + `dbFor` in `W/server/db.ts`, one client per request `ctx` in a
+  `WeakMap`. `createDb` is unchanged.
+- **Bindings (B8).** `serviceFetch(binding, url, path, init)` in `W/server/cf.ts`. Kick and gate
+  judge take an optional `bindings` argument (default `cfEnv()`), and `workerConfigFromEnv` returns
+  a config whose `fetch` is the `RENDER` binding, so the Instagram client code did not change. A
+  binding still needs the bearer token.
+- **Avatars (B9).** `W/lib/image-size.ts` reads WebP (VP8, VP8L, VP8X), PNG and JPEG headers
+  (checked against real sharp output once, then sharp was removed). `saveAvatar` accepts any of
+  the three, not only WebP: Safari's canvas cannot encode WebP and returns a PNG, so
+  `avatar-crop.ts` now falls back to JPEG and the server stores the sniffed type. The image must be
+  a square of at most 256 px and at most 512 KiB (`AVATAR_STORED_MAX_BYTES`; the route caps the
+  body at that too). `/api/avatar/[id]` now also sends `s-maxage`, so the edge cache keeps it.
+- **MCP (B10).** `CfWorkerJsonSchemaValidator` with `@cfworker/json-schema` added as a dependency
+  (it is an optional peer of the SDK). The `maxDuration` exports stay: they are ignored on Workers
+  and keep the Vercel rollback target unchanged.
+- **next.config (B11).** No `remotePatterns` (unoptimized images), no media-host helper.
+- **Edge cache (B5).** Rules in `W/lib/edge-cache.ts`. Range requests are not bypassed: the key
+  ignores `Range`, and `caches.default.match` answers a Range request from a cached 200 with a
+  206, so showcase video previews hit as well. Requests with `authorization` are bypassed too.
+  Cache errors fall through to the handler.
+- **Takedowns (B6).** `expireReels(ids, log)` in `W/server/cache-revalidate.ts` calls
+  `revalidateTag(reelTag(id), { expire: 0 })` and the same for `FEED_TAG`. `expire: 0` matters:
+  Next 16's profile form otherwise serves the stale page once more. It runs after admin hide and
+  unhide, admin visibility changes, approving a submission, and an owner's submit or withdraw. It
+  never throws. `revalidatePath('/profile')` stays: it refreshes the client router cache after the
+  preference actions.
+
 ## Part C: preview deploy + secrets
 
 Run everything from `apps/web`, with `unset CLOUDFLARE_API_TOKEN` first. Never print values.
@@ -387,7 +442,7 @@ Run everything from `apps/web`, with `unset CLOUDFLARE_API_TOKEN` first. Never p
      - `/private/tmp/claude-501/reelset-web.secrets.json`: `CLAUDE_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `INGEST_INTERNAL_TOKEN`, `IG_ADMIN_TOKEN`, `ADMIN_EMAILS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. No `DATABASE_URL`; Hyperdrive replaces it.
    - The script prints only key names and present/missing.
 2. **Create the resources (B4)**, then paste the D1 id into the config and commit.
-3. **Build and deploy:** `set -a; . /private/tmp/claude-501/reelset-web.build.env; set +a; npm run deploy`. This runs populateCache remote and wrangler deploy, and creates `reelset-web` on workers.dev.
+3. **Build and deploy:** `set -a; . /private/tmp/claude-501/reelset-web.build.env; set +a; npm run deploy:cf`. This runs populateCache remote and wrangler deploy, and creates `reelset-web` on workers.dev.
 4. **Upload the secrets:** `npx wrangler secret bulk /private/tmp/claude-501/reelset-web.secrets.json`. This creates a new version that serves immediately.
 5. **Smoke on `https://reelset-web.account-subdomain.workers.dev`:** `/`, `/r/<slug>`, `/t`, `/sitemap.xml`, `/robots.txt`, OG PNG, `POST /api/ask` streaming, `/api/mcp` 401 without a key.
    - Expected: auth flows fail here (see Risks), and the Cache API shows MISS only.
@@ -397,7 +452,7 @@ Run everything from `apps/web`, with `unset CLOUDFLARE_API_TOKEN` first. Never p
 
 The current records are A `reelset.app` -> `216.198.79.1` (Vercel, DNS-only) and CNAME `admin` -> `5bf357ca727ecb12.vercel-dns-017.com` (DNS-only). There is no `www`. Zone `93d415b2cc23c22f5c705fc3c008bbeb`, account `deea05d376a100365fb3e5fed18053ee`.
 
-1. **Add the routes to `apps/web/wrangler.jsonc`:** `"routes": [{ "pattern": "reelset.app", "custom_domain": true }, { "pattern": "admin.reelset.app", "custom_domain": true }]`. Then rebuild with the build env and run `npm run deploy`.
+1. **Add the routes to `apps/web/wrangler.jsonc`:** `"routes": [{ "pattern": "reelset.app", "custom_domain": true }, { "pattern": "admin.reelset.app", "custom_domain": true }]`. Then rebuild with the build env and run `npm run deploy:cf`.
 2. **If wrangler fails with "externally managed DNS records", call the API with override.** Pass the token through a variable, never printed:
    ```
    TOKEN=$(npx wrangler auth token 2>/dev/null | tail -1)
@@ -463,7 +518,7 @@ Run the curl checks against `https://reelset.app` unless noted. "Twice" means th
     - bindings (HYPERDRIVE, NEXT_INC_CACHE_R2_BUCKET `reelset-next-cache`, NEXT_TAG_CACHE_D1 `reelset-next-tags`, NEXT_CACHE_DO_QUEUE, INGEST, RENDER, WORKER_SELF_REFERENCE);
     - vars versus secrets;
     - build-time env (`NEXT_PUBLIC_*`, `AUTH_COOKIE_DOMAIN`, `MEDIA_PUBLIC_BASE_URL`, `DATABASE_URL` for prerender);
-    - deploy (`set -a; . <build env>; set +a; npm run deploy -w @reelset/web`);
+    - deploy (`set -a; . <build env>; set +a; npm run deploy:cf -w @reelset/web`);
     - `cpu_ms` 10000;
     - the edge-cache allowlist;
     - rollback.
@@ -474,7 +529,7 @@ Run the curl checks against `https://reelset.app` unless noted. "Twice" means th
   - add `AUTH_COOKIE_DOMAIN`, `INGEST_INTERNAL_*`, `IG_ADMIN_*`, `RESEND_API_KEY`, `LOG_LEVEL`;
   - mark `DATABASE_URL` as dev/build only (runtime uses HYPERDRIVE);
   - note that `GEMINI_MODEL` is unused.
-- README deploy notes: web deploy command, preview (`npm run preview -w @reelset/web`), and the rule that plain `wrangler deploy` must not be used because it skips populateCache.
+- README deploy notes: web deploy command, preview (`npm run preview:cf -w @reelset/web`), and the rule that plain `wrangler deploy` must not be used because it skips populateCache.
 - `CLAUDE.md` layout line: `apps/web` is a Next.js PWA on Cloudflare Workers (OpenNext).
 
 ## Follow-ups (not in this migration)
