@@ -95,7 +95,7 @@ export async function loadReelPage(
   `.execute(db)
   const row = rows.find((r) => slugify(r.title) === param.slug) ?? rows[0]
   if (!row) {
-    l.info('reel page not found')
+    l.debug('reel page not found')
     return null
   }
   if (rows.length > 1) l.warn({ candidates: rows.length }, 'short id matched several reels')
