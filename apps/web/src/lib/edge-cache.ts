@@ -22,6 +22,25 @@ export function isEdgeCacheableResponse(res: Response): boolean {
   return /\bpublic\b/.test(cc) && /\bs-maxage=\d+/.test(cc) && !/\b(?:private|no-store)\b/.test(cc)
 }
 
+const ORIGIN_CC = 'x-origin-cache-control'
+
+// The zone's Browser Cache TTL (4h) overwrites cache-control on Cache API hits, so the
+// origin value rides along in a side header and is restored when served.
+export function forEdgeStore(res: Response): Response {
+  const out = new Response(res.body, res)
+  const cc = res.headers.get('cache-control')
+  if (cc) out.headers.set(ORIGIN_CC, cc)
+  return out
+}
+
+export function fromEdgeStore(res: Response): Response {
+  const out = new Response(res.body, res)
+  const cc = res.headers.get(ORIGIN_CC)
+  if (cc) out.headers.set('cache-control', cc)
+  out.headers.delete(ORIGIN_CC)
+  return out
+}
+
 /** Host, path and sorted query; cookies, headers and the Range header never split entries. */
 export function edgeCacheKey(req: Request): string {
   const url = new URL(req.url)

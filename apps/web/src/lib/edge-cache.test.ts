@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   edgeCacheKey,
+  forEdgeStore,
+  fromEdgeStore,
   isEdgeCacheableRequest,
   isEdgeCacheableResponse,
   parseByteRange,
@@ -115,5 +117,24 @@ describe('withRange', () => {
     const res = await withRange(full(), 'bytes=20-')
     expect(res.status).toBe(416)
     expect(res.headers.get('content-range')).toBe('bytes */10')
+  })
+})
+
+describe('forEdgeStore / fromEdgeStore', () => {
+  it('restores the origin cache-control that the zone browser TTL overwrote', () => {
+    const origin = new Response('x', {
+      headers: { 'cache-control': 'public, max-age=300, s-maxage=3600' },
+    })
+    const stored = forEdgeStore(origin)
+    expect(stored.headers.get('x-origin-cache-control')).toBe('public, max-age=300, s-maxage=3600')
+    stored.headers.set('cache-control', 'max-age=14400')
+    const served = fromEdgeStore(stored)
+    expect(served.headers.get('cache-control')).toBe('public, max-age=300, s-maxage=3600')
+    expect(served.headers.has('x-origin-cache-control')).toBe(false)
+  })
+
+  it('leaves responses without a stored value alone', () => {
+    const served = fromEdgeStore(new Response('x', { headers: { 'cache-control': 'max-age=60' } }))
+    expect(served.headers.get('cache-control')).toBe('max-age=60')
   })
 })

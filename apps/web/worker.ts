@@ -2,6 +2,8 @@
 import handler from './.open-next/worker.js'
 import {
   edgeCacheKey,
+  forEdgeStore,
+  fromEdgeStore,
   isEdgeCacheableRequest,
   isEdgeCacheableResponse,
   withRange,
@@ -29,10 +31,10 @@ export default {
     const key = edgeCacheKey(req)
     const range = req.headers.get('range')
     const hit = await edge.match(key).catch(() => undefined)
-    if (hit) return withRange(tagged(hit, 'HIT'), range)
+    if (hit) return withRange(tagged(fromEdgeStore(hit), 'HIT'), range)
     const res = await next.fetch(req, env, ctx)
     if (isEdgeCacheableResponse(res)) {
-      ctx.waitUntil(edge.put(key, res.clone()).catch(() => undefined))
+      ctx.waitUntil(edge.put(key, forEdgeStore(res.clone())).catch(() => undefined))
     }
     return withRange(tagged(res, 'MISS'), range)
   },
