@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import NextTopLoader from 'nextjs-toploader'
 import { TimeZoneSync } from '@/components/TimeZoneSync'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -50,7 +49,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <TimeZoneSync />
         <ToastProvider>{children}</ToastProvider>
-        <Analytics />
       </body>
     </html>
   )

@@ -16,7 +16,6 @@
     "@reelset/core": "*",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
-    "@vercel/analytics": "^2.0.1",
     "kysely": "^0.29.8",
     "next": "16.4.6",
     "nextjs-toploader": "3.9.17",
