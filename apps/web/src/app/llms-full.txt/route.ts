@@ -5,7 +5,7 @@ import { mediaBaseUrl } from '@/server/env'
 import { routeLog } from '@/server/logger'
 import { listReelTranscripts } from '@/server/seo-queries'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 const LLMS_FULL_REELS = 200
 

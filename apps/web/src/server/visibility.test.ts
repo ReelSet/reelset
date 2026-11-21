@@ -15,6 +15,7 @@ import { servedReelsQuery } from './related-reels'
 import {
   countRenderedReels,
   listReelSummaries,
+  listSitemapReels,
   loadReelPage,
   listReelTranscripts,
   listSourceCounts,
@@ -57,7 +58,8 @@ describe('private reels stay out of public listings', () => {
     await listSourceCounts(db)
     await listTopicLabels(db)
     await listReelTranscripts(db, 'https://m.test', 5)
-    expect(statements).toHaveLength(5)
+    await listSitemapReels(db, 'https://m.test', 5)
+    expect(statements).toHaveLength(6)
     for (const sql of statements) expect(sql).toContain("i.visibility = 'public'")
   })
 

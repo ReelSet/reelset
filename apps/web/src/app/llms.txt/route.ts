@@ -5,7 +5,7 @@ import { mediaBaseUrl } from '@/server/env'
 import { routeLog } from '@/server/logger'
 import { listReelSummaries, listTopicLabels } from '@/server/seo-queries'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 const LLMS_REELS = 100
 
@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const db = getDb()
     const [reels, labels] = await Promise.all([
-      listReelSummaries(db, mediaBaseUrl(), { limit: LLMS_REELS }),
+      listReelSummaries(db, mediaBaseUrl(), { limit: LLMS_REELS, withLeadSource: false }),
       listTopicLabels(db),
     ])
     return new Response(buildLlmsTxt({ reels, topics: groupTopics(labels) }), {

@@ -175,11 +175,12 @@ function sourceClause(source: string | null | undefined) {
 export async function listReelSummaries(
   db: Database,
   mediaBase: string,
-  opts: { limit: number; labels?: string[]; source?: string | null },
+  opts: { limit: number; labels?: string[]; source?: string | null; withLeadSource?: boolean },
 ): Promise<ReelSummary[]> {
   const topicFilter = opts.labels ? sql`and i.topics && ${opts.labels}::text[]` : sql``
+  const source = opts.withLeadSource === false ? sql`null::text as source` : leadSource
   const { rows } = await sql<SummaryRow>`
-    select i.id, i.title, i.tldr, i.topics, i.published_at, i.view_count, ${leadSource},
+    select i.id, i.title, i.tldr, i.topics, i.published_at, i.view_count, ${source},
       coalesce(i.rendered_at, i.published_at) as updated_at,
       served.video_key, served.poster_key, served.video_duration_ms
     from item i ${servedRender}
@@ -188,6 +189,27 @@ export async function listReelSummaries(
     limit ${opts.limit}
   `.execute(db)
   return rows.map((r) => toSummary(r, mediaBase))
+}
+
+/**
+ * Just what a sitemap entry needs, for up to 20k reels: no lead-source subquery per row, no
+ * topics or view counts.
+ */
+export async function listSitemapReels(
+  db: Database,
+  mediaBase: string,
+  limit: number,
+): Promise<ReelSummary[]> {
+  const { rows } = await sql<Omit<SummaryRow, 'topics'>>`
+    select i.id, i.title, i.tldr, i.published_at,
+      coalesce(i.rendered_at, i.published_at) as updated_at,
+      served.video_key, served.poster_key, served.video_duration_ms
+    from item i ${servedRender}
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
+    order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
+    limit ${limit}
+  `.execute(db)
+  return rows.map((r) => toSummary({ ...r, topics: [] }, mediaBase))
 }
 
 export async function countRenderedReels(db: Database): Promise<number> {
