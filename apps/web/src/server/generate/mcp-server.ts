@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker'
 import { z } from 'zod'
 import { MAX_URLS_PER_REQUEST } from '@/lib/generate/types'
 import {
@@ -12,7 +13,11 @@ import {
 } from './mcp-tools'
 
 export function createReelsetMcpServer(ctx: McpContext): McpServer {
-  const server = new McpServer({ name: 'reelset', version: '1.0.0' })
+  // AJV compiles validators with new Function, which Workers forbid.
+  const server = new McpServer(
+    { name: 'reelset', version: '1.0.0' },
+    { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() },
+  )
   server.registerTool(
     'generate_reel',
     {
