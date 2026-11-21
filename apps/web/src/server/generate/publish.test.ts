@@ -18,11 +18,13 @@ vi.mock('@reelset/core', async (orig) => {
     withdrawPublish: vi.fn(async () => m.withdraw),
   }
 })
+vi.mock('@/server/cache-revalidate', () => ({ expireReels: vi.fn() }))
 vi.mock('./service', () => ({
   toRequestDto: vi.fn(async () => dto),
 }))
 
 const core = await import('@reelset/core')
+const { expireReels } = await import('@/server/cache-revalidate')
 const { submitToFeed, withdrawFromFeed } = await import('./publish')
 
 const REQUEST_ID = '11111111-2222-3333-4444-555555555555'
@@ -143,9 +145,11 @@ describe('withdrawFromFeed', () => {
       expect.anything(),
     )
     expect(fetch).not.toHaveBeenCalled()
+    expect(expireReels).toHaveBeenCalledWith([ITEM_ID], expect.anything())
   })
 
   it('refuses when nothing is submitted', async () => {
+    vi.mocked(expireReels).mockClear()
     m.withdraw = { ok: false, reason: 'not_submitted' }
     expect(await withdrawFromFeed(db, { viewer: owner, requestId: REQUEST_ID }, log)).toMatchObject(
       {
@@ -153,5 +157,6 @@ describe('withdrawFromFeed', () => {
         status: 409,
       },
     )
+    expect(expireReels).not.toHaveBeenCalled()
   })
 })

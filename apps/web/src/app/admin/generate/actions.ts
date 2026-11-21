@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { expireReels } from '@/server/cache-revalidate'
 import { getDb } from '@/server/db'
 import { runAdminAction } from '@/server/admin/run'
 import {
@@ -26,7 +27,13 @@ export async function visibilityAction(formData: FormData): Promise<void> {
     const itemId = idSchema.safeParse(formData.get('itemId'))
     const visibility = visibilitySchema.safeParse(formData.get('visibility'))
     if (!itemId.success || !visibility.success) return { ok: false, message: 'Invalid request' }
-    return setItemVisibility(getDb(), { itemId: itemId.data, visibility: visibility.data }, log)
+    const result = await setItemVisibility(
+      getDb(),
+      { itemId: itemId.data, visibility: visibility.data },
+      log,
+    )
+    if (result.ok) expireReels([itemId.data], log)
+    return result
   })
 }
 
@@ -58,7 +65,9 @@ export async function approveSubmissionAction(formData: FormData): Promise<void>
   await runAdminAction(formData, 'generate-approve', async ({ log }) => {
     const itemId = idSchema.safeParse(formData.get('itemId'))
     if (!itemId.success) return { ok: false, message: 'Invalid item id' }
-    return approveSubmission(getDb(), { itemId: itemId.data }, log)
+    const result = await approveSubmission(getDb(), { itemId: itemId.data }, log)
+    if (result.ok) expireReels([itemId.data], log)
+    return result
   })
 }
 

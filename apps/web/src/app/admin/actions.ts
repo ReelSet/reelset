@@ -2,6 +2,7 @@
 
 import { formDataStrings, hideInputSchema, unhideInputSchema } from '@/lib/admin/moderation'
 import { idSchema, itemRetrySchema } from '@/lib/admin/retry'
+import { expireReels } from '@/server/cache-revalidate'
 import { getDb } from '@/server/db'
 import { runAdminAction } from '@/server/admin/run'
 import {
@@ -48,7 +49,9 @@ export async function hideItemsAction(formData: FormData): Promise<void> {
       reason: formData.get('reason'),
     })
     if (!parsed.success) return { ok: false, message: 'Select at least one item and a reason' }
-    return hideSelected(getDb(), parsed.data, log)
+    const result = await hideSelected(getDb(), parsed.data, log)
+    if (result.ok) expireReels(parsed.data.itemIds, log)
+    return result
   })
 }
 
@@ -56,7 +59,9 @@ export async function unhideItemsAction(formData: FormData): Promise<void> {
   await runAdminAction(formData, 'unhide-items', async ({ log }) => {
     const parsed = unhideInputSchema.safeParse({ itemIds: formDataStrings(formData, 'itemId') })
     if (!parsed.success) return { ok: false, message: 'Select at least one item' }
-    return unhideSelected(getDb(), parsed.data, log)
+    const result = await unhideSelected(getDb(), parsed.data, log)
+    if (result.ok) expireReels(parsed.data.itemIds, log)
+    return result
   })
 }
 

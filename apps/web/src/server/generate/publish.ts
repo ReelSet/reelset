@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { buildPublishRequestEmail } from '@/lib/email/publish-request'
 import { sendEmail } from '@/lib/email/resend'
 import type { ApiError, ReelRequestDto } from '@/lib/generate/types'
+import { expireReels } from '@/server/cache-revalidate'
 import { toRequestDto, type Viewer } from './service'
 
 export type PublishResult =
@@ -91,6 +92,7 @@ async function applyChange(
   if (!changed.ok) return { result: refuse(changed.reason), request: null }
   const request = await toRequestDto(db, owned.row)
   log.info({ requestId: owned.row.id, itemId: owned.itemId }, 'publish state changed')
+  expireReels([owned.itemId], log)
   return { result: { ok: true, request }, request }
 }
 
