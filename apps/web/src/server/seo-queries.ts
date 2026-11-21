@@ -145,6 +145,45 @@ export async function loadReelPage(
   }
 }
 
+export type OgFields = {
+  title: string
+  topics: string[]
+  canonicalUrl: string
+  posterUrl: string | null
+}
+
+/** The four fields an OG card shows; same matching and visibility rules as loadReelPage. */
+export async function loadOgFields(
+  db: Database,
+  param: ReelParam,
+  mediaBase: string,
+): Promise<OgFields | null> {
+  const [lo, hi] = shortIdRange(param.shortId)
+  const match = param.id
+    ? sql`i.id = ${param.id}::uuid`
+    : sql`i.id between ${lo}::uuid and ${hi}::uuid`
+  const { rows } = await sql<{
+    title: string
+    topics: string[]
+    canonical_url: string
+    poster_key: string | null
+  }>`
+    select i.title, i.topics, i.canonical_url, served.poster_key
+    from item i ${servedRender}
+    where i.status = ${ItemStatus.rendered}::item_status and i.visibility <> 'hidden' and ${match}
+    order by i.published_at desc
+    limit ${PARAM_CANDIDATES}
+  `.execute(db)
+  const row = rows.find((r) => slugify(r.title) === param.slug) ?? rows[0]
+  if (!row) return null
+  return {
+    title: row.title,
+    topics: row.topics,
+    canonicalUrl: row.canonical_url,
+    posterUrl: mediaUrl(mediaBase, row.poster_key),
+  }
+}
+
 function toSummary(row: SummaryRow, mediaBase: string): ReelSummary {
   return {
     id: row.id,

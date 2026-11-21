@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { parseReelParam } from '@/lib/reel-url'
 import { buildSitemap } from '@/lib/seo/feeds'
 import { scriptedDb } from './admin/scripted-db'
-import { listReelSummaries, listSitemapReels } from './seo-queries'
+import { listReelSummaries, listSitemapReels, loadOgFields } from './seo-queries'
 
 const row = {
   id: '1a2b3c4d-0000-4000-8000-000000000000',
@@ -48,5 +49,34 @@ describe('listReelSummaries', () => {
     await listReelSummaries(db, 'https://m.test', { limit: 5 })
     expect(queries[0]!.sql).not.toContain('from mention m')
     expect(queries[1]!.sql).toContain('from mention m')
+  })
+})
+
+describe('loadOgFields', () => {
+  it('reads only the card fields and prefers the matching slug', async () => {
+    const { db, queries } = scriptedDb(() => [
+      { title: 'Other reel', topics: ['x'], canonical_url: 'https://a.test', poster_key: null },
+      {
+        title: 'Bun 2 ships',
+        topics: ['bun'],
+        canonical_url: 'https://b.test',
+        poster_key: 'p.jpg',
+      },
+    ])
+    const og = await loadOgFields(db, parseReelParam('bun-2-ships-1a2b3c4d')!, 'https://m.test')
+    expect(og).toEqual({
+      title: 'Bun 2 ships',
+      topics: ['bun'],
+      canonicalUrl: 'https://b.test',
+      posterUrl: 'https://m.test/p.jpg',
+    })
+    expect(queries).toHaveLength(1)
+    expect(queries[0]!.sql).not.toContain('script')
+    expect(queries[0]!.sql).toContain("i.visibility <> 'hidden'")
+  })
+
+  it('is null when nothing matches', async () => {
+    const { db } = scriptedDb(() => [])
+    expect(await loadOgFields(db, parseReelParam('1a2b3c4d')!, 'https://m.test')).toBeNull()
   })
 })

@@ -1,10 +1,12 @@
 import { ImageResponse } from 'next/og'
 import { parseReelParam } from '@/lib/reel-url'
 import { hostOf } from '@/lib/seo/site'
-import { getDb } from '@/server/db'
-import { mediaBaseUrl } from '@/server/env'
-import { routeLog } from '@/server/logger'
-import { loadReelPage } from '@/server/seo-queries'
+import { cachedOgFields } from '@/server/seo-cache'
+
+// Rendered once per reel per day (PNG encoding is the costliest thing this app does), built on
+// first request rather than at deploy.
+export const revalidate = 86400
+export const generateStaticParams = async (): Promise<{ slug: string }[]> => []
 
 export const alt = 'Reelset reel'
 export const size = { width: 1200, height: 630 }
@@ -15,9 +17,7 @@ const TITLE_MAX_CHARS = 110
 export default async function ReelOgImage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const param = parseReelParam(slug)
-  const reel = param
-    ? await loadReelPage(getDb(), param, mediaBaseUrl(), routeLog('r/[slug]/og')).catch(() => null)
-    : null
+  const reel = param ? await cachedOgFields(param, revalidate).catch(() => null) : null
   const title = reel?.title ?? 'What developers are building, in 60-second reels.'
   const shown = title.length > TITLE_MAX_CHARS ? `${title.slice(0, TITLE_MAX_CHARS - 1)}…` : title
   const byline = reel ? [hostOf(reel.canonicalUrl), ...reel.topics.slice(0, 2)].join('  ·  ') : ''

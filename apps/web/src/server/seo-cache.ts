@@ -13,6 +13,7 @@ import {
   listReelSummaries,
   listSourceCounts,
   listTopicLabels,
+  loadOgFields,
   loadReelPage,
 } from '@/server/seo-queries'
 
@@ -95,4 +96,13 @@ export function cachedReelPage(param: ReelParam, revalidate: number) {
 /** Topic labels for a /t/ or ?topic= slug, from the shared label list. */
 export async function cachedTopicLabelsFor(slug: string): Promise<string[]> {
   return labelsForSlug(await cachedTopicLabels(null), slug)
+}
+
+/** OG card fields of one reel, tagged like its page. */
+export function cachedOgFields(param: ReelParam, revalidate: number) {
+  return unstable_cache(
+    () => loadOgFields(getDb(), param, mediaBaseUrl()),
+    ['og-fields', param.shortId, param.slug, param.id ?? '', String(revalidate)],
+    { revalidate, tags: [reelTag(param.shortId)] },
+  )()
 }
