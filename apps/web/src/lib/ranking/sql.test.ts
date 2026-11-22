@@ -9,6 +9,7 @@ import {
 import {
   DummyDriver,
   Kysely,
+  type DatabaseConnection,
   PostgresAdapter,
   PostgresIntrospector,
   PostgresQueryCompiler,
@@ -171,7 +172,12 @@ describe('loadTasteSignals', () => {
       { weight: 1, n: 2, embedding: toVectorLiteral(like) },
       { weight: '0.5', n: '4', embedding: toVectorLiteral(done) },
     ]
-    const fake = { executeQuery: async () => ({ rows }) }
+    const fake = {
+      executeQuery: async () => ({ rows }),
+      streamQuery: () => {
+        throw new Error('not used')
+      },
+    } as unknown as DatabaseConnection
     const stub = new Kysely({
       dialect: {
         createAdapter: () => new PostgresAdapter(),
