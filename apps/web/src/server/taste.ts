@@ -11,8 +11,8 @@ export async function recomputeTaste(
   const l = log.child({ fn: 'recomputeTaste', profileId })
   try {
     const signals = await loadTasteSignals(db, profileId)
-    const taste = tasteVector(signals)
-    const signalCount = taste ? signals.length : 0
+    const taste = tasteVector(signals.groups)
+    const signalCount = taste ? signals.signalCount : 0
     await storeTaste(db, profileId, taste, signalCount)
     l.info(
       { signalCount, hasTaste: taste !== null, durationMs: elapsedMs(started) },

@@ -197,39 +197,53 @@ export function hydrateQuery(
 
 export type FeedRow = Awaited<ReturnType<ReturnType<typeof hydrateQuery>['execute']>>[number]
 
-type SignalRow = { item_id: string; embedding: string; weight: number | string }
+type SignalGroupRow = { weight: number | string; n: number | string; embedding: string }
 
-export function tasteSignalsQuery(profileId: string): RawBuilder<SignalRow> {
-  return sql<SignalRow>`
-    (select l.item_id, i.embedding::text as embedding, ${LIKE_WEIGHT}::float as weight
-      from "like" l
-      join item i on i.id = l.item_id
-      where l.profile_id = ${profileId}::uuid and i.embedding is not null
-      order by l.created_at desc
-      limit ${MAX_TASTE_SIGNALS})
-    union all
-    (select c.item_id, c.embedding, ${COMPLETE_WEIGHT}::float as weight
-      from (
-        select distinct on (e.item_id) e.item_id, i.embedding::text as embedding, e.created_at
-        from event e
-        join item i on i.id = e.item_id
-        where e.profile_id = ${profileId}::uuid
-          and e.name = ${EventName.reel_complete}::event_name
-          and i.embedding is not null
-          and jsonb_typeof(e.meta->'watchRatio') = 'number'
-          and (e.meta->>'watchRatio')::float >= ${COMPLETE_MIN_WATCH_RATIO}
-        order by e.item_id, e.created_at desc
-      ) c
-      order by c.created_at desc
-      limit ${MAX_TASTE_SIGNALS})`
+/** Averages each signal group in Postgres so only one vector per weight leaves the database. */
+export function tasteSignalsQuery(profileId: string): RawBuilder<SignalGroupRow> {
+  return sql<SignalGroupRow>`
+    select s.weight, count(*)::int as n, avg(s.embedding)::text as embedding
+    from (
+      (select i.embedding, ${LIKE_WEIGHT}::float as weight
+        from "like" l
+        join item i on i.id = l.item_id
+        where l.profile_id = ${profileId}::uuid and i.embedding is not null
+        order by l.created_at desc
+        limit ${MAX_TASTE_SIGNALS})
+      union all
+      (select c.embedding, ${COMPLETE_WEIGHT}::float as weight
+        from (
+          select distinct on (e.item_id) e.item_id, i.embedding, e.created_at
+          from event e
+          join item i on i.id = e.item_id
+          where e.profile_id = ${profileId}::uuid
+            and e.name = ${EventName.reel_complete}::event_name
+            and i.embedding is not null
+            and jsonb_typeof(e.meta->'watchRatio') = 'number'
+            and (e.meta->>'watchRatio')::float >= ${COMPLETE_MIN_WATCH_RATIO}
+          order by e.item_id, e.created_at desc
+        ) c
+        order by c.created_at desc
+        limit ${MAX_TASTE_SIGNALS})
+    ) s
+    group by s.weight`
 }
 
-export async function loadTasteSignals(db: Database, profileId: string): Promise<WeightedVector[]> {
+/**
+ * A group mean weighted by `weight * n` gives the same weighted mean as every signal on its own,
+ * so `tasteVector` over the groups matches `tasteVector` over the raw signals.
+ */
+export async function loadTasteSignals(
+  db: Database,
+  profileId: string,
+): Promise<{ groups: WeightedVector[]; signalCount: number }> {
   const result = await tasteSignalsQuery(profileId).execute(db)
-  return result.rows.map((row) => ({
+  const groups = result.rows.map((row) => ({
     vector: fromVectorLiteral(row.embedding),
-    weight: Number(row.weight),
+    weight: Number(row.weight) * Number(row.n),
   }))
+  const signalCount = result.rows.reduce((sum, row) => sum + Number(row.n), 0)
+  return { groups, signalCount }
 }
 
 export async function storeTaste(

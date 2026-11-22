@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { ItemStatus, RenderStatus, type Database } from '@reelset/core'
+import {
+  EMBEDDING_DIMENSIONS,
+  ItemStatus,
+  RenderStatus,
+  toVectorLiteral,
+  type Database,
+} from '@reelset/core'
 import {
   DummyDriver,
   Kysely,
@@ -8,7 +14,14 @@ import {
   PostgresQueryCompiler,
 } from 'kysely'
 import { orderRows, toRankedItem } from './index'
-import { candidatesQuery, hydrateQuery, tasteSignalsQuery, type FeedRow } from './sql'
+import {
+  candidatesQuery,
+  hydrateQuery,
+  loadTasteSignals,
+  tasteSignalsQuery,
+  type FeedRow,
+} from './sql'
+import { COMPLETE_WEIGHT, LIKE_WEIGHT, tasteVector } from './taste'
 
 const db = new Kysely({
   dialect: {
@@ -140,6 +153,51 @@ describe('tasteSignalsQuery', () => {
     expect(q.sql).toMatch(/from "like"/)
     expect(q.sql).toMatch(/distinct on \(e\.item_id\)/)
     expect(q.parameters).toEqual(expect.arrayContaining([1, 0.5, 0.8, 'reel_complete', 'p-1']))
+  })
+
+  it('averages in Postgres and never ships raw embeddings', () => {
+    const q = tasteSignalsQuery('p-1').compile(db)
+    expect(q.sql).toMatch(/avg\(s\.embedding\)::text/)
+    expect(q.sql).toMatch(/group by s\.weight/)
+    expect(q.sql).not.toMatch(/i\.embedding::text/)
+  })
+})
+
+describe('loadTasteSignals', () => {
+  it('weights each group mean by its size so the taste matches the per-signal mean', async () => {
+    const like = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, d) => (d === 0 ? 1 : 0))
+    const done = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, d) => (d === 1 ? 1 : 0))
+    const rows = [
+      { weight: 1, n: 2, embedding: toVectorLiteral(like) },
+      { weight: '0.5', n: '4', embedding: toVectorLiteral(done) },
+    ]
+    const fake = { executeQuery: async () => ({ rows }) }
+    const stub = new Kysely({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => ({
+          init: async () => {},
+          acquireConnection: async () => fake,
+          beginTransaction: async () => {},
+          commitTransaction: async () => {},
+          rollbackTransaction: async () => {},
+          releaseConnection: async () => {},
+          destroy: async () => {},
+        }),
+        createIntrospector: (k) => new PostgresIntrospector(k),
+        createQueryCompiler: () => new PostgresQueryCompiler(),
+      },
+    }) as unknown as Database
+
+    const { groups, signalCount } = await loadTasteSignals(stub, 'p-1')
+    expect(signalCount).toBe(6)
+    expect(groups.map((g) => g.weight)).toEqual([2, 2])
+
+    const perSignal = [
+      ...Array.from({ length: 2 }, () => ({ vector: like, weight: LIKE_WEIGHT })),
+      ...Array.from({ length: 4 }, () => ({ vector: done, weight: COMPLETE_WEIGHT })),
+    ]
+    expect(tasteVector(groups)).toEqual(tasteVector(perSignal))
   })
 })
 
