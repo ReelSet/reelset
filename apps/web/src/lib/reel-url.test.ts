@@ -1,3 +1,4 @@
+import { reelPath as corePath } from '@reelset/core'
 import { describe, expect, it } from 'vitest'
 import {
   reelRewritePath,
@@ -136,5 +137,22 @@ describe('reelRewritePath', () => {
   it('rejects params that cannot name a reel', () => {
     expect(reelRewritePath('/r/not-a-reel')).toEqual({ kind: 'not_found' })
     expect(reelRewritePath('/r/%E0%A4%A')).toEqual({ kind: 'not_found' })
+  })
+})
+
+describe('reelPath parity with @reelset/core', () => {
+  it('builds the same canonical path the IndexNow ping submits', () => {
+    const ids = ['218507c9-44e9-4128-aa63-9ecfb83a7d81', '1A2B3C4D-0000-4000-8000-000000000000']
+    const titles = [
+      'Are we not allowed to ask any sh*t about biology to Opus 5.5?',
+      'Café déjà vu: naïve résumé',
+      '🚔⚖️ Davud’s second wife disturbed Arezo; the police took action with an official warning!',
+      `${'long'.repeat(20)} words`,
+      '',
+      null,
+    ]
+    for (const id of ids) {
+      for (const title of titles) expect(reelPath({ id, title })).toBe(corePath({ id, title }))
+    }
   })
 })

@@ -5,7 +5,11 @@ const m = vi.hoisted(() => ({ applied: true }))
 
 vi.mock('@reelset/core', async (orig) => {
   const actual = await orig<typeof import('@reelset/core')>()
-  return { ...actual, reviewPublish: vi.fn(async () => m.applied) }
+  return {
+    ...actual,
+    reviewPublish: vi.fn(async () => m.applied),
+    announceReel: vi.fn(async () => 'sent' as const),
+  }
 })
 
 const core = await import('@reelset/core')
@@ -28,6 +32,7 @@ describe('approveSubmission', () => {
       { itemId, decision: 'approve', note: null },
       log,
     )
+    expect(core.announceReel).toHaveBeenCalledWith(db, itemId, log)
   })
 
   it('reports a submission that is no longer pending', async () => {
@@ -36,6 +41,7 @@ describe('approveSubmission', () => {
       ok: false,
       message: 'Submission is no longer pending',
     })
+    expect(core.announceReel).not.toHaveBeenCalled()
   })
 })
 

@@ -1,4 +1,5 @@
 import {
+  announceReel,
   getReelRequest,
   resolveUpgradeRequest,
   setReelRequestResult,
@@ -63,6 +64,7 @@ export async function setItemVisibility(
     return { ok: false, message: 'Only requested reels can change visibility' }
   }
   log.info({ itemId: input.itemId, visibility: input.visibility }, 'reel visibility changed')
+  if (input.visibility === 'public') await announceReel(db, input.itemId, log)
   return {
     ok: true,
     message: input.visibility === 'public' ? 'Published to the feed' : 'Removed from the feed',

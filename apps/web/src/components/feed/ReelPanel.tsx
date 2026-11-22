@@ -68,13 +68,14 @@ export function ReelPanel({
           </button>
         ))}
       </div>
+      {/* Inactive tabs hide with a class, not the `hidden` attribute: reader-mode extractors drop
+          hidden-attribute nodes, and these hold the facts and transcript AI engines cite. */}
       <div className="h-[clamp(12rem,36dvh,22rem)] overflow-y-auto overscroll-contain">
         <div
           role="tabpanel"
           id="panel-tldr"
           aria-labelledby="panel-tab-tldr"
-          hidden={active !== 'tldr'}
-          className="flex flex-col gap-5"
+          className={active === 'tldr' ? 'flex flex-col gap-5' : 'hidden'}
         >
           <TldrSection reel={reel} idPrefix="panel-" />
           <SourcesSection reel={reel} idPrefix="panel-" />
@@ -83,7 +84,7 @@ export function ReelPanel({
           role="tabpanel"
           id="panel-facts"
           aria-labelledby="panel-tab-facts"
-          hidden={active !== 'facts'}
+          className={active === 'facts' ? undefined : 'hidden'}
         >
           {factsPending ? <FactsSkeleton /> : <FactsSection reel={reel} idPrefix="panel-" />}
         </div>
@@ -91,7 +92,7 @@ export function ReelPanel({
           role="tabpanel"
           id="panel-transcript"
           aria-labelledby="panel-tab-transcript"
-          hidden={active !== 'transcript'}
+          className={active === 'transcript' ? undefined : 'hidden'}
         >
           <TranscriptSection reel={reel} idPrefix="panel-" />
         </div>

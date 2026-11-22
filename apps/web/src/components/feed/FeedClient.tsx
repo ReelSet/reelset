@@ -8,6 +8,7 @@ import { track } from '@/lib/client/track'
 import { DEFAULT_COUNT_RULES } from '@/lib/counts'
 import { useReelViews } from './useReelViews'
 import { usePrefetchReelDetails } from './useReelDetails'
+import { useHumanInput } from './useHumanInput'
 import {
   FEEDBACK_KEY,
   emptyFeedback,
@@ -116,6 +117,17 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
   itemsRef.current = items
   const activeRef = useRef(active)
   activeRef.current = active
+  const engaged = useHumanInput()
+
+  // Headless crawlers scroll and resize without real input. Following them off the first reel
+  // made them file this page's text under another reel's URL and title.
+  const onCardVisible = useCallback(
+    (index: number) => {
+      if (index !== 0 && !engaged.current) return
+      setActive(index)
+    },
+    [engaged],
+  )
 
   const patchItem = useCallback((id: string, patch: Partial<FeedItemDto>) => {
     setItems((cur) => cur.map((it) => (it.id === id ? { ...it, ...patch } : it)))
@@ -582,7 +594,8 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
         )}
       </div>
 
-      <aside className="hidden h-dvh min-h-0 flex-col items-start justify-end gap-6 py-10 lg:flex">
+      {/* Not an <aside>: reader-mode extractors drop asides, and this holds the reel's facts. */}
+      <div className="hidden h-dvh min-h-0 flex-col items-start justify-end gap-6 py-10 lg:flex">
         {items[active] && (
           <div
             id={DETAILS_PANEL_ID}
@@ -619,7 +632,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
           <Kbd>L</Kbd>
           <dd>Like</dd>
         </dl>
-      </aside>
+      </div>
       <BottomTabs translucent authenticated={viewer.authenticated || signedInHint} />
     </div>
   )
@@ -681,7 +694,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
           preload={index === active || index === active + 1 ? 'auto' : 'metadata'}
           soundOn={soundOn}
           controls={controls}
-          onVisible={setActive}
+          onVisible={onCardVisible}
           onSound={setSoundOn}
           onToggleLike={toggleLike}
           onToggleSave={toggleSave}

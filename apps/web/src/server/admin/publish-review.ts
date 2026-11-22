@@ -1,5 +1,6 @@
 import {
   RenderStatus,
+  announceReel,
   publishNoteSchema,
   reviewPublish,
   type Database,
@@ -95,6 +96,7 @@ export async function approveSubmission(
     { itemId: input.itemId, decision: 'approve', note: null },
     log,
   )
+  if (applied) await announceReel(db, input.itemId, log)
   return applied
     ? { ok: true, message: 'Approved and published to the feed' }
     : { ok: false, message: NO_LONGER_PENDING }

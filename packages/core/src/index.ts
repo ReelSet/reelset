@@ -21,6 +21,16 @@ export {
 } from './domain/github-spam'
 export { SOURCES, parseSource, sourceSchema } from './domain/source'
 export {
+  INDEXNOW_KEY,
+  INDEXNOW_KEY_PATH,
+  SITE_ORIGIN,
+  reelPath,
+  reelUrl,
+  submitIndexNow,
+  type IndexNowResult,
+} from './domain/indexnow'
+export { announceReel } from './repos/indexnow.repo'
+export {
   PIPELINE_STAGES,
   SETTLED_ITEM_STATUSES,
   UNHEALTHY_ITEM_STATUSES,

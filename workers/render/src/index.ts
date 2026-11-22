@@ -1,4 +1,5 @@
 import {
+  announceReel,
   createDb,
   createLogger,
   errorFields,
@@ -154,6 +155,7 @@ export default {
               .where('priority_at', 'is not', null)
               .execute()
           }
+          if (input.to === 'rendered') await announceReel(db, input.itemId, log)
         },
         spend: (input: Parameters<typeof recordSpend>[1]) => recordSpend(db, input, log),
         ...tts,
