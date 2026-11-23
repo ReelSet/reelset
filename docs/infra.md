@@ -21,7 +21,7 @@ DNS is on Cloudflare (zone `reelset.app`). The two web hosts are Workers Custom 
 
 - Queues: `ingest-items`, `ingest-items-dlq`, `render-jobs`, `render-jobs-dlq`
 - R2: `reelset-media`, custom domain `media.reelset.app`
-- Hyperdrive: `reelset-db` (id in `.env.local` as `HYPERDRIVE_ID`; `reelset-web` binds `cf0f4b14…`) -> Supabase direct connection
+- Hyperdrive: `reelset-db` (id in `.env.local` as `HYPERDRIVE_ID`; `reelset-web` binds `cf0f4b14…`) -> Supabase direct connection. Query caching is off (`wrangler hyperdrive update <id> --caching-disabled`): with it on, reads after a write (admin settings, credits, worker settings) came back up to 60s stale.
 - R2: `reelset-next-cache` (OpenNext incremental cache, cache only)
 - D1: `reelset-next-tags` (OpenNext tag cache, cache only)
 - Workers: `reelset-web`, `reelset-ingest`, `reelset-render` (deployed)
