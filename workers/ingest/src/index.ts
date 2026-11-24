@@ -188,6 +188,7 @@ export default {
           : undefined,
         renderQueue: env.RENDER_JOBS,
         llmModel: llm.model,
+        narrator: models.narrator,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
         alertWebhookUrl: env.ALERT_WEBHOOK_URL,
         githubToken: env.GITHUB_TOKEN,

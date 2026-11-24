@@ -10,6 +10,8 @@ export type Env = {
   AI?: Ai
   CHATTERBOX_URL?: string
   CHATTERBOX_TOKEN?: string
+  /** Qwen3-TTS narrator on Modal; authenticates with CHATTERBOX_TOKEN. A secret, like CHATTERBOX_URL. */
+  QWEN_TTS_URL?: string
   ALERT_WEBHOOK_URL?: string
   PEXELS_API_KEY?: string
   IG_ADMIN_TOKEN?: string

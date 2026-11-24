@@ -61,6 +61,7 @@ describe('settingEnumOptions', () => {
       'aura2',
       'kokoro',
       'chatterbox',
+      'qwen',
     ])
     expect(settingEnumOptions(SETTINGS.dailyReelCap)).toBeNull()
     expect(settingEnumOptions(SETTINGS.redditSubreddits)).toBeNull()

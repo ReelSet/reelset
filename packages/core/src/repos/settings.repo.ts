@@ -2,6 +2,7 @@ import { sql } from 'kysely'
 import { z } from 'zod'
 import type { Database } from '../db/client'
 import { DEFAULT_CHATTERBOX_VOICE, chatterboxVoiceSchema } from '../domain/chatterbox-voice'
+import { ttsProviderSchema, type TtsProvider } from '../domain/tts-provider'
 import {
   DEFAULT_CLAUDE_MODEL,
   claudeEffortSchema,
@@ -117,11 +118,7 @@ export const SETTINGS = {
   papersArxivPerCategory: def('papers_arxiv_per_category', z.number().int().min(0).max(50), 10),
   papersMaxAgeDays: def('papers_max_age_days', z.number().int().min(1).max(30), 7),
   scrapeDailySpendCapUsd: def('scrape_daily_spend_cap_usd', z.number().positive(), 1),
-  ttsProvider: def(
-    'tts_provider',
-    z.enum(['edge', 'aura2', 'kokoro', 'chatterbox']),
-    'edge' as 'edge' | 'aura2' | 'kokoro' | 'chatterbox',
-  ),
+  ttsProvider: def('tts_provider', ttsProviderSchema, 'edge' as TtsProvider),
   scriptModel: def('script_model', claudeModelSchema, DEFAULT_CLAUDE_MODEL),
   // Medium: low skips the self-checks that keep narration on length; higher adds cost, no gain seen.
   scriptEffort: def('script_effort', claudeEffortSchema, 'medium' as ClaudeEffort),

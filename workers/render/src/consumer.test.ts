@@ -920,3 +920,89 @@ describe('director', () => {
     expect(store.renders.get(await keyFor())?.done?.director).toBeUndefined()
   })
 })
+
+describe('modal narrators', () => {
+  const narration = (costUsd: number) => ({
+    audio: new Uint8Array([1, 2, 3]),
+    words: [{ text: 'Hook', start: 0, end: 0.4 }],
+    chars: 40,
+    audioSeconds: 30,
+    costUsd,
+    alignment: 'aligned' as const,
+    spoken: [],
+  })
+  const failing = (calls: string[], name: string) => ({
+    async generate(): Promise<never> {
+      calls.push(name)
+      throw new Error(`${name} down`)
+    },
+  })
+  const working = (calls: string[], name: string, costUsd: number) => ({
+    async generate() {
+      calls.push(name)
+      return narration(costUsd)
+    },
+  })
+
+  it('narrates with qwen first and records its gpu cost under provider qwen', async () => {
+    const { deps, container, rec } = setup()
+    const calls: string[] = []
+    deps.voice = 'qwen-genz'
+    deps.fallbackEngine = 'kokoro'
+    deps.qwen = working(calls, 'qwen', 0.0079)
+    deps.chatterbox = working(calls, 'chatterbox', 0)
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    expect(calls).toEqual(['qwen'])
+    const sent = container.requests[0]!.body as Record<string, any>
+    expect(sent.narration.audioBase64).toBe('AQID')
+    expect(sent.ttsEngine).toBeUndefined()
+    const tts = rec.spends.find((s) => s.category === 'tts')!
+    expect(tts.costUsd).toBe(0.0079)
+    expect(tts.meta).toMatchObject({ provider: 'qwen' })
+  })
+
+  it('falls back from a failed qwen to chatterbox and records chatterbox', async () => {
+    const { deps, container, rec } = setup()
+    const calls: string[] = []
+    deps.voice = 'qwen-genz'
+    deps.fallbackEngine = 'kokoro'
+    deps.qwen = failing(calls, 'qwen')
+    deps.chatterbox = working(calls, 'chatterbox', 0)
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    expect(calls).toEqual(['qwen', 'chatterbox'])
+    expect((container.requests[0]!.body as Record<string, any>).narration).toBeDefined()
+    const tts = rec.spends.find((s) => s.category === 'tts')!
+    expect(tts.meta).toMatchObject({ provider: 'chatterbox' })
+    expect(tts.costUsd).toBe(0)
+  })
+
+  it('hands off to the container engine when every modal narrator fails', async () => {
+    const container = new FakeContainer({
+      renderBody: {
+        jobId: 'x',
+        bytes: 1000,
+        posterBytes: 50,
+        durationMs: 30_000,
+        ttsDurationMs: 29_000,
+        ttsChars: 400,
+        ttsProvider: 'kokoro',
+        renderMs: 20_000,
+        cover: true,
+        templateVersion: TEMPLATE_VERSION,
+      },
+    })
+    const { deps, rec } = setup({ container })
+    const calls: string[] = []
+    deps.voice = 'qwen-genz'
+    deps.edgeVoice = 'en-US-AriaNeural'
+    deps.fallbackEngine = 'kokoro'
+    deps.qwen = failing(calls, 'qwen')
+    deps.chatterbox = failing(calls, 'chatterbox')
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+    expect(calls).toEqual(['qwen', 'chatterbox'])
+    const sent = container.requests[0]!.body as Record<string, any>
+    expect(sent.narration).toBeUndefined()
+    expect(sent.ttsEngine).toBe('kokoro')
+    expect(rec.spends.find((s) => s.category === 'tts')!.meta).toMatchObject({ provider: 'kokoro' })
+  })
+})

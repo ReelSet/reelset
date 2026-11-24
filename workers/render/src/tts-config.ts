@@ -1,6 +1,12 @@
-import { SETTINGS, getSetting, type Database, type Logger } from '@reelset/core'
+import {
+  DEFAULT_CHATTERBOX_VOICE,
+  SETTINGS,
+  getSetting,
+  type Database,
+  type Logger,
+} from '@reelset/core'
 import { DEFAULT_VOICE } from './constants'
-import { generateChatterbox } from './chatterbox'
+import { generateChatterbox, type ChatterboxConfig } from './chatterbox'
 import type { Env } from './env'
 import {
   effectiveVoice,
@@ -12,17 +18,28 @@ import {
 } from './tts'
 import type { ReelScript } from '@reelset/core'
 
+type RemoteNarrator = { generate: (script: ReelScript, log: Logger) => Promise<Narration> }
+
 export type TtsConfig = {
   voice: string
   edgeVoice: string
   fallbackEngine: FallbackEngine
   aura?: { ai: AiLike; speaker: string }
-  chatterbox?: { generate: (script: ReelScript, log: Logger) => Promise<Narration> }
+  /** Tried first when set; on failure the render falls back to chatterbox, then the container. */
+  qwen?: RemoteNarrator
+  chatterbox?: RemoteNarrator
+}
+
+function modalNarrator(config: Omit<ChatterboxConfig, 'fetch'>): RemoteNarrator {
+  return {
+    generate: (script, jobLog) =>
+      generateChatterbox({ ...config, fetch: (u, init) => fetch(u, init) }, script, jobLog),
+  }
 }
 
 export async function loadTtsConfig(
   db: Database,
-  env: Pick<Env, 'AI' | 'TTS_VOICE' | 'CHATTERBOX_URL' | 'CHATTERBOX_TOKEN'>,
+  env: Pick<Env, 'AI' | 'TTS_VOICE' | 'CHATTERBOX_URL' | 'CHATTERBOX_TOKEN' | 'QWEN_TTS_URL'>,
   log: Logger,
 ): Promise<TtsConfig> {
   const edgeVoice = env.TTS_VOICE ?? DEFAULT_VOICE
@@ -31,26 +48,35 @@ export async function loadTtsConfig(
     getSetting(db, SETTINGS.ttsAuraSpeaker, log),
     getSetting(db, SETTINGS.ttsChatterboxVoice, log),
   ])
-  const { CHATTERBOX_URL: url, CHATTERBOX_TOKEN: token } = env
-  const provider = selectProvider(requested, env.AI, Boolean(url && token))
+  // Both Modal narrators read the same secret, so one token serves both.
+  const { CHATTERBOX_URL: url, CHATTERBOX_TOKEN: token, QWEN_TTS_URL: qwenUrl } = env
+  const provider = selectProvider(
+    requested,
+    env.AI,
+    Boolean(url && token),
+    Boolean(qwenUrl && token),
+  )
   if (requested !== provider) {
     log.warn({ requested, provider }, 'tts provider unavailable, starting at the next engine')
   }
+  const modal = provider === 'qwen' || provider === 'chatterbox'
   return {
     voice: effectiveVoice(provider, speaker, edgeVoice),
     edgeVoice,
     fallbackEngine: fallbackEngineFor(provider),
     aura: provider === 'aura2' && env.AI ? { ai: env.AI, speaker } : undefined,
+    qwen:
+      provider === 'qwen' && qwenUrl && token
+        ? modalNarrator({
+            url: qwenUrl,
+            token,
+            voice: DEFAULT_CHATTERBOX_VOICE,
+            engine: 'qwen',
+          })
+        : undefined,
     chatterbox:
-      provider === 'chatterbox' && url && token
-        ? {
-            generate: (script, jobLog) =>
-              generateChatterbox(
-                { url, token, voice: chatterboxVoice, fetch: (u, init) => fetch(u, init) },
-                script,
-                jobLog,
-              ),
-          }
+      modal && url && token
+        ? modalNarrator({ url, token, voice: chatterboxVoice, engine: 'chatterbox' })
         : undefined,
   }
 }

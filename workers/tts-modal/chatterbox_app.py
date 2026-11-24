@@ -12,22 +12,19 @@ import hmac
 import logging
 import os
 import pathlib
-import re
-import subprocess
 import time
 
 import modal
+
+from narration import GAP_SECONDS, align_segment, encode_mp3
 
 CHATTERBOX_COMMIT = "ab55923c27757c90cfcc407baa57dc25a7d25217"
 DEFAULT_VOICE = "genz"
 VOICES_LOCAL = pathlib.Path(__file__).parent / "voices"
 VOICES_DIR = "/voices"
-GAP_SECONDS = 0.22
 MAX_SEGMENTS = 24
 MAX_SEGMENT_CHARS = 600
 MAX_TOTAL_CHARS = 4000
-MP3_BITRATE = "128k"
-LEVEL_FILTER = "loudnorm=I=-15:TP=-1.5:LRA=11"
 CPU_CORES = 4
 
 log = logging.getLogger("chatterbox")
@@ -51,100 +48,12 @@ image = (
         "num2words==0.5.14",
         "fastapi[standard]",
     )
+    .add_local_python_source("narration", copy=True)
     .run_function(_download_models)
     .add_local_dir(VOICES_LOCAL, VOICES_DIR, ignore=["*.md"])
 )
 
 app = modal.App("reelset-chatterbox", image=image)
-
-
-def spoken_form(token: str) -> str:
-    """Letters the aligner can match: digits spelled out, symbols dropped."""
-    from num2words import num2words
-
-    def number(match: re.Match) -> str:
-        raw = match.group()
-        try:
-            return " " + num2words(float(raw) if "." in raw else int(raw)) + " "
-        except (ValueError, OverflowError):
-            return " "
-
-    text = token.replace("%", " percent ").replace("$", " dollars ")
-    text = re.sub(r"\d+(?:\.\d+)?", number, text)
-    text = re.sub(r"[^A-Za-z' ]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip().upper()
-
-
-def align_segment(wav, sample_rate: int, text: str, aligner, bundle, index: dict) -> list:
-    """One {text, start, end} per whitespace token, in seconds from the start of this segment."""
-    import torch
-    import torchaudio
-
-    duration = wav.shape[1] / sample_rate
-    tokens = text.split()
-    spoken = [spoken_form(token) for token in tokens]
-    transcript = "|".join(s.replace(" ", "|") for s in spoken if s)
-    chars = [c for c in transcript if c in index]
-    if not chars:
-        return spread(tokens, 0.0, duration)
-    with torch.inference_mode():
-        emission, _ = aligner(torchaudio.functional.resample(wav, sample_rate, bundle.sample_rate))
-        logp = torch.log_softmax(emission, dim=-1)
-    if logp.shape[1] < len(chars):
-        return spread(tokens, 0.0, duration)
-    aligned, _ = torchaudio.functional.forced_align(logp, torch.tensor([[index[c] for c in chars]]), blank=0)
-    frames = aligned[0].tolist()
-    frame = duration / len(frames)
-
-    spans = []
-    previous = 0
-    for position, token_id in enumerate(frames):
-        if token_id != 0 and token_id != previous:
-            spans.append([position, position + 1])
-        elif token_id != 0 and spans:
-            spans[-1][1] = position + 1
-        previous = token_id
-
-    cursor = 0
-    words = []
-    for token, form in zip(tokens, spoken):
-        count = len([c for c in form.replace(" ", "|") if c in index])
-        if count == 0 or cursor + count > len(spans):
-            words.append({"text": token, "start": None, "end": None})
-            continue
-        words.append({"text": token, "start": spans[cursor][0] * frame, "end": spans[cursor + count - 1][1] * frame})
-        cursor += count
-        if cursor < len(chars) and chars[cursor] == "|":
-            cursor += 1
-    for i, word in enumerate(words):
-        if word["start"] is None:
-            before = next((w["end"] for w in reversed(words[:i]) if w["end"] is not None), 0.0)
-            after = next((w["start"] for w in words[i + 1 :] if w["start"] is not None), duration)
-            word["start"], word["end"] = before, max(before + 0.05, after)
-    return words
-
-
-def spread(tokens: list, start: float, end: float) -> list:
-    weights = [len(token) + 1 for token in tokens]
-    total = sum(weights) or 1
-    cursor = start
-    out = []
-    for token, weight in zip(tokens, weights):
-        nxt = cursor + (end - start) * weight / total
-        out.append({"text": token, "start": cursor, "end": nxt})
-        cursor = nxt
-    return out
-
-
-def encode_mp3(audio, sample_rate: int) -> bytes:
-    import numpy as np
-
-    pcm = (np.clip(audio.squeeze(0).numpy(), -1.0, 1.0) * 32767).astype("<i2").tobytes()
-    command = [
-        "ffmpeg", "-loglevel", "error", "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
-        "-af", LEVEL_FILTER, "-ar", str(sample_rate), "-c:a", "libmp3lame", "-b:a", MP3_BITRATE, "-f", "mp3", "pipe:1",
-    ]
-    return subprocess.run(command, input=pcm, check=True, capture_output=True, timeout=120).stdout
 
 
 @app.cls(

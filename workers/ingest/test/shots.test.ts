@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { SCREEN_NAMES, SFX_NAMES } from '@reelset/core'
 import { readFileSync } from 'node:fs'
 import { parseModelOutput } from '../src/pipeline/output'
-import { PROMPT_VERSION, SYSTEM_PROMPT } from '../src/pipeline/prompt'
+import {
+  PROMPT_VERSION,
+  QWEN_SYSTEM_PROMPT,
+  SYSTEM_PROMPT,
+  scriptPromptFor,
+} from '../src/pipeline/prompt'
 import { STORY_SHAPE_NAMES } from '../src/pipeline/story-shapes'
 import {
   clipHeadline,
@@ -168,6 +173,18 @@ describe('prompt', () => {
     expect(SYSTEM_PROMPT).toContain('90 to 165 words')
     expect(SYSTEM_PROMPT).toContain('at most 1100 characters')
     expect(SYSTEM_PROMPT).toContain('at most 3 significant digits')
+  })
+
+  it('adds the spoken-style narrator rules only for qwen', () => {
+    expect(scriptPromptFor('qwen')).toEqual({
+      system: QWEN_SYSTEM_PROMPT,
+      version: 'reel-v10-qwen',
+    })
+    expect(QWEN_SYSTEM_PROMPT.startsWith(SYSTEM_PROMPT)).toBe(true)
+    expect(QWEN_SYSTEM_PROMPT).toContain('December 4, 2026')
+    for (const narrator of ['chatterbox', 'kokoro', 'edge', 'aura2', undefined] as const) {
+      expect(scriptPromptFor(narrator)).toEqual({ system: SYSTEM_PROMPT, version: PROMPT_VERSION })
+    }
   })
 
   it('matches the renderer enum lists in the planner types', () => {

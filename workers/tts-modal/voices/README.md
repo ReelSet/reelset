@@ -6,6 +6,8 @@ their voice. To add a voice: drop `<name>.wav` here (5 to 30 s of clean speech),
 `CHATTERBOX_VOICES` in `packages/core/src/domain/chatterbox-voice.ts`, and deploy Modal, then
 the render worker and web.
 
+Qwen (`qwen_app.py`) clones only `genz`, from two fixed excerpts of `genz.wav` (0-6.95 s and 17.15-26.65 s) and their transcript in `GENZ_TRANSCRIPT`; editing `genz.wav` means updating both.
+
 | File | Source |
 | --- | --- |
 | `genz.wav` | Gen Z female clip supplied by the owner (default) |

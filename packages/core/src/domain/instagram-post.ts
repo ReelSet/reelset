@@ -4,6 +4,14 @@ import { InstagramPostStatus } from '../db/enums'
 export const INSTAGRAM_CAPTION_MAX_CHARS = 2200
 export const INSTAGRAM_HASHTAG_MAX = 30
 export const INSTAGRAM_MIN_GAP_MINUTES = 10
+// Auto posts target US viewers: they go out only in these Eastern-time hours (11am to 3pm and 6pm
+// to 11pm ET, so 8am to noon and 3pm to 8pm Pacific) and at least AUTO_GAP apart, which fits about
+// 21 a day, above the daily reel cap. Studies agree midnight to 8am ET is the dead zone and midday
+// and evening are the peaks. Posts an admin queues by hand are not held.
+export const INSTAGRAM_POST_TIMEZONE = 'America/New_York'
+export const INSTAGRAM_AUTO_POST_HOURS: readonly number[] = [11, 12, 13, 14, 18, 19, 20, 21, 22]
+export const INSTAGRAM_AUTO_GAP_MINUTES = 25
+
 // The worker's post call times out at 5 minutes inside a queue consumer, so 10 is well past any
 // live upload.
 export const INSTAGRAM_POSTING_STUCK_MINUTES = 10

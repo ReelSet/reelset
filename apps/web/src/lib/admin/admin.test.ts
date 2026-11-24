@@ -140,7 +140,7 @@ describe('settings form', () => {
     })
     expect(field('ttsProvider')).toMatchObject({
       kind: 'enum',
-      options: ['edge', 'aura2', 'kokoro', 'chatterbox'],
+      options: ['edge', 'aura2', 'kokoro', 'chatterbox', 'qwen'],
     })
     expect(field('imageVetModel').kind).toBe('enum')
     expect(field('askModel').kind).toBe('enum')

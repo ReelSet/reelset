@@ -3,7 +3,7 @@ import { decideOnError, retryDelaySeconds, stageFor } from '../src/pipeline/deci
 import { handleMessage, type MessageLike } from '../src/pipeline/consumer'
 import { STYLE_LIMITS } from '../src/pipeline/plain'
 import { processItem } from '../src/pipeline/process'
-import { PROMPT_VERSION } from '../src/pipeline/prompt'
+import { PROMPT_VERSION, QWEN_PROMPT_VERSION, SYSTEM_PROMPT } from '../src/pipeline/prompt'
 import {
   CHUNK_1,
   ITEM_ID,
@@ -68,6 +68,18 @@ describe('processItem', () => {
     expect(spend.map((q) => q.params[0])).toEqual(expect.arrayContaining(['llm', 'embedding']))
     expect(t.fake.find('update item set embedding')).toHaveLength(1)
     expect(t.fake.find('update evidence_chunk')).toHaveLength(1)
+  })
+
+  it('writes for the qwen narrator with its spoken-style rules and records that prompt version', async () => {
+    const t = makeDeps(makeWorld(), [validOutput()])
+    t.deps.narrator = 'qwen'
+    expect(await processItem(t.deps, ITEM_ID, 1)).toBe('rendered_enqueued')
+    const system = (t.generate.mock.calls[0]![0] as { system: string }).system
+    expect(system.startsWith(SYSTEM_PROMPT)).toBe(true)
+    expect(system).toContain('NARRATOR: an expressive voice model')
+    const setScript = t.fake.find('"script" =')[0]!
+    expect(setScript.params).toContain(QWEN_PROMPT_VERSION)
+    expect(setScript.params).not.toContain(PROMPT_VERSION)
   })
 
   it('shows a reddit post its own images and cites what the vetter read in them', async () => {

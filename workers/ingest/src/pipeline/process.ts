@@ -18,6 +18,7 @@ import {
   type Logger,
   type ParsedPaper,
   type Source,
+  type TtsProvider,
 } from '@reelset/core'
 import { EMBED_BATCH_SIZE, SOURCE_ONLY_EMBED_EXCERPT_CHARS } from '../config'
 import { transitionClearingPriority } from '../generate/priority'
@@ -57,9 +58,8 @@ import { STYLE_LIMITS, type StyleLimits } from './plain'
 import {
   NARRATION_MAX_WORDS,
   NARRATION_MIN_WORDS,
-  PROMPT_VERSION,
-  SYSTEM_PROMPT,
   buildUserPrompt,
+  scriptPromptFor,
   itemImagesPrompt,
 } from './prompt'
 import { allowedImageSet, validateGenerated, type GeneratedContent } from './safety'
@@ -75,6 +75,8 @@ export type ProcessDeps = {
   scrape?: ScrapeFallback
   renderQueue: { send: (message: RenderJobMessage) => Promise<unknown> }
   llmModel: ClaudeModel
+  /** The narration engine that will read the script (app_setting tts_provider); picks the prompt. */
+  narrator?: TtsProvider
   narrationLimits?: NarrationLimits
   /** Plain-language and hook checks; false turns them off (tests with synthetic scripts). */
   styleLimits?: StyleLimits | false
@@ -511,6 +513,12 @@ async function summarize(
 
   log.info({ chunks: stored.length, promptChunks: promptChunks.length }, 'evidence ready')
 
+  const prompt = scriptPromptFor(deps.narrator)
+  log.info(
+    { promptVersion: prompt.version, narrator: deps.narrator ?? null },
+    'script prompt selected',
+  )
+
   let rejection: string | undefined
   let previous: string | undefined
   let accepted: GeneratedContent | null = null
@@ -528,7 +536,7 @@ async function summarize(
     calls = attempt
     const llmStartedAt = performance.now()
     const result = await deps.llm.generate({
-      system: SYSTEM_PROMPT,
+      system: prompt.system,
       user: buildUserPrompt({
         title: item.title,
         kind: item.kind,
@@ -671,7 +679,7 @@ async function summarize(
         script: JSON.stringify(accepted.script),
         topics: accepted.topics,
         content_hash: hash,
-        prompt_version: PROMPT_VERSION,
+        prompt_version: prompt.version,
       })
       .where('id', '=', item.id)
       .where('status', '=', 'found')
@@ -685,7 +693,7 @@ async function summarize(
         attempt: deliveryAttempt,
         durationMs: Math.round(performance.now() - startedAt),
         meta: {
-          promptVersion: PROMPT_VERSION,
+          promptVersion: prompt.version,
           chunks: stored.length,
           llmCalls: calls,
           ...(acceptedStyle

@@ -11,7 +11,11 @@ export type ChatterboxConfig = {
   voice: ChatterboxVoice
   fetch: (url: string, init: RequestInit) => Promise<Response>
   timeoutMs?: number
+  /** Which Modal narrator answers; both speak the same contract. Defaults to chatterbox. */
+  engine?: ModalEngine
 }
+
+export type ModalEngine = 'chatterbox' | 'qwen'
 
 const errorFields = (err: unknown) => ({
   err: err instanceof Error ? { name: err.name, message: err.message } : String(err),
@@ -45,21 +49,27 @@ function decodeBase64(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (c) => c.charCodeAt(0))
 }
 
-/** Narration from the Chatterbox service: audio plus one timed word per script token. Any failure throws tts_unavailable so the caller falls back. */
+/** GPU narrators price their own request (Qwen reports gpuUsd); Chatterbox on CPU reports none. */
+function reportedCostUsd(gpuUsd: unknown): number {
+  return typeof gpuUsd === 'number' && Number.isFinite(gpuUsd) && gpuUsd > 0 ? gpuUsd : 0
+}
+
+/** Narration from a Modal narrator (Chatterbox or Qwen): audio plus one timed word per script token. Any failure throws tts_unavailable so the caller falls back. */
 export async function generateChatterbox(
   config: ChatterboxConfig,
   script: ReelScript,
   log: Logger,
 ): Promise<Narration> {
+  const engine = config.engine ?? 'chatterbox'
   const segments = chatterboxSegments(script)
   const expectedWords = segments.join(' ').split(/\s+/).filter(Boolean).length
   const started = Date.now()
   const fail = (reason: string, extra: object = {}): never => {
     log.error(
-      { reason, voice: config.voice, ms: Date.now() - started, ...extra },
-      'chatterbox narration failed',
+      { engine, reason, voice: config.voice, ms: Date.now() - started, ...extra },
+      `${engine} narration failed`,
     )
-    throw new RenderJobError('tts_unavailable', `chatterbox tts failed: ${reason}`)
+    throw new RenderJobError('tts_unavailable', `${engine} tts failed: ${reason}`)
   }
 
   let response: Response
@@ -98,23 +108,29 @@ export async function generateChatterbox(
     return fail('bad_audio')
   }
   const chars = segments.join(' ').length
+  const costUsd = reportedCostUsd(body?.gpuUsd)
   log.info(
     {
-      provider: 'chatterbox',
+      provider: engine,
       voice: config.voice,
       chars,
       audioSeconds,
       synthSeconds: body?.synthSeconds,
+      gpu: body?.gpu,
+      gpuSeconds: body?.gpuSeconds,
+      retriedSegments: body?.retriedSegments,
+      unresolvedSegments: body?.unresolvedSegments,
+      costUsd,
       ms: Date.now() - started,
     },
-    'chatterbox narration ready',
+    `${engine} narration ready`,
   )
   return {
     audio,
     words,
     chars,
     audioSeconds,
-    costUsd: 0,
+    costUsd,
     alignment: 'aligned',
     spoken: [],
   }

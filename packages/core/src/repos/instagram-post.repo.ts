@@ -3,7 +3,10 @@ import type { Database } from '../db/client'
 import type { InstagramPost } from '../db/types'
 import { InstagramPostStatus, Source } from '../db/enums'
 import {
+  INSTAGRAM_AUTO_GAP_MINUTES,
+  INSTAGRAM_AUTO_POST_HOURS,
   INSTAGRAM_MIN_GAP_MINUTES,
+  INSTAGRAM_POST_TIMEZONE,
   INSTAGRAM_LOST_ERROR,
   INSTAGRAM_LOST_RECHECK_DAYS,
   INSTAGRAM_NOT_FOUND_ERROR,
@@ -32,25 +35,40 @@ export type ClaimedPost = Selectable<
 >
 const CLAIM_COLUMNS = sql`id, item_id, video_key, caption, media_pk, attempts`
 
+// Constants, never user input, so they are inlined as SQL literals.
+const AUTO_WINDOW_SQL = sql.raw(
+  `extract(hour from now() at time zone '${INSTAGRAM_POST_TIMEZONE}')::int in (${INSTAGRAM_AUTO_POST_HOURS.join(', ')})`,
+)
+
 // One statement: the SKIP LOCKED pick, the in-flight check and the gap check cannot interleave.
+// Admin posts go first and need only the short gap; auto posts wait for a US posting hour and the
+// longer gap, so the day's reels spread over the US peaks instead of going out in a burst.
 export async function claimNextPost(
   db: Database,
   log: Logger,
   minGapMinutes = INSTAGRAM_MIN_GAP_MINUTES,
+  autoGapMinutes = INSTAGRAM_AUTO_GAP_MINUTES,
 ): Promise<ClaimedPost | null> {
   const { rows } = await sql<ClaimedPost>`
-    update instagram_post set status = 'posting', started_at = now(), updated_at = now(),
-      attempts = attempts + 1, error = null
-    where id = (
-      select id from instagram_post where status = 'queued'
-      order by created_at limit 1 for update skip locked
+    with pick as (
+      select id, coalesce(requested_by = ${INSTAGRAM_AUTO_REQUESTER}, false) as auto
+      from instagram_post
+      where status = 'queued'
+        and (requested_by is distinct from ${INSTAGRAM_AUTO_REQUESTER} or ${AUTO_WINDOW_SQL})
+      order by coalesce(requested_by = ${INSTAGRAM_AUTO_REQUESTER}, false), created_at
+      limit 1 for update skip locked
     )
+    update instagram_post p set status = 'posting', started_at = now(), updated_at = now(),
+      attempts = p.attempts + 1, error = null
+    from pick
+    where p.id = pick.id
     and not exists (
-      select 1 from instagram_post
-      where status in ('posting', 'deleting')
-        or posted_at > now() - make_interval(mins => ${minGapMinutes})
+      select 1 from instagram_post o
+      where o.status in ('posting', 'deleting')
+        or o.posted_at > now() - make_interval(
+          mins => case when pick.auto then ${autoGapMinutes}::int else ${minGapMinutes}::int end)
     )
-    returning ${CLAIM_COLUMNS}`.execute(db)
+    returning p.id, p.item_id, p.video_key, p.caption, p.media_pk, p.attempts`.execute(db)
   const post = rows[0] ?? null
   if (post) log.info({ postId: post.id, itemId: post.item_id }, 'instagram post claimed')
   return post

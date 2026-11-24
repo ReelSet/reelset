@@ -1,4 +1,4 @@
-import { MAX_SPOKEN_CHARS } from '@reelset/core'
+import { MAX_SPOKEN_CHARS, type TtsProvider } from '@reelset/core'
 import { MAX_TLDR_CHARS } from '../config'
 import { hookFormulasPrompt } from './hook-formulas'
 import { MAX_HOOK_CHARS } from './hook-score'
@@ -132,6 +132,28 @@ Before and after, same facts (patterns only):
 - Weak outro: "Check it out on GitHub." Strong outro: "No GPU, one command. The laptop you already have was enough all along."`
 
 export const SYSTEM_PROMPT = `${RULES}\n\n${STYLE_GUIDE}`
+
+// Qwen3-TTS takes its delivery from the words and punctuation, so its scripts are written for the ear.
+// The narrator turns digits into words itself, so digits stay in the text for the captions.
+const QWEN_VOICE_RULES = `NARRATOR: an expressive voice model reads this script and takes its delivery from your words and punctuation, so write for the ear:
+- Talk like a creator to camera. Now and then set up a turn with the short question the viewer is already thinking, then answer it ("And the only thing that changed? Who's CEO."). At most one such question per beat.
+- Use "..." for a one-beat pause right before a reveal or a twist, at most once per beat, never inside a number or a name. Put a colon before a demand or a quote ("told him: take the site down").
+- Write names the way they are said. An uncommon acronym read letter by letter gets hyphens (X-C-L); common ones (AI, GPU, CEO, API) stay as they are. Keep digits for numbers, dates and prices, and write dates the American way ("December 4, 2026").
+- No characters a voice cannot say: no slashes, ampersands, arrows, brackets, tildes, hashtags or emoji in the narration; write "and", "or" or "to" instead.
+- Sound like a friend who just found something wild, never like a shout: no all-caps words, and at most one exclamation mark in the whole script.`
+
+export const QWEN_PROMPT_VERSION = `${PROMPT_VERSION}-qwen`
+export const QWEN_SYSTEM_PROMPT = `${SYSTEM_PROMPT}\n\n${QWEN_VOICE_RULES}`
+
+/** The script prompt for the narrator that will read it; Qwen gets the spoken-style rules on top. */
+export function scriptPromptFor(narrator: TtsProvider | undefined): {
+  system: string
+  version: string
+} {
+  return narrator === 'qwen'
+    ? { system: QWEN_SYSTEM_PROMPT, version: QWEN_PROMPT_VERSION }
+    : { system: SYSTEM_PROMPT, version: PROMPT_VERSION }
+}
 
 export function escapeUntrusted(text: string): string {
   return text.replace(/<\s*\/?\s*untrusted_source/gi, '[tag removed')

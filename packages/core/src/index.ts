@@ -115,6 +115,7 @@ export {
   chatterboxVoiceSchema,
   type ChatterboxVoice,
 } from './domain/chatterbox-voice'
+export { TTS_PROVIDERS, ttsProviderSchema, type TtsProvider } from './domain/tts-provider'
 export {
   SETTINGS,
   getSetting,
@@ -177,7 +178,10 @@ export {
   INSTAGRAM_CAPTION_MAX_CHARS,
   INSTAGRAM_HASHTAG_MAX,
   INSTAGRAM_LOST_ERROR,
+  INSTAGRAM_AUTO_GAP_MINUTES,
+  INSTAGRAM_AUTO_POST_HOURS,
   INSTAGRAM_MIN_GAP_MINUTES,
+  INSTAGRAM_POST_TIMEZONE,
   INSTAGRAM_NOT_FOUND_ERROR,
   queuedPostEtas,
   IG_LOGIN_FAILURE_ADVICE_AFTER,

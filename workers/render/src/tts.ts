@@ -1,4 +1,4 @@
-import type { Logger, ReelScript } from '@reelset/core'
+import type { Logger, ReelScript, TtsProvider } from '@reelset/core'
 import { RenderJobError } from './errors'
 
 export const AURA_MODEL = '@cf/deepgram/aura-2-en'
@@ -9,6 +9,7 @@ export const AURA_CHUNK_CHARS = 1500
 export const AURA_AI_ATTEMPTS = 2
 export const KOKORO_VOICE = 'af_heart'
 export const CHATTERBOX_VOICE = 'chatterbox-nano'
+export const QWEN_VOICE = 'qwen-genz'
 export const MAX_NARRATION_SECONDS = 98
 export const SHORTEN_MARGIN_SECONDS = 5
 export const MAX_SHORTEN_ATTEMPTS = 2
@@ -61,7 +62,7 @@ const errorFields = (err: unknown) => ({
   err: err instanceof Error ? { name: err.name, message: err.message } : String(err),
 })
 
-export type TtsProvider = 'edge' | 'aura2' | 'kokoro' | 'chatterbox'
+export type { TtsProvider }
 export type FallbackEngine = 'kokoro' | 'edge'
 export type TimedWord = { text: string; start: number; end: number }
 export type SpokenWord = { word: string; start: number; end: number }
@@ -86,16 +87,20 @@ export function narrationText(script: ReelScript): string {
 export function effectiveVoice(provider: TtsProvider, speaker: string, edgeVoice: string): string {
   if (provider === 'aura2') return `aura2-${speaker}`
   if (provider === 'chatterbox') return CHATTERBOX_VOICE
+  if (provider === 'qwen') return QWEN_VOICE
   return provider === 'kokoro' ? `kokoro-${KOKORO_VOICE}` : edgeVoice
 }
 
-/** Aura needs the AI binding and Chatterbox its service address and token; without them the chain starts at Kokoro. */
+/** Aura needs the AI binding, Chatterbox and Qwen their service address and token; an unready Qwen
+ * starts the chain at Chatterbox, anything else unready starts it at Kokoro. */
 export function selectProvider(
   provider: TtsProvider,
   ai: AiLike | undefined,
   chatterboxReady = false,
+  qwenReady = false,
 ): TtsProvider {
   if (provider === 'aura2' && !ai) return 'kokoro'
+  if (provider === 'qwen' && !qwenReady) return chatterboxReady ? 'chatterbox' : 'kokoro'
   if (provider === 'chatterbox' && !chatterboxReady) return 'kokoro'
   return provider
 }

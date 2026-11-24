@@ -81,6 +81,48 @@ describe('generateChatterbox', () => {
   })
 })
 
+describe('qwen through the modal client', () => {
+  it('logs as qwen and takes the gpu cost the service reports', async () => {
+    const cfg = {
+      ...config(Response.json({ ...okBody, gpu: 'L4', gpuSeconds: 35, gpuUsd: 0.00777 })),
+      engine: 'qwen' as const,
+    }
+    const out = await generateChatterbox(cfg, script, silentLog)
+    expect(out.costUsd).toBe(0.00777)
+    expect(out.words).toHaveLength(6)
+  })
+
+  it('names qwen in the error so the fallback log shows which engine failed', async () => {
+    const cfg = { ...config(new Response('no', { status: 503 })), engine: 'qwen' as const }
+    await expect(generateChatterbox(cfg, script, silentLog)).rejects.toMatchObject({
+      code: 'tts_unavailable',
+      message: 'qwen tts failed: bad_status',
+    })
+  })
+
+  it('ignores a missing or nonsense gpu cost', async () => {
+    const out = await generateChatterbox(
+      config(Response.json({ ...okBody, gpuUsd: -1 })),
+      script,
+      silentLog,
+    )
+    expect(out.costUsd).toBe(0)
+  })
+})
+
+describe('qwen provider selection', () => {
+  it('starts at qwen only when its url and the token are set', () => {
+    expect(selectProvider('qwen', undefined, true, true)).toBe('qwen')
+    expect(selectProvider('qwen', undefined, true, false)).toBe('chatterbox')
+    expect(selectProvider('qwen', undefined, false, false)).toBe('kokoro')
+  })
+
+  it('keys renders by its own voice and keeps kokoro as the container fallback', () => {
+    expect(effectiveVoice('qwen', 'hera', 'en-US-AriaNeural')).toBe('qwen-genz')
+    expect(fallbackEngineFor('qwen')).toBe('kokoro')
+  })
+})
+
 describe('chatterbox provider selection', () => {
   it('starts at kokoro when the service is not configured', () => {
     expect(selectProvider('chatterbox', undefined, false)).toBe('kokoro')
