@@ -73,15 +73,22 @@ describe('gemini output repair', () => {
     expect(truncateAtWord('short', 100)).toBe('short')
   })
 
-  it('accepts a tldr, hook and outro that are too long instead of failing', () => {
-    const result = parseModelOutput(
-      JSON.stringify(output({ tldr: words }, { hook: words, outro: words })),
-    )
+  it('trims a tldr that is too long instead of failing', () => {
+    const result = parseModelOutput(JSON.stringify(output({ tldr: words })))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.tldr.length).toBeLessThanOrEqual(280)
+  })
+
+  it('keeps a long hook and outro whole instead of cutting the sentence', () => {
+    const hook =
+      'You can train your own tiny language model at home, and the fine-tuning step took about two hours on one graphics card.'
+    const outro =
+      'So save this one and try it this weekend, because two hours on one graphics card is a lot less than people think it is.'
+    const result = parseModelOutput(JSON.stringify(output({}, { hook, outro })))
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.value.tldr.length).toBeLessThanOrEqual(280)
-      expect(result.value.script.hook.length).toBeLessThanOrEqual(120)
-      expect(result.value.script.outro.length).toBeLessThanOrEqual(120)
+      expect(result.value.script.hook).toBe(hook)
+      expect(result.value.script.outro).toBe(outro)
     }
   })
 
@@ -102,14 +109,53 @@ describe('gemini output repair', () => {
     }
   })
 
-  it('trims beat, visual and topic overflow and extra beats', () => {
-    const many = Array.from({ length: 8 }, () => ({
-      text: 'x'.repeat(300),
-      visual: { type: 'stat', label: words, value: words },
+  it('trims visual and topic overflow', () => {
+    const beats = [
+      { text: 'One', visual: { type: 'stat', label: words, value: words } },
+      { text: 'Two', visual: { type: 'title', title: words } },
+    ]
+    const result = parseModelOutput(JSON.stringify(output({ topics: [words] }, { beats })))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.topics[0]!.length).toBeLessThanOrEqual(40)
+  })
+
+  it('keeps a long beat whole on the first try', () => {
+    const long = 'And that two hours covers only one step, which is kind of annoying. '
+      .repeat(4)
+      .trim()
+    const beats = [
+      { text: 'One', visual: { type: 'title', title: 'T' } },
+      { text: long, visual: { type: 'title', title: 'T' } },
+    ]
+    const result = parseModelOutput(JSON.stringify(output({}, { beats })))
+    expect(long.length).toBeGreaterThan(220)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.script.beats[1]!.text).toBe(long)
+  })
+
+  it('still drops beats past the sixth', () => {
+    const many = Array.from({ length: 8 }, (_, i) => ({
+      text: `Beat ${i}`,
+      visual: { type: 'title', title: 'T' },
     }))
-    const result = parseModelOutput(JSON.stringify(output({ topics: [words] }, { beats: many })))
+    const result = parseModelOutput(JSON.stringify(output({}, { beats: many })))
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.value.script.beats).toHaveLength(6)
+  })
+
+  it('accepts spoken text at the caps and rejects it past them, never cutting it', () => {
+    const beats = (text: string) => [
+      { text, visual: { type: 'title', title: 'T' } },
+      { text: 'Two', visual: { type: 'title', title: 'T' } },
+    ]
+    const at = output(
+      {},
+      { hook: 'h'.repeat(240), outro: 'o'.repeat(240), beats: beats('b'.repeat(400)) },
+    )
+    expect(parseModelOutput(JSON.stringify(at)).ok).toBe(true)
+    const past = parseModelOutput(JSON.stringify(output({}, { beats: beats('b'.repeat(401)) })))
+    expect(past.ok).toBe(false)
+    if (!past.ok) expect(past.reason).toContain('script.beats.0.text')
   })
 
   it('still rejects structural problems and does not mutate non-objects', () => {

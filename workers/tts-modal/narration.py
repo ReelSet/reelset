@@ -169,6 +169,144 @@ def speech_check(text: str, heard: str, seconds: float) -> dict:
     return {"ok": ok, "ratio": round(ratio, 3), "gap": gap, "tooLong": too_long, "tooShort": too_short}
 
 
+# Speech models pad each take with silence and hold long breaths at full stops; joined back to back
+# that sounds like the voice stalling. Quieter than SILENCE_DB below the loudest frame is silence.
+SILENCE_DB = -38.0
+FRAME_SECONDS = 0.01
+LEAD_PAD_SECONDS = 0.03
+TAIL_PAD_SECONDS = 0.07
+MAX_INNER_PAUSE_SECONDS = 0.38
+INNER_PAUSE_SECONDS = 0.3
+EDGE_FADE_SECONDS = 0.008
+
+
+def tighten_silence(wav, sample_rate: int, protect: tuple = ()):
+    """Trims a take's leading and trailing silence and shortens long pauses inside it, except pauses
+    overlapping a `protect` (start, end) range in seconds; returns (wav, stats)."""
+    import numpy as np
+    import torch
+
+    audio = wav.squeeze(0).numpy()
+    frame = max(1, int(FRAME_SECONDS * sample_rate))
+    count = len(audio) // frame
+    if count < 3:
+        return wav, {"trimmedSeconds": 0.0, "shortenedPauses": 0}
+    rms = np.sqrt(np.mean(audio[: count * frame].reshape(count, frame) ** 2, axis=1) + 1e-12)
+    voiced = 20 * np.log10(rms / rms.max()) > SILENCE_DB
+    if not voiced.any():
+        return wav, {"trimmedSeconds": 0.0, "shortenedPauses": 0}
+    first, last = int(np.argmax(voiced)), count - 1 - int(np.argmax(voiced[::-1]))
+    start = max(0, first * frame - int(LEAD_PAD_SECONDS * sample_rate))
+    end = min(len(audio), (last + 1) * frame + int(TAIL_PAD_SECONDS * sample_rate))
+    keep, cursor, shortened = [], start, 0
+    run_start = None
+    half = int(INNER_PAUSE_SECONDS * sample_rate / 2)
+    for i in range(first, last + 1):
+        if not voiced[i] and run_start is None:
+            run_start = i
+        elif voiced[i] and run_start is not None:
+            protected = any(a < i * FRAME_SECONDS and b > run_start * FRAME_SECONDS for a, b in protect)
+            if (i - run_start) * FRAME_SECONDS > MAX_INNER_PAUSE_SECONDS and not protected:
+                keep.append(audio[cursor : run_start * frame + half])
+                cursor = i * frame - half
+                shortened += 1
+            run_start = None
+    keep.append(audio[cursor:end])
+    out = np.concatenate(keep)
+    fade = min(int(EDGE_FADE_SECONDS * sample_rate), len(out) // 2)
+    if fade > 0:
+        ramp = np.linspace(0.0, 1.0, fade, dtype=out.dtype)
+        out[:fade] *= ramp
+        out[-fade:] *= ramp[::-1]
+    trimmed = (len(audio) - len(out)) / sample_rate
+    return torch.from_numpy(np.ascontiguousarray(out)).reshape(1, -1), {
+        "trimmedSeconds": round(trimmed, 2),
+        "shortenedPauses": shortened,
+    }
+
+
+def group_parts(parts: list, chunks: int) -> list:
+    """Splits consecutive parts into `chunks` runs of about equal length; returns lists of indices."""
+    chunks = max(1, min(chunks, len(parts)))
+    total = sum(len(p) for p in parts)
+    groups, current, done = [], [], 0
+    for i, part in enumerate(parts):
+        current.append(i)
+        done += len(part)
+        left_parts, left_groups = len(parts) - i - 1, chunks - len(groups) - 1
+        target = total * (len(groups) + 1) / chunks
+        closest = left_parts > 0 and done + len(parts[i + 1]) / 2 >= target
+        if left_groups > 0 and (closest or left_parts == left_groups):
+            groups.append(current)
+            current = []
+    if current:
+        groups.append(current)
+    return groups
+
+
+def fade_edges(wav, sample_rate: int):
+    fade = min(int(EDGE_FADE_SECONDS * sample_rate), wav.shape[1] // 2)
+    if fade <= 0:
+        return wav
+    import torch
+
+    out = wav.clone()
+    ramp = torch.linspace(0.0, 1.0, fade)
+    out[0, :fade] *= ramp
+    out[0, -fade:] *= ramp.flip(0)
+    return out
+
+
+def quietest_point(wav, sample_rate: int, start: float, end: float) -> int:
+    """Sample index of the quietest 10 ms between two times, where silence can be spliced in."""
+    import numpy as np
+
+    a, b = int(start * sample_rate), int(end * sample_rate)
+    frame = max(1, int(FRAME_SECONDS * sample_rate))
+    if b - a < 2 * frame:
+        return (a + b) // 2
+    audio = wav.squeeze(0).numpy()[a:b]
+    count = len(audio) // frame
+    energy = (audio[: count * frame].reshape(count, frame) ** 2).mean(axis=1)
+    return a + int(np.argmin(energy)) * frame + frame // 2
+
+
+# Cloned voices carry the reference clip's hiss and breaths into every pause, and loudness leveling
+# raises them; between words (from the alignment) the audio is faded down to true silence.
+GATE_AFTER_WORD_SECONDS = 0.07
+GATE_BEFORE_WORD_SECONDS = 0.04
+GATE_FADE_SECONDS = 0.03
+
+
+def quiet_pauses(wav, sample_rate: int, words: list):
+    """Silences the audio between words, and before the first and after the last, with short fades."""
+    import torch
+
+    if not words:
+        return wav
+    length = wav.shape[1]
+    fade = int(GATE_FADE_SECONDS * sample_rate)
+    gain = torch.ones(length)
+    edges = [(0.0, words[0]["start"])] + [(p["end"], q["start"]) for p, q in zip(words, words[1:])]
+    edges.append((words[-1]["end"], length / sample_rate))
+    for n, (end, start) in enumerate(edges):
+        a = int((end + (GATE_AFTER_WORD_SECONDS if n > 0 else 0.0)) * sample_rate)
+        b = int((start - (GATE_BEFORE_WORD_SECONDS if n < len(edges) - 1 else 0.0)) * sample_rate)
+        a, b = max(0, a), min(length, b)
+        if b - a < 2 * fade:
+            continue
+        gain[a + fade : b - fade] = 0.0
+        if n > 0:
+            gain[a : a + fade] = torch.minimum(gain[a : a + fade], torch.linspace(1.0, 0.0, fade))
+        else:
+            gain[a : a + fade] = 0.0
+        if n < len(edges) - 1:
+            gain[b - fade : b] = torch.minimum(gain[b - fade : b], torch.linspace(0.0, 1.0, fade))
+        else:
+            gain[b - fade : b] = 0.0
+    return wav * gain.reshape(1, -1)
+
+
 def encode_mp3(audio, sample_rate: int) -> bytes:
     import numpy as np
 

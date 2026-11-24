@@ -24,6 +24,8 @@ MAX_HEADLINE_WORDS = 7
 SFX_NAMES = ("whoosh", "pop", "tick", "ding", "hit", "riser", "swoosh")
 CUE_RE = re.compile(r"^[^\s#]{1,40}(#[1-9])?$")
 MAX_SHOTS_PER_BEAT = 6
+# Kept in step with SPOKEN_TEXT_MAX in packages/core/src/domain/reel-script.ts.
+SPOKEN_TEXT_MAX = {"hook": 240, "beat": 400, "outro": 240}
 MAX_BROLL = 20
 DEMO_KINDS = ("gif", "mp4", "webm")
 
@@ -264,7 +266,7 @@ def validate_render_request(payload) -> RenderRequest:
             _bad("beat must be an object")
         beats.append(
             Beat(
-                text=_text(raw, "text", 220),
+                text=_text(raw, "text", SPOKEN_TEXT_MAX["beat"]),
                 visual=_validate_visual(raw.get("visual")),
                 shots=_validate_shots(raw.get("shots")),
                 key_points=_validate_key_points(raw.get("keyPoints")),
@@ -293,9 +295,9 @@ def validate_render_request(payload) -> RenderRequest:
 
     return RenderRequest(
         job_id=job_id,
-        hook=_text(script, "hook", 120),
+        hook=_text(script, "hook", SPOKEN_TEXT_MAX["hook"]),
         beats=beats,
-        outro=_text(script, "outro", 120),
+        outro=_text(script, "outro", SPOKEN_TEXT_MAX["outro"]),
         title=_text(payload, "title", 200),
         source_label=_text(payload, "sourceLabel", 40),
         image_urls=list(image_urls),

@@ -47,7 +47,7 @@ class ValidationTests(unittest.TestCase):
         self.assert_invalid(lambda p: p.update(voice="en US; rm"))
         self.assert_invalid(lambda p: p["script"].update(beats=[]))
         self.assert_invalid(lambda p: p["script"]["beats"][0].update(visual={"type": "video"}))
-        self.assert_invalid(lambda p: p["script"].update(hook="x" * 121))
+        self.assert_invalid(lambda p: p["script"].update(hook="x" * 241))
         self.assert_invalid(lambda p: p.update(imageUrls=["https://i.ytimg.com/a"] * 11))
         self.assert_invalid(lambda p: p.update(imageUrls=[5]))
         self.assert_invalid(lambda p: p.pop("title"))

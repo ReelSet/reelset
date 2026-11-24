@@ -58,14 +58,18 @@ const visualSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('image'), url: z.url() }),
 ])
 
+// Spoken text is never trimmed, so these are roomy sanity caps; the prompt asks for much less and
+// the whole-narration limits in ingest set the real length. Mirrored in the render box's validation.py.
+export const SPOKEN_TEXT_MAX = { hook: 240, beat: 400, outro: 240 } as const
+
 export const reelScriptSchema = z.object({
   version: z.literal(REEL_SCRIPT_VERSION),
-  hook: z.string().min(1).max(120),
+  hook: z.string().min(1).max(SPOKEN_TEXT_MAX.hook),
   headline: z.string().min(1).max(60).optional(),
   beats: z
     .array(
       z.object({
-        text: z.string().min(1).max(220),
+        text: z.string().min(1).max(SPOKEN_TEXT_MAX.beat),
         visual: visualSchema,
         shots: z.array(shotSchema).max(6).optional(),
         broll: z.array(z.string().min(2).max(40)).max(2).optional(),
@@ -74,7 +78,7 @@ export const reelScriptSchema = z.object({
     )
     .min(2)
     .max(6),
-  outro: z.string().min(1).max(120),
+  outro: z.string().min(1).max(SPOKEN_TEXT_MAX.outro),
   claims: z.array(
     z.object({ text: z.string().min(1).max(220), chunkIds: z.array(z.uuid()).min(1) }),
   ),

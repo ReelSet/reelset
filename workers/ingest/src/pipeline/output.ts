@@ -98,9 +98,11 @@ export function chooseHook(json: unknown): HookPick | null {
 }
 
 /**
- * Models regularly overshoot the hard length limits by a few characters. Rejecting those wastes
- * the LLM spend and the daily reel slot, so trim at word boundaries and fill a missing quote
- * attribution before strict validation. Anything structurally wrong is still rejected.
+ * Models regularly overshoot the hard length limits by a few characters. Display-only text (tldr,
+ * topics, claims, visuals) is trimmed at word boundaries and a missing quote attribution is filled
+ * before strict validation. Spoken text (hook, beats, outro) is never cut: a trimmed sentence
+ * changes what the reel says, so its schema caps are roomy instead.
+ * Anything structurally wrong is still rejected.
  */
 export function dropUnknownChunkIds(claims: unknown[], allowed: ReadonlySet<string>): unknown[] {
   const byLower = new Map([...allowed].map((id) => [id.toLowerCase(), id]))
@@ -135,8 +137,6 @@ export function repairModelOutput(
   if (!isObj(script)) return json
   plain(script, 'hook')
   plain(script, 'outro')
-  clip(script, 'hook', 120)
-  clip(script, 'outro', 120)
   const headline = clipHeadline(script.headline)
   if (headline) script.headline = headline
   else delete script.headline
@@ -155,7 +155,6 @@ export function repairModelOutput(
     for (const beat of beats) {
       if (!isObj(beat)) continue
       plain(beat, 'text')
-      clip(beat, 'text', 220)
       repairShots(beat, factNumbers, labelLedger, { sourceText: facts, claims })
       repairBroll(beat)
       const v = beat.visual

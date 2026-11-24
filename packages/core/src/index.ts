@@ -67,6 +67,7 @@ export {
   type SfxName,
   type Shot,
   type ReelVisual,
+  SPOKEN_TEXT_MAX,
 } from './domain/reel-script'
 export {
   DEFAULT_EVIDENCE_BUDGET,

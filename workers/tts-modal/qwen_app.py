@@ -20,13 +20,17 @@ import time
 import modal
 
 from narration import (
-    GAP_SECONDS,
     align_segment,
     emissions,
     encode_mp3,
+    fade_edges,
+    group_parts,
     heard_letters,
+    quietest_point,
+    quiet_pauses,
     speech_check,
     spoken_sentence,
+    tighten_silence,
 )
 
 MODEL_REPO = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
@@ -47,9 +51,17 @@ GPU_USD_PER_SECOND = {"L4": 0.000222, "A10": 0.000306, "L40S": 0.000542}
 SEED = 1234
 RETRY_SEED_STEP = 1000
 MAX_RETRY_ROUNDS = 2
-# About 100 s of speech at 12 codec frames per second; a segment is never that long, a loop is.
-MAX_NEW_TOKENS = 1200
+# About 125 s of speech at 12 codec frames per second; a whole script is never that long, a loop is.
+MAX_NEW_TOKENS = 1500
 MAX_SEGMENTS = 24
+# Silence between the last word of one part (hook, beat, outro) and the first of the next, what a
+# single take of the whole script leaves on its own. Breaths at a take's edges are cut away.
+PART_PAUSE_SECONDS = 0.45
+# A pause the voice takes at a written "..." or "?" is kept as it is: never shortened, never padded,
+# since forcing silence where the voice did not slow down sounds like the audio cutting out.
+WRITTEN_PAUSE_MARKS = ("...", "\u2026", "?")
+LEAD_KEEP_SECONDS = 0.06
+TAIL_KEEP_SECONDS = 0.12
 MAX_SEGMENT_CHARS = 600
 MAX_TOTAL_CHARS = 4000
 
@@ -78,11 +90,16 @@ image = (
 app = modal.App("reelset-qwen-tts", image=image)
 
 
-def genz_reference():
+# genz_clean.wav is genz.wav through highpass=f=60,afftdn=nr=18:nf=-50:tn=1 (ffmpeg): same words and
+# timing, less hiss for the clone to copy into every pause.
+CLEAN_VOICE = "genz-clean"
+
+
+def genz_reference(file: str = DEFAULT_VOICE):
     import numpy as np
     import soundfile as sf
 
-    audio, rate = sf.read(f"{VOICES_DIR}/{DEFAULT_VOICE}.wav", dtype="float32")
+    audio, rate = sf.read(f"{VOICES_DIR}/{file}.wav", dtype="float32")
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     pieces = [audio[int(start * rate) : int(end * rate)] for start, end in GENZ_EXCERPTS]
@@ -115,7 +132,10 @@ class QwenNarrator:
         )
         reference = genz_reference()
         self.voices = {
-            DEFAULT_VOICE: self.model.create_voice_clone_prompt(ref_audio=reference, ref_text=GENZ_TRANSCRIPT)
+            DEFAULT_VOICE: self.model.create_voice_clone_prompt(ref_audio=reference, ref_text=GENZ_TRANSCRIPT),
+            CLEAN_VOICE: self.model.create_voice_clone_prompt(
+                ref_audio=genz_reference("genz_clean"), ref_text=GENZ_TRANSCRIPT
+            ),
         }
         self.bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
         self.aligner = self.bundle.get_model().to("cuda:0").eval()
@@ -137,6 +157,9 @@ class QwenNarrator:
             language=["English"] * len(texts),
             voice_clone_prompt=self.voices[voice],
             max_new_tokens=MAX_NEW_TOKENS,
+            # The clone default streams the text in faster than it is spoken, so the pace climbs as the
+            # take goes on (QwenLM/Qwen3-TTS#239, +21% measured here); the whole text up front keeps it flat.
+            non_streaming_mode=True,
         )
         return [torch.from_numpy(w.astype("float32")).reshape(1, -1) for w in wavs], rate
 
@@ -149,51 +172,71 @@ class QwenNarrator:
         logp = emissions(wav, rate, self.aligner, self.bundle)
         return speech_check(text, heard_letters(logp, self.labels), seconds), logp
 
-    def narrate(self, segments: list, voice: str) -> dict:
+    def narrate(self, segments: list, voice: str, chunks: int, natural: bool = False) -> dict:
         import torch
 
-        spoken = [spoken_sentence(s) for s in segments]
+        groups = group_parts(segments, chunks)
+        texts = [" ".join(segments[i] for i in g) for g in groups]
+        spoken = [" ".join(spoken_sentence(segments[i]) for i in g) for g in groups]
         started = time.monotonic()
         wavs, rate = self.generate(spoken, voice, SEED)
-        checks = []
-        for n, wav in enumerate(wavs):
-            checks.append(self.judge(wav, rate, segments[n]))
+        checks = [self.judge(wav, rate, texts[n]) for n, wav in enumerate(wavs)]
         retried = 0
         for round_number in range(1, MAX_RETRY_ROUNDS + 1):
             failed = [n for n, (check, _) in enumerate(checks) if not check["ok"]]
             if not failed:
                 break
-            log.warning("round %d regenerating segments %s: %s", round_number, failed, [checks[n][0] for n in failed])
+            log.warning("round %d regenerating takes %s: %s", round_number, failed, [checks[n][0] for n in failed])
             retried += len(failed)
             fresh, _ = self.generate([spoken[n] for n in failed], voice, SEED + RETRY_SEED_STEP * round_number)
             for n, wav in zip(failed, fresh):
-                check, logp = self.judge(wav, rate, segments[n])
+                check, logp = self.judge(wav, rate, texts[n])
                 old = checks[n][0]
                 if check["ok"] or (check["gap"], -check["ratio"]) < (old["gap"], -old["ratio"]):
                     wavs[n], checks[n] = wav, (check, logp)
         synth_seconds = time.monotonic() - started
         bad = [n for n, (check, _) in enumerate(checks) if not check["ok"]]
         if bad:
-            log.warning("segments %s still off after retries, keeping the closest takes", bad)
+            log.warning("takes %s still off after retries, keeping the closest ones", bad)
+
+        takes, trimmed, shortened, padded = [], 0.0, 0, 0
+        for n, raw in enumerate(wavs):
+            parts = [segments[i] for i in groups[n]]
+            if natural:
+                # Pauses are the voice's own, from the script's punctuation: only the take's edges are trimmed.
+                words = align_segment(raw, rate, texts[n], self.aligner, self.bundle, self.index, checks[n][1])
+                takes.append(self.cut_breaths(raw, rate, words))
+                continue
+            first = align_segment(raw, rate, texts[n], self.aligner, self.bundle, self.index, checks[n][1])
+            wav, stats = tighten_silence(raw, rate, self.written_pauses(first))
+            trimmed += stats["trimmedSeconds"]
+            shortened += stats["shortenedPauses"]
+            words = align_segment(wav, rate, texts[n], self.aligner, self.bundle, self.index)
+            wav, words = self.cut_breaths(wav, rate, words)
+            wav, words, added = self.pad_breaks(wav, rate, words, parts)
+            wav = quiet_pauses(wav, rate, words)
+            padded += added
+            takes.append((wav, words))
 
         pieces, words, clock = [], [], 0.0
-        for n, (wav, text) in enumerate(zip(wavs, segments)):
-            duration = wav.shape[1] / rate
-            for word in align_segment(wav, rate, text, self.aligner, self.bundle, self.index, checks[n][1]):
-                words.append(
-                    {"text": word["text"], "start": round(clock + word["start"], 3), "end": round(clock + word["end"], 3)}
-                )
+        for n, (wav, take_words) in enumerate(takes):
+            if n > 0:
+                trailing = clock - words[-1]["end"]
+                gap = max(0.0, PART_PAUSE_SECONDS - trailing - take_words[0]["start"])
+                pieces.append(torch.zeros(1, int(gap * rate)))
+                clock += gap
+            for word in take_words:
+                words.append({"text": word["text"], "start": round(clock + word["start"], 3), "end": round(clock + word["end"], 3)})
             pieces.append(wav)
-            clock += duration
-            if n < len(segments) - 1:
-                pieces.append(torch.zeros(1, int(GAP_SECONDS * rate)))
-                clock += GAP_SECONDS
+            clock += wav.shape[1] / rate
         audio = torch.cat(pieces, dim=1)
         audio_seconds = audio.shape[1] / rate
         mp3 = encode_mp3(audio, rate)
         log.info(
-            "narration ready voice=%s segments=%d audio=%.1fs synth=%.1fs retried=%d unresolved=%d words=%d bytes=%d",
-            voice, len(segments), audio_seconds, synth_seconds, retried, len(bad), len(words), len(mp3),
+            "narration ready voice=%s parts=%d takes=%d audio=%.1fs synth=%.1fs retried=%d unresolved=%d words=%d"
+            " bytes=%d trimmed=%.1fs shortened_pauses=%d padded_breaks=%d",
+            voice, len(segments), len(groups), audio_seconds, synth_seconds, retried, len(bad), len(words),
+            len(mp3), trimmed, shortened, padded,
         )
         return {
             "audioBase64": base64.b64encode(mp3).decode(),
@@ -201,9 +244,56 @@ class QwenNarrator:
             "audioSeconds": round(audio_seconds, 3),
             "synthSeconds": round(synth_seconds, 1),
             "voice": voice,
+            "takes": len(groups),
+            "natural": natural,
             "retriedSegments": retried,
             "unresolvedSegments": len(bad),
+            "trimmedSeconds": round(trimmed, 2),
+            "shortenedPauses": shortened,
+            "paddedBreaks": padded,
         }
+
+    @staticmethod
+    def cut_breaths(wav, rate: int, words: list) -> tuple:
+        """Cuts a take to its words: an in-breath before the first or a tail after the last is dropped."""
+        if not words:
+            return wav, words
+        start = max(0.0, words[0]["start"] - LEAD_KEEP_SECONDS)
+        end = min(wav.shape[1] / rate, words[-1]["end"] + TAIL_KEEP_SECONDS)
+        cut = fade_edges(wav[:, int(start * rate) : int(end * rate)], rate)
+        return cut, [{**w, "start": w["start"] - start, "end": w["end"] - start} for w in words]
+
+    @staticmethod
+    def written_pauses(words: list) -> tuple:
+        """The (start, end) of each pause after a word written with "..." or "?"."""
+        return tuple(
+            (words[j - 1]["end"], words[j]["start"])
+            for j in range(1, len(words))
+            if words[j - 1]["text"].endswith(WRITTEN_PAUSE_MARKS)
+        )
+
+    @staticmethod
+    def pad_breaks(wav, rate: int, words: list, parts: list) -> tuple:
+        """Where one part ends and the next begins inside a take, makes the pause at least
+        PART_PAUSE_SECONDS, splicing silence in at the quietest point (quiet_pauses fades around it)."""
+        import torch
+
+        breaks, count = [], 0
+        for part in parts[:-1]:
+            count += len(part.split())
+            breaks.append(count)
+        out, added = wav, 0
+        for j in reversed(breaks):
+            if j <= 0 or j >= len(words):
+                continue
+            extra = PART_PAUSE_SECONDS - (words[j]["start"] - words[j - 1]["end"])
+            if extra <= 0.02:
+                continue
+            at = quietest_point(out, rate, words[j - 1]["end"], words[j]["start"])
+            out = torch.cat([out[:, :at], torch.zeros(1, int(extra * rate)), out[:, at:]], dim=1)
+            words = words[:j] + [{**w, "start": w["start"] + extra, "end": w["end"] + extra} for w in words[j:]]
+            added += 1
+        return out, words, added
 
     @modal.asgi_app()
     def web(self):
@@ -236,8 +326,12 @@ class QwenNarrator:
         if not isinstance(voice, str) or voice not in self.voices:
             log.warning("rejected request: unknown voice %r", voice)
             raise http_error(status_code=400, detail=f"voice must be one of {sorted(self.voices)}")
+        chunks = body.get("chunks", len(segments))
+        if not isinstance(chunks, int) or isinstance(chunks, bool) or not 1 <= chunks <= len(segments):
+            raise http_error(status_code=400, detail="chunks must be a whole number from 1 to the number of segments")
         try:
-            result = self.narrate([s.strip() for s in segments], voice)
+            natural = body.get("natural") is True
+            result = self.narrate([s.strip() for s in segments], voice, chunks, natural)
         except Exception as err:
             log.exception("narration failed")
             raise http_error(status_code=500, detail=f"narration failed: {type(err).__name__}") from err

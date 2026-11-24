@@ -159,6 +159,25 @@ describe('processItem', () => {
     ).toHaveLength(2)
   })
 
+  it('saves a long beat whole from the first script, with no retry', async () => {
+    const long = 'It batches messages and retries them, so nothing gets lost on the way. '
+      .repeat(4)
+      .trim()
+    const t = makeDeps(makeWorld(), [
+      validOutput(CHUNK_1, {
+        beats: [
+          { text: long, visual: { type: 'title', title: 'acme/repo' } },
+          { text: 'Retries are built in', visual: { type: 'title', title: 'acme/repo' } },
+        ],
+      }),
+    ])
+    expect(await processItem(t.deps, ITEM_ID, 1)).toBe('rendered_enqueued')
+    expect(t.generate).toHaveBeenCalledTimes(1)
+    const saved = t.fake.find('"script" =')[0]!.params.join(' ')
+    expect(saved).toContain(long)
+    expect(saved).not.toContain('\u2026')
+  })
+
   it('retries once on invalid JSON, then fails the item when the second try is also bad', async () => {
     const t = makeDeps(makeWorld(), ['not json at all', validOutput(FOREIGN_CHUNK)])
     const outcome = await processItem(t.deps, ITEM_ID, 1)
