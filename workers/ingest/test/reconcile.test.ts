@@ -101,6 +101,8 @@ function scriptedDb(rows: {
   priorityIds?: string[]
   overrides?: Row[]
   gateLookupFails?: boolean
+  requested?: Row[]
+  requestedLookupFails?: boolean
 }) {
   return createFakeDb((q: RecordedQuery) => {
     const s = q.sql
@@ -117,6 +119,10 @@ function scriptedDb(rows: {
     if (s.startsWith('select count(*) as "n" from "item"'))
       return [{ n: String(rows.inFlight ?? 0) }]
     if (s.includes('"queued_at" <')) return rows.stuck ?? []
+    if (s.startsWith('select "id", "score", "priority_at" from "item"')) {
+      if (rows.requestedLookupFails) throw new Error('connection reset')
+      return rows.requested ?? []
+    }
     if (s.startsWith('select "id", "score" from "item"')) return rows.found ?? []
     if (s.startsWith('select "id", priority_at is not null as "priority" from "item"')) {
       if (q.params[0] === 'embedded') return rows.embedded ?? []
@@ -274,6 +280,72 @@ describe('reconcile', () => {
       const result = await reconcile(fake.db, queues(), testLog, now)
       expect(result.admitted).toBe(1)
       expect(result.skipped.below_score).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-1'])
+    })
+  })
+
+  describe('requested reels (a request or an admin retry of one)', () => {
+    const claimedIds = (fake: ReturnType<typeof scriptedDb>) =>
+      fake
+        .find('update "item" set "queued_at" = now()')
+        .flatMap((q) => q.params.filter((p) => typeof p === 'string' && p.startsWith('item-')))
+    const eventMeta = (fake: ReturnType<typeof scriptedDb>) =>
+      fake
+        .find('insert into "item_event"')
+        .map((e) => e.params.find((p) => typeof p === 'string' && p.startsWith('{')) as string)
+
+    it('admits a low-scored requested item outside the score candidates, ahead of the rest', async () => {
+      const fake = scriptedDb({
+        found: [{ id: 'item-1', score: 0.9 }],
+        requested: [{ id: 'item-req', score: '0.01', priority_at: minutesAgo(70) }],
+        settings: { min_item_score: 0.3 },
+      })
+      const q = queues()
+      const result = await reconcile(fake.db, q, testLog, now)
+      expect(result.admitted).toBe(2)
+      expect(claimedIds(fake)).toEqual(['item-req', 'item-1'])
+      const lookup = fake.find('select "id", "score", "priority_at" from "item"')[0]!
+      expect(lookup.sql).toContain('"priority_at" is not null')
+      expect(lookup.sql).toContain('"queued_at" is null')
+      expect(lookup.sql).toContain('exists (select "mention"."id" from "mention"')
+      expect(lookup.sql).toContain('order by "priority_at" asc')
+    })
+
+    it('admits a requested item when the daily cap and the spend cap are both reached', async () => {
+      const fake = scriptedDb({
+        found: [{ id: 'item-1', score: 0.9 }],
+        requested: [{ id: 'item-req', score: '0.5', priority_at: minutesAgo(70) }],
+        admitted: 200,
+        spent: 999,
+        settings: { daily_reel_cap: 200, pipeline_daily_spend_cap_usd: 5 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-req'])
+      expect(result.skipped.daily_cap + result.skipped.spend_cap).toBe(1)
+    })
+
+    it('records a requested event, not an admitted one, so it does not use a daily slot', async () => {
+      const fake = scriptedDb({
+        found: [{ id: 'item-req', score: 0.9 }],
+        requested: [{ id: 'item-req', score: '0.9', priority_at: minutesAgo(70) }],
+        overrides: [{ id: 'item-req', score: 0.9 }],
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-req'])
+      const metas = eventMeta(fake)
+      expect(metas).toHaveLength(1)
+      expect(JSON.parse(metas[0]!)).toEqual({ requested: true })
+    })
+
+    it('admits by score as before when the requested lookup fails', async () => {
+      const fake = scriptedDb({
+        found: [{ id: 'item-1', score: 0.9 }],
+        requestedLookupFails: true,
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
       expect(claimedIds(fake)).toEqual(['item-1'])
     })
   })

@@ -336,6 +336,25 @@ async function overriddenFound(db: Database, log: Logger): Promise<FoundCandidat
   }
 }
 
+/** Found items someone asked for (a reel request or an admin retry of one). New requests are sent straight to the queue, but a retried or requeued one lands back here and would otherwise rank by score among thousands of feed items and never be picked. */
+async function requestedFound(db: Database): Promise<FoundCandidate[]> {
+  const rows = await db
+    .selectFrom('item')
+    .select(['id', 'score', 'priority_at'])
+    .where('status', '=', 'found')
+    .where('queued_at', 'is', null)
+    .where('priority_at', 'is not', null)
+    .where((eb) =>
+      eb.exists(
+        eb.selectFrom('mention').select('mention.id').whereRef('mention.item_id', '=', 'item.id'),
+      ),
+    )
+    .orderBy('priority_at', 'asc')
+    .limit(ADMISSION_OVERRIDES)
+    .execute()
+  return rows.map((row) => ({ id: row.id, score: Number(row.score) }))
+}
+
 async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: Date, log: Logger) {
   const minScore = await getSetting(db, SETTINGS.minItemScore, log)
   const dailyCap = await getSetting(db, SETTINGS.dailyReelCap, log)
@@ -359,9 +378,15 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
     .limit(ADMISSION_CANDIDATES)
     .execute()
 
-  const overrides = await overriddenFound(db, log)
+  // Requested reels are paid for, so like a fresh request they skip the score floor and both caps.
+  const requested = await requestedFound(db).catch((err) => {
+    log.warn(errorFields(err), 'requested reel lookup failed, admitting by score only')
+    return [] as FoundCandidate[]
+  })
+  const requestedIds = new Set(requested.map((r) => r.id))
+  const overrides = (await overriddenFound(db, log)).filter((o) => !requestedIds.has(o.id))
   const overridden = new Set(overrides.map((o) => o.id))
-  const ordinary = candidates.filter((c) => !overridden.has(c.id))
+  const ordinary = candidates.filter((c) => !overridden.has(c.id) && !requestedIds.has(c.id))
   const sources = await primarySources(
     db,
     [...overrides, ...ordinary].map((c) => c.id),
@@ -399,6 +424,7 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
   log.info(
     {
       candidates: candidates.length,
+      requested: requested.length,
       overrides: overrides.length,
       admit: admit.length,
       admitBySource: Object.fromEntries(
@@ -415,30 +441,28 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
     'admission decided',
   )
 
-  const claimed = await claim(
-    db,
-    'found',
-    admit.map((a) => a.id),
-  )
+  const claimed = await claim(db, 'found', [
+    ...requested.map((r) => r.id),
+    ...admit.map((a) => a.id),
+  ])
   const scores = new Map(admit.map((a) => [a.id, a.score]))
   const bySource = new Map(admit.map((a) => [a.id, a.source]))
   for (const c of claimed) {
-    await recordItemEvent(
-      db,
-      {
-        itemId: c.id,
-        stage: 'found',
-        outcome: 'started',
-        attempt: c.attempts + 1,
-        meta: {
+    // A requested item is not marked admitted, so it never takes a feed item's daily slot.
+    const meta = requestedIds.has(c.id)
+      ? { requested: true }
+      : {
           admitted: true,
           score: scores.get(c.id) ?? null,
           source: bySource.get(c.id) ?? null,
           ...(overridden.has(c.id) ? { gateOverride: true } : {}),
-        },
-      },
+        }
+    await recordItemEvent(
+      db,
+      { itemId: c.id, stage: 'found', outcome: 'started', attempt: c.attempts + 1, meta },
       log,
     )
+    if (requestedIds.has(c.id)) log.info({ itemId: c.id }, 'requested reel admitted past the caps')
   }
   const sent = await sendClaimed(db, queue, claimed, log)
   return { admitted: sent, skipped, spendCapReached: spent >= spendCapUsd }
