@@ -17,8 +17,27 @@ MAX_SECONDS_PER_LETTER = 0.16
 MIN_SECONDS_PER_LETTER = 0.025
 LOOP_GRACE_SECONDS = 1.5
 
-_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?(?:st|nd|rd|th|[kKMBx])?")
+_NUMBER = re.compile(r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:st|nd|rd|th|[kKMBx])?")
 _SCALE = {"k": "thousand", "K": "thousand", "M": "million", "B": "billion", "x": "times"}
+_MONEY_SCALE = {
+    "k": "thousand", "K": "thousand",
+    "m": "million", "M": "million", "mn": "million",
+    "b": "billion", "B": "billion", "bn": "billion",
+    "t": "trillion", "T": "trillion", "tn": "trillion",
+}
+_SCALE_WORDS = {"thousand", "million", "billion", "trillion"}
+# symbol: (one, many)
+_CURRENCY = {"$": ("dollar", "dollars"), "€": ("euro", "euros"), "£": ("pound", "pounds"), "₹": ("rupee", "rupees")}
+_MONEY = re.compile(
+    r"^(?:US|C|A|NZ|HK|S)?([$€£₹])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?:-?(bn|mn|tn|[kKmMbBtT])(?![A-Za-z]))?"
+)
+_MONTHS = {
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+}
+_DAY = re.compile(r"^(\d{1,2})(?:st|nd|rd|th)?$")
+_EDGE = re.compile(r"^([\"'“‘(\[]*)(.*?)([\"'”’)\].,!?;:]*)$", re.S)
 
 
 def _us_words(value, to: str = "cardinal") -> str:
@@ -50,25 +69,89 @@ def _number_words(raw: str) -> str:
     return f"{words} {suffix}" if suffix else words
 
 
-def speech_text(token: str) -> str:
-    """How a script token is said aloud: digits, percent and dollar amounts in words, punctuation kept."""
-    text = token
-    dollars = text.startswith("$") and any(c.isdigit() for c in text)
-    text = text.replace("$", "").replace("%", " percent")
+def _split_edges(token: str) -> tuple:
+    lead, core, trail = _EDGE.match(token).groups()
+    return lead, core, trail
+
+
+def _plain_words(text: str) -> str:
+    text = text.replace("%", " percent")
     text = _NUMBER.sub(lambda m: " " + _number_words(m.group()) + " ", text)
-    if dollars:
-        text = re.sub(r"^(\s*[^.,!?;:]+)", r"\1 dollars", text, count=1)
     return re.sub(r"\s+", " ", text).strip()
 
 
-def spoken_form(token: str) -> str:
-    """Letters the aligner can match for one token, upper case, words split by spaces."""
-    text = re.sub(r"[^A-Za-z' ]+", " ", speech_text(token).replace("-", " "))
+def _money_words(digits: str, scale: str, unit: tuple, next_scale: bool) -> str:
+    """`$12.5` + `million` is said "twelve point five million dollars": the currency moves after the
+    scale, which may be glued on (`$1M`, `$3.4bn`) or the next word (`next_scale`)."""
+    value = digits.replace(",", "")
+    if scale or next_scale:
+        words = _us_words(float(value)) if "." in value else _us_words(int(value))
+        return f"{words} {scale} {unit[1]}".strip() if scale else words
+    if "." in value:
+        whole, cents = value.split(".", 1)
+        if len(cents) == 2:
+            said = f"{_us_words(int(whole))} {unit[0] if int(whole) == 1 else unit[1]}"
+            return said if int(cents) == 0 else f"{said} {_us_words(int(cents))} cents"
+        return f"{_us_words(float(value))} {unit[1]}"
+    return f"{_us_words(int(value))} {unit[0] if int(value) == 1 else unit[1]}"
+
+
+def speech_tokens(tokens: list) -> list:
+    """How each script token is said aloud, one string per token so word timings stay one to one:
+    digits, percent, money and dates in words, edge punctuation kept."""
+    parts = [_split_edges(t) for t in tokens]
+    out = []
+    pending_unit = None
+    for i, (lead, core, trail) in enumerate(parts):
+        nxt = parts[i + 1][1].lower() if i + 1 < len(parts) and not parts[i + 1][0] else ""
+        prev = parts[i - 1][1].lower().rstrip(".") if i > 0 else ""
+        if pending_unit and core.lower() in _SCALE_WORDS:
+            out.append(f"{lead}{core} {pending_unit}{trail}")
+            pending_unit = None
+            continue
+        pending_unit = None
+        money = _MONEY.match(core)
+        if money:
+            symbol, digits, scale = money.groups()
+            unit = _CURRENCY[symbol]
+            # A scale word after the amount is only joined when nothing sits between them.
+            next_scale = not scale and not trail and nxt in _SCALE_WORDS
+            said = _money_words(digits, _MONEY_SCALE.get(scale or "", ""), unit, next_scale)
+            if next_scale:
+                pending_unit = unit[1]
+            rest = core[money.end():]
+            text = f"{said} {_plain_words(rest.replace('-', ' '))}".strip() if rest else said
+            out.append(f"{lead}{text}{trail}")
+            continue
+        day = _DAY.match(core)
+        if day and 1 <= int(day.group(1)) <= 31 and (prev in _MONTHS or (not trail and nxt.rstrip(".,") in _MONTHS)):
+            out.append(f"{lead}{_us_words(int(day.group(1)), to='ordinal')}{trail}")
+            continue
+        out.append(f"{lead}{_plain_words(core)}{trail}")
+    return out
+
+
+def speech_text(token: str) -> str:
+    """How one script token is said aloud, without its neighbours."""
+    return speech_tokens([token])[0]
+
+
+def _letters(said: str) -> str:
+    text = re.sub(r"[^A-Za-z' ]+", " ", said.replace("-", " "))
     return re.sub(r"\s+", " ", text).strip().upper()
 
 
+def spoken_forms(tokens: list) -> list:
+    """Letters the aligner can match for each token, upper case, words split by spaces."""
+    return [_letters(said) for said in speech_tokens(tokens)]
+
+
+def spoken_form(token: str) -> str:
+    return spoken_forms([token])[0]
+
+
 def spoken_sentence(text: str) -> str:
-    return " ".join(speech_text(token) for token in text.split())
+    return " ".join(speech_tokens(text.split()))
 
 
 def spread(tokens: list, start: float, end: float) -> list:
@@ -100,7 +183,7 @@ def align_segment(wav, sample_rate: int, text: str, aligner, bundle, index: dict
 
     duration = wav.shape[1] / sample_rate
     tokens = text.split()
-    spoken = [spoken_form(token) for token in tokens]
+    spoken = spoken_forms(tokens)
     transcript = "|".join(s.replace(" ", "|") for s in spoken if s)
     chars = [c for c in transcript if c in index]
     if not chars:
@@ -155,7 +238,7 @@ def heard_letters(logp, labels: list) -> str:
 def speech_check(text: str, heard: str, seconds: float) -> dict:
     """Compares what was said with the script: a long run of extra or missing letters means the voice
     invented or dropped words; a duration far off the script length means a loop or a cut-off."""
-    expected = "".join(c for c in "".join(spoken_form(t) for t in text.split()) if c.isalpha())
+    expected = "".join(c for c in "".join(spoken_forms(text.split())) if c.isalpha())
     matcher = difflib.SequenceMatcher(None, expected, heard, autojunk=False)
     gap = 0
     for op, a1, a2, b1, b2 in matcher.get_opcodes():
