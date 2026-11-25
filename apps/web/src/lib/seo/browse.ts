@@ -1,5 +1,6 @@
 import { visibleCount, type CountRule } from '@/lib/counts'
 import { topicSlug } from '@/lib/reel-url'
+import { sourceRewritePath } from '@/lib/source-path'
 import { topicLabel } from './site'
 import type { ReelSummary, TopicCount } from './types'
 
@@ -8,8 +9,11 @@ export const SOURCE_ORDER = ['hn', 'github', 'reddit', 'youtube', 'papers', 'new
 export type SourceChip = { source: string | null; count: number; active: boolean; href: string }
 export type Shelf = { topic: TopicCount; reels: ReelSummary[] }
 
+// Links go straight to the /by/ path the proxy would rewrite `?source=` to: the client router
+// treats `/t?source=x` as the already-cached static `/t` and never asks the server.
 export function filterHref(path: string, source: string | null): string {
-  return source ? `${path}?source=${source}` : path
+  if (!source) return path
+  return sourceRewritePath(path, source) ?? `${path}?source=${source}`
 }
 
 /** "All" plus every source that has reels, in a fixed order so chips never jump around. */

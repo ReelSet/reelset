@@ -38,8 +38,8 @@ describe('sourceChips', () => {
     })
     expect(chips.map((c) => [c.source, c.count, c.active, c.href])).toEqual([
       [null, 9, false, '/t/ai'],
-      ['hn', 5, false, '/t/ai?source=hn'],
-      ['reddit', 2, true, '/t/ai?source=reddit'],
+      ['hn', 5, false, '/t/ai/by/hn'],
+      ['reddit', 2, true, '/t/ai/by/reddit'],
     ])
   })
 
@@ -96,7 +96,9 @@ describe('small helpers', () => {
     expect(clockDuration(9_000)).toBe('0:09')
     expect(clockDuration(null)).toBeNull()
     expect(filterHref('/t', null)).toBe('/t')
-    expect(filterHref('/t', 'hn')).toBe('/t?source=hn')
+    expect(filterHref('/t', 'hn')).toBe('/t/by/hn')
+    expect(filterHref('/t/rust', 'github')).toBe('/t/rust/by/github')
+    expect(filterHref('/t', 'zz')).toBe('/t?source=zz')
     const r = { ...reel('1', []), source: 'hn' }
     expect(asSeenOn([r], 'reddit')[0]?.source).toBe('reddit')
     expect(asSeenOn([r], null)[0]?.source).toBe('hn')
