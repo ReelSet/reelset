@@ -148,7 +148,7 @@ export const QWEN_SYSTEM_PROMPT = `${SYSTEM_PROMPT}\n\n${QWEN_VOICE_RULES}`
 
 // The Qwen narrator reads educational reels: longer (about 65 to 85 s), and the first script that
 // passes the checks is kept, since style rewrites undid the spoken voice these rules ask for.
-export const EDU_PROMPT_VERSION = `${QWEN_PROMPT_VERSION}-edu8`
+export const EDU_PROMPT_VERSION = `${QWEN_PROMPT_VERSION}-edu9`
 export const EDU_SYSTEM_PROMPT = `${QWEN_SYSTEM_PROMPT}\n\n${EDU_RULES}`
 export const EDU_NARRATION_LIMITS = { min: 185, max: 240, maxSpokenChars: 1500 }
 

@@ -180,7 +180,7 @@ describe('prompt', () => {
     const qwen = scriptPromptFor('qwen')
     expect(qwen).toEqual({
       system: EDU_SYSTEM_PROMPT,
-      version: 'reel-v10-qwen-edu8',
+      version: 'reel-v10-qwen-edu9',
       narrationLimits: { min: 185, max: 240, maxSpokenChars: 1500 },
       styleRewrites: false,
     })
