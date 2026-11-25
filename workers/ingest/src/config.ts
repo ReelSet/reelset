@@ -75,6 +75,9 @@ export const RECONCILE_BATCH = 200
 export const ADMISSION_CANDIDATES = 600
 export const ADMISSION_OVERRIDES = 50
 export const ENQUEUE_CHUNK = 50
+// A gate score this high skips the paced slots (the daily and spend caps still apply).
+export const PACE_BYPASS_GATE_SCORE = 85
+export const DUPLICATE_WINDOW_MS = 72 * HOUR_MS
 
 export const CHUNK_TARGET_CHARS = 800
 export const MAX_CHUNKS_PER_MENTION = 12

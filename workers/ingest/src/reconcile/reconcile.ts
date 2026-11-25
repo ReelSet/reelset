@@ -3,6 +3,7 @@ import {
   CAP_EXEMPT_STATUSES,
   SETTINGS,
   dayShare,
+  sameStory,
   pacedCap,
   StaleTransitionError,
   errorFields,
@@ -17,7 +18,9 @@ import {
 import {
   ADMISSION_CANDIDATES,
   ADMISSION_OVERRIDES,
+  DUPLICATE_WINDOW_MS,
   ENQUEUE_CHUNK,
+  PACE_BYPASS_GATE_SCORE,
   RECONCILE_BATCH,
   REEL_COST_WINDOW_MS,
   SPEND_CATEGORIES_FOR_CAP,
@@ -390,6 +393,49 @@ async function requestedFound(db: Database): Promise<FoundCandidate[]> {
   return rows.map((row) => ({ id: row.id, score: Number(row.score) }))
 }
 
+/** Titles of items admitted within the duplicate window, so a retelling of one is not made again. */
+async function recentAdmittedTitles(
+  db: Database,
+  now: Date,
+): Promise<{ id: string; title: string }[]> {
+  return db
+    .selectFrom('item')
+    .select(['id', 'title'])
+    .where('queued_at', '>=', new Date(now.getTime() - DUPLICATE_WINDOW_MS))
+    .where('status', 'not in', CAP_EXEMPT_STATUSES)
+    .execute()
+}
+
+async function titlesOf(db: Database, ids: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const batch of chunked(ids, 100)) {
+    const rows = await db
+      .selectFrom('item')
+      .select(['id', 'title'])
+      .where('id', 'in', batch)
+      .execute()
+    for (const r of rows) out.set(r.id, r.title)
+  }
+  return out
+}
+
+/** Each item's latest automatic gate score, read like the override lookup reads its decision. */
+async function latestGateScores(
+  db: Database,
+  ids: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  for (const batch of chunked(ids, 100)) {
+    const { rows } = await sql<{ item_id: string; score: number | null }>`
+      select distinct on (d.item_id) d.item_id, d.score
+      from gate_decision d
+      where d.item_id in (${sql.join(batch)}) and d.trigger = 'auto'
+      order by d.item_id, d.created_at desc, d.id desc`.execute(db)
+    for (const r of rows) if (r.score !== null) out.set(r.item_id, Number(r.score))
+  }
+  return out
+}
+
 async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: Date, log: Logger) {
   const minScore = await getSetting(db, SETTINGS.minItemScore, log)
   const dailyCap = await getSetting(db, SETTINGS.dailyReelCap, log)
@@ -411,6 +457,7 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
     daily_cap: 0,
     spend_cap: 0,
     pace: 0,
+    duplicate: 0,
   }
   const candidates = await db
     .selectFrom('item')
@@ -452,9 +499,42 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
   )
   const ordered = [...overrides.map(withSource), ...interleaved]
 
+  // Items under the score floor are skipped on score alone, so only the rest need a title or gate score.
+  const eligible = ordered
+    .filter((c) => overridden.has(c.id) || c.score >= minScore)
+    .map((c) => c.id)
+  const recentTitles = await recentAdmittedTitles(db, now).catch((err) => {
+    log.warn(errorFields(err), 'recent titles lookup failed, not checking for duplicate stories')
+    return null
+  })
+  const titles = recentTitles
+    ? await titlesOf(db, eligible).catch((err) => {
+        log.warn(errorFields(err), 'title lookup failed, not checking for duplicate stories')
+        return new Map<string, string>()
+      })
+    : new Map<string, string>()
+  const gateScores = await latestGateScores(db, eligible).catch((err) => {
+    log.warn(errorFields(err), 'gate score lookup failed, no fast lane this run')
+    return new Map<string, number>()
+  })
+  const seen = [...(recentTitles ?? [])]
+
   const admit: { id: string; score: number; source: string }[] = []
   for (const item of ordered) {
     const override = overridden.has(item.id)
+    const title = titles.get(item.id)
+    // An admin who sent an item back with "make a reel anyway" has seen the story; no twin check.
+    if (title !== undefined && !override && item.score >= minScore) {
+      const twin = seen.find((t) => sameStory(title, t.title))
+      if (twin) {
+        skipped.duplicate++
+        log.debug(
+          { itemId: item.id, title, twinItemId: twin.id, twinTitle: twin.title },
+          'duplicate story skipped',
+        )
+        continue
+      }
+    }
     // An admin override outranks the score floor (scores decay) and pacing, not the daily caps.
     const decision = admissionDecision({
       score: item.score,
@@ -465,9 +545,11 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
       committedUsd,
       spendCapUsd,
       pacedSpendCapUsd: override ? spendCapUsd : spendCapUsd * share,
+      fastTrack: (gateScores.get(item.id) ?? Number.NEGATIVE_INFINITY) >= PACE_BYPASS_GATE_SCORE,
     })
     if (decision.admit) {
       admit.push(item)
+      if (title !== undefined) seen.push({ id: item.id, title })
       admittedToday++
       committedUsd += reelCostUsd
     } else {
@@ -539,7 +621,7 @@ export async function reconcile(
     stuckRequeued: 0,
     stuckFailed: 0,
     admitted: 0,
-    skipped: { below_score: 0, daily_cap: 0, spend_cap: 0, pace: 0 },
+    skipped: { below_score: 0, daily_cap: 0, spend_cap: 0, pace: 0, duplicate: 0 },
     enqueuedSummarized: 0,
     enqueuedEmbedded: 0,
     enqueuedVoiced: 0,

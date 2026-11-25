@@ -27,6 +27,7 @@ describe('admissionDecision', () => {
     committedUsd: 1,
     spendCapUsd: 10,
     pacedSpendCapUsd: 10,
+    fastTrack: false,
   }
   it('admits items that pass every gate', () => {
     expect(admissionDecision(base)).toEqual({ admit: true })
@@ -53,6 +54,37 @@ describe('admissionDecision', () => {
     expect(admissionDecision({ ...base, pacedSpendCapUsd: 1 })).toEqual({
       admit: false,
       reason: 'pace',
+    })
+  })
+})
+
+describe('admissionDecision fast track', () => {
+  const base = {
+    score: 0.6,
+    minScore: 0.35,
+    admittedToday: 10,
+    dailyCap: 200,
+    pacedCap: 10,
+    committedUsd: 1,
+    spendCapUsd: 10,
+    pacedSpendCapUsd: 1,
+    fastTrack: true,
+  }
+  it('never waits for the pace', () => {
+    expect(admissionDecision(base)).toEqual({ admit: true })
+    expect(admissionDecision({ ...base, fastTrack: false })).toEqual({
+      admit: false,
+      reason: 'pace',
+    })
+  })
+  it('still stops at the daily cap and the spend cap', () => {
+    expect(admissionDecision({ ...base, admittedToday: 200 })).toEqual({
+      admit: false,
+      reason: 'daily_cap',
+    })
+    expect(admissionDecision({ ...base, committedUsd: 10 })).toEqual({
+      admit: false,
+      reason: 'spend_cap',
     })
   })
 })
@@ -130,9 +162,28 @@ function scriptedDb(rows: {
   gateLookupFails?: boolean
   requested?: Row[]
   requestedLookupFails?: boolean
+  gateScores?: Record<string, number | null>
+  titles?: Record<string, string>
+  recentTitles?: Row[]
+  recentTitlesFail?: boolean
 }) {
   return createFakeDb((q: RecordedQuery) => {
     const s = q.sql
+    if (s.includes('select distinct on (d.item_id)')) {
+      if (rows.gateLookupFails) throw new Error('relation "gate_decision" does not exist')
+      return Object.entries(rows.gateScores ?? {})
+        .filter(([id]) => q.params.includes(id))
+        .map(([item_id, score]) => ({ item_id, score }))
+    }
+    if (s.startsWith('select "id", "title" from "item" where "id" in')) {
+      return Object.entries(rows.titles ?? {})
+        .filter(([id]) => q.params.includes(id))
+        .map(([id, title]) => ({ id, title }))
+    }
+    if (s.startsWith('select "id", "title" from "item" where "queued_at" >=')) {
+      if (rows.recentTitlesFail) throw new Error('connection reset')
+      return rows.recentTitles ?? []
+    }
     if (s.includes('from gate_decision')) {
       if (rows.gateLookupFails) throw new Error('relation "gate_decision" does not exist')
       return rows.overrides ?? []
@@ -198,7 +249,13 @@ describe('reconcile', () => {
     const result = await reconcile(fake.db, q, testLog, now)
 
     expect(result.admitted).toBe(2)
-    expect(result.skipped).toEqual({ below_score: 1, daily_cap: 1, spend_cap: 0, pace: 0 })
+    expect(result.skipped).toEqual({
+      below_score: 1,
+      daily_cap: 1,
+      spend_cap: 0,
+      pace: 0,
+      duplicate: 0,
+    })
     const claim = fake.find('update "item" set "queued_at" = now()')[0]!
     expect(claim.sql).toContain('"queued_at" is null')
     expect(claim.params).toEqual(expect.arrayContaining(['item-1', 'item-2']))
@@ -277,7 +334,13 @@ describe('reconcile', () => {
       const result = await reconcile(fake.db, queues(), testLog, now)
       expect(result.admitted).toBe(1)
       expect(claimedIds(fake)).toEqual(['item-old'])
-      expect(result.skipped).toEqual({ below_score: 0, daily_cap: 2, spend_cap: 0, pace: 0 })
+      expect(result.skipped).toEqual({
+        below_score: 0,
+        daily_cap: 2,
+        spend_cap: 0,
+        pace: 0,
+        duplicate: 0,
+      })
     })
 
     it('makes an overridden item wait when the daily cap or the spend cap is reached', async () => {
@@ -461,6 +524,161 @@ describe('reconcile', () => {
       const result = await reconcile(fake.db, queues(), testLog, morning)
       expect(result.admitted).toBe(1)
       expect(fake.find('update "item" set "queued_at" = now()')[0]!.params).toContain('item-old')
+    })
+  })
+
+  describe('duplicate stories and the gate fast lane', () => {
+    const story = 'Anthropic releases Claude Opus 5 with longer memory'
+    const retelling = 'Anthropic releases Claude Opus 5 with longer memory today'
+    const other = 'Rust 2.0 compiler ships an incremental borrow checker'
+    const claimedIds = (fake: ReturnType<typeof scriptedDb>) =>
+      fake
+        .find('update "item" set "queued_at" = now()')
+        .flatMap((q) => q.params.filter((p) => typeof p === 'string' && p.startsWith('item-')))
+
+    it('skips a story already admitted in the last 72 hours without using a slot', async () => {
+      const fake = scriptedDb({
+        found: [
+          { id: 'item-1', score: 0.9 },
+          { id: 'item-2', score: 0.8 },
+        ],
+        titles: { 'item-1': retelling, 'item-2': other },
+        recentTitles: [{ id: 'item-old', title: story }],
+        admitted: 5,
+        settings: { daily_reel_cap: 24 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, morning)
+      expect(result.admitted).toBe(1)
+      expect(result.skipped.duplicate).toBe(1)
+      expect(result.skipped.pace).toBe(0)
+      expect(claimedIds(fake)).toEqual(['item-2'])
+      const recent = fake.find('select "id", "title" from "item" where "queued_at" >=')[0]!
+      expect(recent.sql).toContain('"status" not in')
+      expect(recent.params).toEqual(expect.arrayContaining(['failed', 'insufficient_source']))
+      expect(recent.params).toContainEqual(new Date(morning.getTime() - 72 * 60 * 60_000))
+    })
+
+    it('admits only the higher-ranked of two same-story candidates in one run', async () => {
+      const fake = scriptedDb({
+        found: [
+          { id: 'item-1', score: 0.9 },
+          { id: 'item-2', score: 0.8 },
+          { id: 'item-3', score: 0.7 },
+        ],
+        titles: { 'item-1': story, 'item-2': retelling, 'item-3': other },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(2)
+      expect(result.skipped.duplicate).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-1', 'item-3'])
+    })
+
+    it('does not hold a requested reel back for a story that was already admitted', async () => {
+      const fake = scriptedDb({
+        requested: [{ id: 'item-req', score: '0.5', priority_at: minutesAgo(70) }],
+        titles: { 'item-req': retelling },
+        recentTitles: [{ id: 'item-old', title: story }],
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-req'])
+      expect(result.skipped.duplicate).toBe(0)
+    })
+
+    it('lets an admin "make a reel anyway" override through even when the story repeats', async () => {
+      const fake = scriptedDb({
+        overrides: [{ id: 'item-old-2', score: 0.01 }],
+        titles: { 'item-old-2': retelling },
+        recentTitles: [{ id: 'item-old', title: story }],
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(claimedIds(fake)).toEqual(['item-old-2'])
+      expect(result.skipped.duplicate).toBe(0)
+    })
+
+    it('admits by score as before when the recent titles lookup fails', async () => {
+      const fake = scriptedDb({
+        found: [{ id: 'item-1', score: 0.9 }],
+        titles: { 'item-1': story },
+        recentTitlesFail: true,
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      expect(result.admitted).toBe(1)
+      expect(result.skipped.duplicate).toBe(0)
+    })
+
+    describe('fast lane', () => {
+      const found = [
+        { id: 'item-hi', score: 0.9 },
+        { id: 'item-lo', score: 0.8 },
+      ]
+      const gateScores = { 'item-hi': 88, 'item-lo': 70 }
+
+      it('admits a gate score of 85 or more past the pace', async () => {
+        const fake = scriptedDb({
+          found,
+          gateScores,
+          admitted: 6,
+          settings: { daily_reel_cap: 24 },
+        })
+        const result = await reconcile(fake.db, queues(), testLog, morning)
+        expect(result.admitted).toBe(1)
+        expect(claimedIds(fake)).toEqual(['item-hi'])
+        expect(result.skipped.pace).toBe(1)
+        const lookup = fake.find('select distinct on (d.item_id)')[0]!
+        expect(lookup.sql).toContain("d.trigger = 'auto'")
+        expect(lookup.sql).toContain('order by d.item_id, d.created_at desc, d.id desc')
+      })
+
+      it('treats exactly 85 as fast and a missing score as ordinary', async () => {
+        const fake = scriptedDb({
+          found,
+          gateScores: { 'item-hi': 85, 'item-lo': null },
+          admitted: 6,
+          settings: { daily_reel_cap: 24 },
+        })
+        const result = await reconcile(fake.db, queues(), testLog, morning)
+        expect(claimedIds(fake)).toEqual(['item-hi'])
+        expect(result.skipped.pace).toBe(1)
+      })
+
+      it('still stops at the daily cap', async () => {
+        const fake = scriptedDb({
+          found,
+          gateScores,
+          admitted: 24,
+          settings: { daily_reel_cap: 24 },
+        })
+        const result = await reconcile(fake.db, queues(), testLog, morning)
+        expect(result.admitted).toBe(0)
+        expect(result.skipped.daily_cap).toBe(2)
+      })
+
+      it('still stops at the spend cap', async () => {
+        const fake = scriptedDb({
+          found,
+          gateScores,
+          spent: 999,
+          settings: { pipeline_daily_spend_cap_usd: 5 },
+        })
+        const result = await reconcile(fake.db, queues(), testLog, morning)
+        expect(result.admitted).toBe(0)
+        expect(result.skipped.spend_cap).toBe(2)
+      })
+
+      it('admits by pace alone when the gate score lookup fails', async () => {
+        const fake = scriptedDb({
+          found,
+          gateScores,
+          gateLookupFails: true,
+          admitted: 6,
+          settings: { daily_reel_cap: 24 },
+        })
+        const result = await reconcile(fake.db, queues(), testLog, morning)
+        expect(result.admitted).toBe(0)
+        expect(result.skipped.pace).toBe(2)
+      })
     })
   })
 

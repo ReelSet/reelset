@@ -18,9 +18,11 @@ export type AdmissionInput = {
   spendCapUsd: number
   /** Spend open so far today; the spend cap when pacing does not apply. */
   pacedSpendCapUsd: number
+  /** A top gate score never waits for the pace; the daily and spend caps still apply. */
+  fastTrack: boolean
 }
 
-export type AdmissionSkip = 'below_score' | 'daily_cap' | 'spend_cap' | 'pace'
+export type AdmissionSkip = 'below_score' | 'daily_cap' | 'spend_cap' | 'pace' | 'duplicate'
 
 export type AdmissionDecision = { admit: true } | { admit: false; reason: AdmissionSkip }
 
@@ -28,7 +30,10 @@ export function admissionDecision(input: AdmissionInput): AdmissionDecision {
   if (input.score < input.minScore) return { admit: false, reason: 'below_score' }
   if (input.admittedToday >= input.dailyCap) return { admit: false, reason: 'daily_cap' }
   if (input.committedUsd >= input.spendCapUsd) return { admit: false, reason: 'spend_cap' }
-  if (input.admittedToday >= input.pacedCap || input.committedUsd >= input.pacedSpendCapUsd)
+  if (
+    !input.fastTrack &&
+    (input.admittedToday >= input.pacedCap || input.committedUsd >= input.pacedSpendCapUsd)
+  )
     return { admit: false, reason: 'pace' }
   return { admit: true }
 }
