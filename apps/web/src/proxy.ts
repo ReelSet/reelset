@@ -17,9 +17,10 @@ import { routeForHost } from '@/lib/host-routing'
 import { markdownRewritePath } from '@/lib/markdown-negotiation'
 import { shouldRefresh } from '@/lib/auth/token-exp'
 import { legacyReelRedirect, reelRewritePath } from '@/lib/reel-url'
+import { agentLinkHeader } from '@/lib/seo/agent-links'
 import { isUnknownSourcePath, sourceRewritePath } from '@/lib/source-path'
 
-export async function proxy(request: NextRequest) {
+async function handle(request: NextRequest): Promise<NextResponse> {
   const route = routeForHost({
     host: request.headers.get('host'),
     pathname: request.nextUrl.pathname,
@@ -158,6 +159,12 @@ export async function proxy(request: NextRequest) {
     }
   }
   if (!hinted) response.headers.append('set-cookie', authHintCookie(domain))
+  return response
+}
+
+export async function proxy(request: NextRequest) {
+  const response = await handle(request)
+  if (response.status < 300) response.headers.set('link', agentLinkHeader(request.nextUrl.pathname))
   return response
 }
 
