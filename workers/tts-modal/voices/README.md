@@ -11,5 +11,6 @@ Qwen (`qwen_app.py`) clones only `genz`, from two fixed excerpts of `genz.wav` (
 | File | Source |
 | --- | --- |
 | `genz.wav` | Gen Z female clip supplied by the owner (default) |
+| `genz_clean.wav` | `genz.wav` through ffmpeg `highpass=f=60,afftdn=nr=18:nf=-50:tn=1`; Qwen loads it as voice `genz-clean` |
 | `voice4.wav` | Chatterbox demo page, Voice Agents sample `numbers_random_woman.wav` |
 | `af_heart.wav` | Kokoro `af_heart` (Apache-2.0) |

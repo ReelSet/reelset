@@ -21,16 +21,21 @@ import modal
 
 from narration import (
     align_segment,
+    buffer_has_words,
     emissions,
     encode_mp3,
-    fade_edges,
+    fade,
     group_parts,
     heard_letters,
+    level_bounds,
+    parse_stitch,
+    pause_before,
     quietest_point,
     quiet_pauses,
     speech_check,
     spoken_sentence,
     tighten_silence,
+    with_tail_buffer,
 )
 
 MODEL_REPO = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
@@ -54,14 +59,9 @@ MAX_RETRY_ROUNDS = 2
 # About 125 s of speech at 12 codec frames per second; a whole script is never that long, a loop is.
 MAX_NEW_TOKENS = 1500
 MAX_SEGMENTS = 24
-# Silence between the last word of one part (hook, beat, outro) and the first of the next, what a
-# single take of the whole script leaves on its own. Breaths at a take's edges are cut away.
-PART_PAUSE_SECONDS = 0.45
 # A pause the voice takes at a written "..." or "?" is kept as it is: never shortened, never padded,
 # since forcing silence where the voice did not slow down sounds like the audio cutting out.
 WRITTEN_PAUSE_MARKS = ("...", "\u2026", "?")
-LEAD_KEEP_SECONDS = 0.06
-TAIL_KEEP_SECONDS = 0.12
 MAX_SEGMENT_CHARS = 600
 MAX_TOTAL_CHARS = 4000
 
@@ -172,15 +172,20 @@ class QwenNarrator:
         logp = emissions(wav, rate, self.aligner, self.bundle)
         return speech_check(text, heard_letters(logp, self.labels), seconds), logp
 
-    def narrate(self, segments: list, voice: str, chunks: int, natural: bool = False) -> dict:
+    def narrate(self, segments: list, voice: str, chunks: int, natural: bool = False, stitch: dict | None = None) -> dict:
         import torch
 
+        stitch = stitch or parse_stitch(None)
+        buffer = stitch["tailBuffer"]
+        spoken_buffer = spoken_sentence(buffer) if buffer_has_words(buffer) else buffer
         groups = group_parts(segments, chunks)
         texts = [" ".join(segments[i] for i in g) for g in groups]
-        spoken = [" ".join(spoken_sentence(segments[i]) for i in g) for g in groups]
+        # What each take actually says: its text plus the tail buffer, which is cut off afterwards.
+        said = [with_tail_buffer(t, buffer) for t in texts]
+        spoken = [with_tail_buffer(" ".join(spoken_sentence(segments[i]) for i in g), spoken_buffer) for g in groups]
         started = time.monotonic()
         wavs, rate = self.generate(spoken, voice, SEED)
-        checks = [self.judge(wav, rate, texts[n]) for n, wav in enumerate(wavs)]
+        checks = [self.judge(wav, rate, said[n]) for n, wav in enumerate(wavs)]
         retried = 0
         for round_number in range(1, MAX_RETRY_ROUNDS + 1):
             failed = [n for n, (check, _) in enumerate(checks) if not check["ok"]]
@@ -190,7 +195,7 @@ class QwenNarrator:
             retried += len(failed)
             fresh, _ = self.generate([spoken[n] for n in failed], voice, SEED + RETRY_SEED_STEP * round_number)
             for n, wav in zip(failed, fresh):
-                check, logp = self.judge(wav, rate, texts[n])
+                check, logp = self.judge(wav, rate, said[n])
                 old = checks[n][0]
                 if check["ok"] or (check["gap"], -check["ratio"]) < (old["gap"], -old["ratio"]):
                     wavs[n], checks[n] = wav, (check, logp)
@@ -202,18 +207,19 @@ class QwenNarrator:
         takes, trimmed, shortened, padded = [], 0.0, 0, 0
         for n, raw in enumerate(wavs):
             parts = [segments[i] for i in groups[n]]
+            tokens = texts[n].split()
             if natural:
                 # Pauses are the voice's own, from the script's punctuation: only the take's edges are trimmed.
-                words = align_segment(raw, rate, texts[n], self.aligner, self.bundle, self.index, checks[n][1])
-                takes.append(self.cut_breaths(raw, rate, words))
+                words = align_segment(raw, rate, said[n], self.aligner, self.bundle, self.index, checks[n][1])
+                takes.append(self.cut_take(raw, rate, words, tokens, stitch))
                 continue
-            first = align_segment(raw, rate, texts[n], self.aligner, self.bundle, self.index, checks[n][1])
+            first = align_segment(raw, rate, said[n], self.aligner, self.bundle, self.index, checks[n][1])
             wav, stats = tighten_silence(raw, rate, self.written_pauses(first))
             trimmed += stats["trimmedSeconds"]
             shortened += stats["shortenedPauses"]
-            words = align_segment(wav, rate, texts[n], self.aligner, self.bundle, self.index)
-            wav, words = self.cut_breaths(wav, rate, words)
-            wav, words, added = self.pad_breaks(wav, rate, words, parts)
+            words = align_segment(wav, rate, said[n], self.aligner, self.bundle, self.index)
+            wav, words = self.cut_take(wav, rate, words, tokens, stitch)
+            wav, words, added = self.pad_breaks(wav, rate, words, parts, stitch["pause"])
             wav = quiet_pauses(wav, rate, words)
             padded += added
             takes.append((wav, words))
@@ -222,7 +228,8 @@ class QwenNarrator:
         for n, (wav, take_words) in enumerate(takes):
             if n > 0:
                 trailing = clock - words[-1]["end"]
-                gap = max(0.0, PART_PAUSE_SECONDS - trailing - take_words[0]["start"])
+                wanted = pause_before(n, groups, len(segments), stitch)
+                gap = max(0.0, wanted - trailing - take_words[0]["start"])
                 pieces.append(torch.zeros(1, int(gap * rate)))
                 clock += gap
             for word in take_words:
@@ -251,17 +258,36 @@ class QwenNarrator:
             "trimmedSeconds": round(trimmed, 2),
             "shortenedPauses": shortened,
             "paddedBreaks": padded,
+            "stitch": stitch,
         }
 
     @staticmethod
-    def cut_breaths(wav, rate: int, words: list) -> tuple:
-        """Cuts a take to its words: an in-breath before the first or a tail after the last is dropped."""
-        if not words:
-            return wav, words
-        start = max(0.0, words[0]["start"] - LEAD_KEEP_SECONDS)
-        end = min(wav.shape[1] / rate, words[-1]["end"] + TAIL_KEEP_SECONDS)
-        cut = fade_edges(wav[:, int(start * rate) : int(end * rate)], rate)
-        return cut, [{**w, "start": w["start"] - start, "end": w["end"] - start} for w in words]
+    def cut_take(wav, rate: int, words: list, tokens: list, stitch: dict) -> tuple:
+        """Cuts a take to its real words and fades the edges: an in-breath before the first word, and
+        the tail or tail buffer after the last, are dropped. trim "words" cuts at the aligned words,
+        "level" where the audio drops below trimDb, "off" only cuts the buffer away."""
+        duration = wav.shape[1] / rate
+        real, extra = words[: len(tokens)], words[len(tokens) :]
+        if not real:
+            return fade(wav, rate, stitch["fadeInMs"], stitch["fadeOutMs"]), real
+        limit = quietest_point(wav, rate, real[-1]["end"], extra[0]["start"]) / rate if extra else duration
+        if stitch["trim"] == "words":
+            start, end = real[0]["start"] - stitch["leadKeep"], real[-1]["end"] + stitch["tailKeep"]
+        elif stitch["trim"] == "level":
+            start, end = level_bounds(
+                wav[:, : int(limit * rate)], rate, stitch["trimDb"], stitch["leadKeep"], stitch["tailKeep"]
+            )
+        else:
+            start, end = 0.0, duration
+        start, end = max(0.0, start), min(end, limit)
+        if end - start < 0.05:
+            start, end = 0.0, limit
+        cut = fade(wav[:, int(start * rate) : int(end * rate)], rate, stitch["fadeInMs"], stitch["fadeOutMs"])
+        length = cut.shape[1] / rate
+        return cut, [
+            {"text": token, "start": min(max(0.0, w["start"] - start), length), "end": min(max(0.0, w["end"] - start), length)}
+            for token, w in zip(tokens, real)
+        ]
 
     @staticmethod
     def written_pauses(words: list) -> tuple:
@@ -273,9 +299,9 @@ class QwenNarrator:
         )
 
     @staticmethod
-    def pad_breaks(wav, rate: int, words: list, parts: list) -> tuple:
+    def pad_breaks(wav, rate: int, words: list, parts: list, pause: float) -> tuple:
         """Where one part ends and the next begins inside a take, makes the pause at least
-        PART_PAUSE_SECONDS, splicing silence in at the quietest point (quiet_pauses fades around it)."""
+        `pause` seconds, splicing silence in at the quietest point (quiet_pauses fades around it)."""
         import torch
 
         breaks, count = [], 0
@@ -286,7 +312,7 @@ class QwenNarrator:
         for j in reversed(breaks):
             if j <= 0 or j >= len(words):
                 continue
-            extra = PART_PAUSE_SECONDS - (words[j]["start"] - words[j - 1]["end"])
+            extra = pause - (words[j]["start"] - words[j - 1]["end"])
             if extra <= 0.02:
                 continue
             at = quietest_point(out, rate, words[j - 1]["end"], words[j]["start"])
@@ -330,8 +356,12 @@ class QwenNarrator:
         if not isinstance(chunks, int) or isinstance(chunks, bool) or not 1 <= chunks <= len(segments):
             raise http_error(status_code=400, detail="chunks must be a whole number from 1 to the number of segments")
         try:
+            stitch = parse_stitch(body.get("stitch"))
+        except ValueError as err:
+            raise http_error(status_code=400, detail=str(err)) from err
+        try:
             natural = body.get("natural") is True
-            result = self.narrate([s.strip() for s in segments], voice, chunks, natural)
+            result = self.narrate([s.strip() for s in segments], voice, chunks, natural, stitch)
         except Exception as err:
             log.exception("narration failed")
             raise http_error(status_code=500, detail=f"narration failed: {type(err).__name__}") from err

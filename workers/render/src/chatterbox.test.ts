@@ -1,6 +1,6 @@
 import type { ReelScript } from '@reelset/core'
 import { describe, expect, it, vi } from 'vitest'
-import { chatterboxSegments, generateChatterbox } from './chatterbox'
+import { QWEN_TAKES, chatterboxSegments, generateChatterbox, narrationRequest } from './chatterbox'
 import { silentLog } from './testing'
 import { effectiveVoice, fallbackEngineFor, selectProvider } from './tts'
 
@@ -98,6 +98,25 @@ describe('qwen through the modal client', () => {
       code: 'tts_unavailable',
       message: 'qwen tts failed: bad_status',
     })
+  })
+
+  it('sends the take and stitch settings, capped at the number of segments', async () => {
+    const cfg = { ...config(Response.json(okBody)), engine: 'qwen' as const, takes: QWEN_TAKES }
+    await generateChatterbox(cfg, script, silentLog)
+    const [, init] = cfg.fetch.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({
+      segments: ['Two words.', 'First beat here.', 'Bye.'],
+      voice: 'genz',
+      chunks: 3,
+      natural: true,
+      stitch: QWEN_TAKES.stitch,
+    })
+  })
+
+  it('groups a long script into at most four takes', () => {
+    const parts = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    expect(narrationRequest(parts, 'genz', QWEN_TAKES).chunks).toBe(4)
+    expect(narrationRequest(parts, 'genz', undefined)).toEqual({ segments: parts, voice: 'genz' })
   })
 
   it('ignores a missing or nonsense gpu cost', async () => {

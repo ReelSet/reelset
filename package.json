@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "db:generate": "npm run db:generate -w @reelset/core",
     "db:deploy": "npm run db:deploy -w @reelset/core",
-    "db:check": "npm run db:check -w @reelset/core"
+    "db:check": "npm run db:check -w @reelset/core",
+    "reel-lab": "tsx scripts/reel-lab/reel-lab.ts"
   },
   "devDependencies": {
     "prettier": "^3.6.2"

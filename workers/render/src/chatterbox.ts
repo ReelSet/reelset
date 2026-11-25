@@ -13,6 +13,58 @@ export type ChatterboxConfig = {
   timeoutMs?: number
   /** Which Modal narrator answers; both speak the same contract. Defaults to chatterbox. */
   engine?: ModalEngine
+  /** Qwen only: how the script is split into takes and joined back up. Absent: the service defaults. */
+  takes?: QwenTakes
+}
+
+export type QwenStitch = {
+  pause: number
+  edgePause: number
+  trim: 'words' | 'level' | 'off'
+  trimDb: number
+  leadKeep: number
+  tailKeep: number
+  fadeInMs: number
+  fadeOutMs: number
+  tailBuffer: string
+}
+
+export type QwenTakes = { maxTakes: number; natural: boolean; stitch: QwenStitch }
+
+/** Paragraphs voiced in up to 4 takes with the voice's own pauses, trimmed where the audio goes
+ * quiet and joined with 0.35 s gaps (0.55 s after the hook and before the outro). Each take reads a
+ * throwaway "okay." after its last word, cut off again, so that word is never clipped. Tuned by ear
+ * with scripts/reel-lab. */
+export const QWEN_TAKES: QwenTakes = {
+  maxTakes: 4,
+  natural: true,
+  stitch: {
+    pause: 0.35,
+    edgePause: 0.55,
+    trim: 'level',
+    trimDb: -45,
+    leadKeep: 0.06,
+    tailKeep: 0.04,
+    fadeInMs: 10,
+    fadeOutMs: 18,
+    tailBuffer: 'okay.',
+  },
+}
+
+/** The request body: segments and voice, plus the take settings when given. */
+export function narrationRequest(
+  segments: string[],
+  voice: string,
+  takes: QwenTakes | undefined,
+): Record<string, unknown> {
+  if (!takes) return { segments, voice }
+  return {
+    segments,
+    voice,
+    chunks: Math.max(1, Math.min(takes.maxTakes, segments.length)),
+    natural: takes.natural,
+    stitch: takes.stitch,
+  }
 }
 
 export type ModalEngine = 'chatterbox' | 'qwen'
@@ -77,7 +129,7 @@ export async function generateChatterbox(
     response = await config.fetch(config.url, {
       method: 'POST',
       headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ segments, voice: config.voice }),
+      body: JSON.stringify(narrationRequest(segments, config.voice, config.takes)),
       signal: AbortSignal.timeout(config.timeoutMs ?? CHATTERBOX_TIMEOUT_MS),
     })
   } catch (err) {
@@ -116,6 +168,8 @@ export async function generateChatterbox(
       chars,
       audioSeconds,
       synthSeconds: body?.synthSeconds,
+      takes: body?.takes,
+      natural: body?.natural,
       gpu: body?.gpu,
       gpuSeconds: body?.gpuSeconds,
       retriedSegments: body?.retriedSegments,

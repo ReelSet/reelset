@@ -316,3 +316,104 @@ def encode_mp3(audio, sample_rate: int) -> bytes:
         "-af", LEVEL_FILTER, "-ar", str(sample_rate), "-c:a", "libmp3lame", "-b:a", MP3_BITRATE, "-f", "mp3", "pipe:1",
     ]
     return subprocess.run(command, input=pcm, check=True, capture_output=True, timeout=120).stdout
+
+
+# How takes are trimmed and joined. The defaults are what the service did before these were options.
+STITCH_DEFAULTS = {
+    "pause": 0.45,
+    "edgePause": None,
+    "trim": "words",
+    "trimDb": -45.0,
+    "leadKeep": 0.06,
+    "tailKeep": 0.12,
+    "fadeInMs": 8.0,
+    "fadeOutMs": 8.0,
+    "tailBuffer": "",
+}
+STITCH_RANGES = {
+    "pause": (0.0, 2.0),
+    "edgePause": (0.0, 2.0),
+    "trimDb": (-80.0, -20.0),
+    "leadKeep": (0.0, 0.5),
+    "tailKeep": (0.0, 0.5),
+    "fadeInMs": (0.0, 100.0),
+    "fadeOutMs": (0.0, 100.0),
+}
+TRIM_MODES = ("words", "level", "off")
+MAX_TAIL_BUFFER_CHARS = 40
+
+
+def parse_stitch(raw) -> dict:
+    """Request stitch options over the defaults; raises ValueError naming the bad field."""
+    if raw is None:
+        return dict(STITCH_DEFAULTS)
+    if not isinstance(raw, dict):
+        raise ValueError("stitch must be an object")
+    unknown = set(raw) - set(STITCH_DEFAULTS)
+    if unknown:
+        raise ValueError(f"stitch has unknown fields: {sorted(unknown)}")
+    out = dict(STITCH_DEFAULTS)
+    for key, value in raw.items():
+        if value is None:
+            continue
+        if key in STITCH_RANGES:
+            low, high = STITCH_RANGES[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+                raise ValueError(f"stitch.{key} must be a number from {low} to {high}")
+            out[key] = float(value)
+        elif key == "trim":
+            if value not in TRIM_MODES:
+                raise ValueError(f"stitch.trim must be one of {TRIM_MODES}")
+            out[key] = value
+        elif key == "tailBuffer":
+            if not isinstance(value, str) or len(value) > MAX_TAIL_BUFFER_CHARS:
+                raise ValueError(f"stitch.tailBuffer must be text of at most {MAX_TAIL_BUFFER_CHARS} characters")
+            out[key] = value.strip()
+    return out
+
+
+def buffer_has_words(buffer: str) -> bool:
+    return any(c.isalpha() for c in buffer)
+
+
+def with_tail_buffer(text: str, buffer: str) -> str:
+    """Text plus the runway the model reads past the last real word: words after a space, bare
+    punctuation glued on."""
+    if not buffer:
+        return text
+    return f"{text} {buffer}" if buffer_has_words(buffer) else f"{text}{buffer}"
+
+
+def level_bounds(wav, sample_rate: int, threshold_db: float, lead: float, tail: float) -> tuple:
+    """(start, end) in seconds of the audio above threshold_db, widened by lead and tail."""
+    import numpy as np
+
+    audio = np.abs(wav.squeeze(0).numpy())
+    loud = np.nonzero(audio > 10 ** (threshold_db / 20))[0]
+    duration = len(audio) / sample_rate
+    if len(loud) == 0:
+        return 0.0, duration
+    return max(0.0, loud[0] / sample_rate - lead), min(duration, loud[-1] / sample_rate + tail)
+
+
+def fade(wav, sample_rate: int, in_ms: float, out_ms: float):
+    """Linear fade in and out at a clip's edges, so a cut never clicks."""
+    import torch
+
+    out = wav.clone()
+    size = out.shape[1]
+    fade_in = min(int(in_ms / 1000 * sample_rate), size // 2)
+    fade_out = min(int(out_ms / 1000 * sample_rate), size // 2)
+    if fade_in > 0:
+        out[0, :fade_in] *= torch.linspace(0.0, 1.0, fade_in)
+    if fade_out > 0:
+        out[0, -fade_out:] *= torch.linspace(1.0, 0.0, fade_out)
+    return out
+
+
+def pause_before(take: int, groups: list, part_count: int, stitch: dict) -> float:
+    """Silence wanted between the last word of take-1 and the first word of take: edgePause right
+    after the hook and right before the outro, pause everywhere else."""
+    edge = stitch["edgePause"] if stitch["edgePause"] is not None else stitch["pause"]
+    at_edge = groups[take - 1][-1] == 0 or groups[take][0] == part_count - 1
+    return edge if at_edge else stitch["pause"]

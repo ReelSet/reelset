@@ -56,3 +56,5 @@ scripts/smoke/.settings-backup.json
 *.tmp
 nohup.out
 workers/render/container/remotion/
+
+scripts/reel-lab/out/

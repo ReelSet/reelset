@@ -514,8 +514,14 @@ async function summarize(
   log.info({ chunks: stored.length, promptChunks: promptChunks.length }, 'evidence ready')
 
   const prompt = scriptPromptFor(deps.narrator)
+  const narrationLimits = deps.narrationLimits ?? prompt.narrationLimits ?? NARRATION_LIMITS
   log.info(
-    { promptVersion: prompt.version, narrator: deps.narrator ?? null },
+    {
+      promptVersion: prompt.version,
+      narrator: deps.narrator ?? null,
+      narrationLimits,
+      styleRewrites: prompt.styleRewrites,
+    },
     'script prompt selected',
   )
 
@@ -581,7 +587,7 @@ async function summarize(
       result.text,
       promptChunkIds,
       sourceText,
-      deps.narrationLimits ?? NARRATION_LIMITS,
+      narrationLimits,
       styleLimits,
     )
     if (!parsed.ok) {
@@ -620,7 +626,7 @@ async function summarize(
       },
       'script style checked',
     )
-    if (parsed.style.issues.length > 0 && attempt < MAX_LLM_CALLS) {
+    if (prompt.styleRewrites && parsed.style.issues.length > 0 && attempt < MAX_LLM_CALLS) {
       rejection = `the facts and format are fine, but the script is not easy enough to follow. Keep the same facts and fix: ${parsed.style.issues.join('; ')}`
       const written = parsed.value.script
       previous = [
@@ -640,10 +646,7 @@ async function summarize(
     acceptedStyle = fallback.style
   }
   if (accepted && acceptedStyle && acceptedStyle.issues.length > 0) {
-    log.warn(
-      { calls, issues: acceptedStyle.issues },
-      'script accepted with style issues left after the last rewrite',
-    )
+    log.warn({ calls, issues: acceptedStyle.issues }, 'script accepted with style issues left')
   }
 
   if (!accepted) {

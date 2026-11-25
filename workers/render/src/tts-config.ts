@@ -6,7 +6,7 @@ import {
   type Logger,
 } from '@reelset/core'
 import { DEFAULT_VOICE } from './constants'
-import { generateChatterbox, type ChatterboxConfig } from './chatterbox'
+import { QWEN_TAKES, generateChatterbox, type ChatterboxConfig } from './chatterbox'
 import type { Env } from './env'
 import {
   effectiveVoice,
@@ -72,6 +72,7 @@ export async function loadTtsConfig(
             token,
             voice: DEFAULT_CHATTERBOX_VOICE,
             engine: 'qwen',
+            takes: QWEN_TAKES,
           })
         : undefined,
     chatterbox:

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { parseModelOutput } from '../src/pipeline/output'
 import {
   PROMPT_VERSION,
+  EDU_SYSTEM_PROMPT,
   QWEN_SYSTEM_PROMPT,
   SYSTEM_PROMPT,
   scriptPromptFor,
@@ -175,15 +176,25 @@ describe('prompt', () => {
     expect(SYSTEM_PROMPT).toContain('at most 3 significant digits')
   })
 
-  it('adds the spoken-style narrator rules only for qwen', () => {
-    expect(scriptPromptFor('qwen')).toEqual({
-      system: QWEN_SYSTEM_PROMPT,
-      version: 'reel-v10-qwen',
+  it('gives qwen the spoken-style rules plus educational mode, with its own length and no rewrites', () => {
+    const qwen = scriptPromptFor('qwen')
+    expect(qwen).toEqual({
+      system: EDU_SYSTEM_PROMPT,
+      version: 'reel-v10-qwen-edu8',
+      narrationLimits: { min: 185, max: 240, maxSpokenChars: 1500 },
+      styleRewrites: false,
     })
+    expect(EDU_SYSTEM_PROMPT.startsWith(QWEN_SYSTEM_PROMPT)).toBe(true)
+    expect(EDU_SYSTEM_PROMPT).toContain('EDUCATIONAL REEL MODE')
+    expect(EDU_SYSTEM_PROMPT).toContain('never convert it')
     expect(QWEN_SYSTEM_PROMPT.startsWith(SYSTEM_PROMPT)).toBe(true)
     expect(QWEN_SYSTEM_PROMPT).toContain('December 4, 2026')
     for (const narrator of ['chatterbox', 'kokoro', 'edge', 'aura2', undefined] as const) {
-      expect(scriptPromptFor(narrator)).toEqual({ system: SYSTEM_PROMPT, version: PROMPT_VERSION })
+      expect(scriptPromptFor(narrator)).toEqual({
+        system: SYSTEM_PROMPT,
+        version: PROMPT_VERSION,
+        styleRewrites: true,
+      })
     }
   })
 

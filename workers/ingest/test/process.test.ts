@@ -3,7 +3,7 @@ import { decideOnError, retryDelaySeconds, stageFor } from '../src/pipeline/deci
 import { handleMessage, type MessageLike } from '../src/pipeline/consumer'
 import { STYLE_LIMITS } from '../src/pipeline/plain'
 import { processItem } from '../src/pipeline/process'
-import { PROMPT_VERSION, QWEN_PROMPT_VERSION, SYSTEM_PROMPT } from '../src/pipeline/prompt'
+import { EDU_PROMPT_VERSION, PROMPT_VERSION, SYSTEM_PROMPT } from '../src/pipeline/prompt'
 import {
   CHUNK_1,
   ITEM_ID,
@@ -70,15 +70,16 @@ describe('processItem', () => {
     expect(t.fake.find('update evidence_chunk')).toHaveLength(1)
   })
 
-  it('writes for the qwen narrator with its spoken-style rules and records that prompt version', async () => {
+  it('writes for the qwen narrator in educational mode and records that prompt version', async () => {
     const t = makeDeps(makeWorld(), [validOutput()])
     t.deps.narrator = 'qwen'
     expect(await processItem(t.deps, ITEM_ID, 1)).toBe('rendered_enqueued')
     const system = (t.generate.mock.calls[0]![0] as { system: string }).system
     expect(system.startsWith(SYSTEM_PROMPT)).toBe(true)
     expect(system).toContain('NARRATOR: an expressive voice model')
+    expect(system).toContain('EDUCATIONAL REEL MODE')
     const setScript = t.fake.find('"script" =')[0]!
-    expect(setScript.params).toContain(QWEN_PROMPT_VERSION)
+    expect(setScript.params).toContain(EDU_PROMPT_VERSION)
     expect(setScript.params).not.toContain(PROMPT_VERSION)
   })
 
@@ -252,6 +253,27 @@ describe('processItem', () => {
       expect(t.generate).toHaveBeenCalledTimes(3)
       const saved = t.fake.find('update "item" set "tldr"')[0]!
       expect(saved.params.join(' ')).toContain('Install it and see for yourself')
+    })
+
+    it('keeps the first valid qwen script as written instead of sending it back for style', async () => {
+      const t = styled([validOutput(CHUNK_1, narration(flat)), validOutput(CHUNK_1, narration())])
+      t.deps.narrator = 'qwen'
+      const outcome = await processItem(t.deps, ITEM_ID, 1)
+
+      expect(outcome).toBe('rendered_enqueued')
+      expect(t.generate).toHaveBeenCalledTimes(1)
+      const saved = t.fake.find('update "item" set "tldr"')[0]!
+      expect(saved.params.join(' ')).toContain('Install it and see for yourself')
+    })
+
+    it('holds qwen scripts to the educational length when no limits are injected', async () => {
+      const t = styled([validOutput(CHUNK_1, narration()), validOutput(CHUNK_1, narration())])
+      t.deps.narrator = 'qwen'
+      t.deps.narrationLimits = undefined
+      const outcome = await processItem(t.deps, ITEM_ID, 1)
+
+      expect(outcome).not.toBe('rendered_enqueued')
+      expect(t.generate.mock.calls[1]![0].user).toContain('write 185 to 240 words total')
     })
 
     it('records the hook and reading grade on the summarized transition', async () => {

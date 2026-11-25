@@ -1,5 +1,6 @@
 import { MAX_SPOKEN_CHARS, type TtsProvider } from '@reelset/core'
 import { MAX_TLDR_CHARS } from '../config'
+import { EDU_RULES } from './edu-rules'
 import { hookFormulasPrompt } from './hook-formulas'
 import { MAX_HOOK_CHARS } from './hook-score'
 import { STYLE_LIMITS } from './plain'
@@ -145,14 +146,31 @@ const QWEN_VOICE_RULES = `NARRATOR: an expressive voice model reads this script 
 export const QWEN_PROMPT_VERSION = `${PROMPT_VERSION}-qwen`
 export const QWEN_SYSTEM_PROMPT = `${SYSTEM_PROMPT}\n\n${QWEN_VOICE_RULES}`
 
-/** The script prompt for the narrator that will read it; Qwen gets the spoken-style rules on top. */
-export function scriptPromptFor(narrator: TtsProvider | undefined): {
+// The Qwen narrator reads educational reels: longer (about 65 to 85 s), and the first script that
+// passes the checks is kept, since style rewrites undid the spoken voice these rules ask for.
+export const EDU_PROMPT_VERSION = `${QWEN_PROMPT_VERSION}-edu8`
+export const EDU_SYSTEM_PROMPT = `${QWEN_SYSTEM_PROMPT}\n\n${EDU_RULES}`
+export const EDU_NARRATION_LIMITS = { min: 185, max: 240, maxSpokenChars: 1500 }
+
+export type ScriptPrompt = {
   system: string
   version: string
-} {
+  /** Overrides the default narration word and character limits. */
+  narrationLimits?: { min: number; max: number; maxSpokenChars: number }
+  /** Send a valid script with style issues back for a rewrite (up to the call limit). */
+  styleRewrites: boolean
+}
+
+/** The script prompt for the narrator that will read it; Qwen gets the educational spoken-style mode. */
+export function scriptPromptFor(narrator: TtsProvider | undefined): ScriptPrompt {
   return narrator === 'qwen'
-    ? { system: QWEN_SYSTEM_PROMPT, version: QWEN_PROMPT_VERSION }
-    : { system: SYSTEM_PROMPT, version: PROMPT_VERSION }
+    ? {
+        system: EDU_SYSTEM_PROMPT,
+        version: EDU_PROMPT_VERSION,
+        narrationLimits: EDU_NARRATION_LIMITS,
+        styleRewrites: false,
+      }
+    : { system: SYSTEM_PROMPT, version: PROMPT_VERSION, styleRewrites: true }
 }
 
 export function escapeUntrusted(text: string): string {
