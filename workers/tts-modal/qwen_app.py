@@ -50,8 +50,9 @@ GENZ_TRANSCRIPT = (
     "Like, sir, please, your confidence is running on store credit. Anyway, I had to tell someone before I "
     "internally exploded."
 )
-# Any of these when L4s are short; list prices per second from modal.com/pricing (Nov 2026).
-GPUS = ["L4", "A10", "L40S"]
+# A10 when L4s are short; L40S is left out, it costs 2.4x an L4 for the same narration.
+# List prices per second from modal.com/pricing (Nov 2026).
+GPUS = ["L4", "A10"]
 GPU_USD_PER_SECOND = {"L4": 0.000222, "A10": 0.000306, "L40S": 0.000542}
 SEED = 1234
 RETRY_SEED_STEP = 1000

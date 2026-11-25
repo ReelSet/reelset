@@ -140,15 +140,28 @@ export class FakeContainer implements ContainerFetcher {
 
 export class FakeMedia {
   puts: { key: string; bytes: number; contentType?: string }[] = []
+  objects = new Map<string, string>()
+  deletes: string[] = []
   failPuts = false
-  async put(key: string, value: ArrayBuffer, options?: R2PutOptions) {
+  async put(key: string, value: ArrayBuffer | string, options?: R2PutOptions) {
     if (this.failPuts) throw new Error('r2 down')
+    const bytes =
+      typeof value === 'string' ? new TextEncoder().encode(value).byteLength : value.byteLength
+    if (typeof value === 'string') this.objects.set(key, value)
     this.puts.push({
       key,
-      bytes: value.byteLength,
+      bytes,
       contentType: (options?.httpMetadata as R2HTTPMetadata | undefined)?.contentType,
     })
     return null as unknown as R2Object
+  }
+  async get(key: string) {
+    const text = this.objects.get(key)
+    return text === undefined ? null : ({ text: async () => text } as unknown as R2ObjectBody)
+  }
+  async delete(key: string) {
+    this.deletes.push(key)
+    this.objects.delete(key)
   }
 }
 

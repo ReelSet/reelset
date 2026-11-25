@@ -976,6 +976,80 @@ describe('modal narrators', () => {
     expect(tts.costUsd).toBe(0)
   })
 
+  describe('voicing once per render', () => {
+    const busyBox = () => new FakeContainer({ renderStatus: 429, renderBody: { error: 'busy' } })
+
+    it('reuses the qwen voice when a busy box defers the job, and records its cost once', async () => {
+      const media = new FakeMedia()
+      const { deps, rec } = setup({ container: busyBox(), media })
+      const calls: string[] = []
+      deps.voice = 'qwen-genz'
+      deps.qwen = working(calls, 'qwen', 0.0079)
+
+      expect((await processRenderJob(deps, body, 1)).action).toBe('defer')
+      expect((await processRenderJob(deps, body, 1)).action).toBe('defer')
+      const box = new FakeContainer()
+      deps.box = box
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+
+      expect(calls).toEqual(['qwen'])
+      const tts = rec.spends.filter((s) => s.category === 'tts')
+      expect(tts).toHaveLength(1)
+      expect(tts[0]).toMatchObject({ costUsd: 0.0079, units: 40, meta: { provider: 'qwen' } })
+      const sent = box.requests[0]!.body as Record<string, any>
+      expect(sent.narration.audioBase64).toBe('AQID')
+      expect(sent.narration.words[0].text).toBe('Hook')
+      const key = `narration-cache/${await keyFor('qwen-genz')}.json`
+      expect(media.puts.filter((p) => p.key === key)).toHaveLength(1)
+      expect(media.deletes).toEqual([key])
+      expect(media.objects.has(key)).toBe(false)
+    })
+
+    it('records the voice cost when it is made, even if the render never finishes', async () => {
+      const { deps, rec } = setup({ container: busyBox() })
+      deps.voice = 'qwen-genz'
+      deps.qwen = working([], 'qwen', 0.0079)
+      expect((await processRenderJob(deps, body, 1)).action).toBe('defer')
+      expect(rec.spends).toEqual([
+        expect.objectContaining({ category: 'tts', costUsd: 0.0079, meta: expect.anything() }),
+      ])
+    })
+
+    it('voices again when the script changed since the voice was saved', async () => {
+      const media = new FakeMedia()
+      const store = new FakeStore()
+      const { deps } = setup({ container: busyBox(), media, store })
+      const calls: string[] = []
+      deps.voice = 'qwen-genz'
+      deps.qwen = working(calls, 'qwen', 0.0079)
+      await processRenderJob(deps, body, 1)
+      const item = makeItem()
+      const script = { ...(item.script as Record<string, unknown>), hook: 'A brand new hook.' }
+      store.item = { ...item, script }
+      deps.box = new FakeContainer()
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(calls).toEqual(['qwen', 'qwen'])
+    })
+
+    it('voices again when the saved voice is unreadable', async () => {
+      const media = new FakeMedia()
+      const { deps } = setup({ media })
+      const calls: string[] = []
+      deps.voice = 'qwen-genz'
+      deps.qwen = working(calls, 'qwen', 0.0079)
+      media.objects.set(`narration-cache/${await keyFor('qwen-genz')}.json`, '{"not":"a voice"}')
+      expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+      expect(calls).toEqual(['qwen'])
+    })
+
+    it('saves nothing when the box voices the reel itself', async () => {
+      const media = new FakeMedia()
+      const { deps } = setup({ container: busyBox(), media })
+      await processRenderJob(deps, body, 1)
+      expect(media.puts).toEqual([])
+    })
+  })
+
   it('hands off to the container engine when every modal narrator fails', async () => {
     const container = new FakeContainer({
       renderBody: {

@@ -55,6 +55,13 @@ import {
   type FailureDecision,
 } from './plan'
 import type { ItemForRender, RenderStore } from './store'
+import {
+  dropNarration,
+  loadNarration,
+  saveNarration,
+  type NarrationCache,
+  type RemoteProvider,
+} from './narration-cache'
 
 export const jobMessageSchema = z.object({
   itemId: z.uuid(),
@@ -73,7 +80,7 @@ export type JobResult =
 export type ConsumerDeps = {
   store: RenderStore
   box: ContainerFetcher
-  media: Pick<R2Bucket, 'put'>
+  media: Pick<R2Bucket, 'put'> & NarrationCache
   transition: (input: TransitionInput) => Promise<void>
   spend: (input: SpendInput) => Promise<void>
   voice: string
@@ -211,7 +218,7 @@ async function runJob(
   }
 
   await deps.store.markRendering(key, !checkIn)
-  const prepared = await prepareNarration(deps, script.data, rlog)
+  const prepared = await narrate(deps, script.data, key, rlog)
   const { narration, script: renderScript } = prepared
   const metadata = await renderAndUpload(deps, item, renderScript, key, narration, rlog)
   const provider = narrationProvider(prepared, metadata)
@@ -226,6 +233,7 @@ async function runJob(
     rlog,
     deliveryAttempts,
   )
+  if (narration) await dropNarration(deps.media, key, rlog)
   rlog.info({ durationMs: metadata.durationMs, bytes: metadata.bytes }, 'render job done')
   return { action: 'ack' }
 }
@@ -240,7 +248,6 @@ function combine(first: Narration, second: Narration): Narration {
   }
 }
 
-type RemoteProvider = 'aura2' | 'chatterbox' | 'qwen'
 type RemoteNarrator = {
   provider: RemoteProvider
   generate: (script: ReelScript, log: Logger) => Promise<Narration>
@@ -279,6 +286,51 @@ function logFallback(
   extra: object = {},
 ): void {
   log.warn({ from, to, reason, ...extra }, 'remote tts unusable, falling back')
+}
+
+/**
+ * A remote voice is paid once per render: its cost is recorded when it is made and it is kept in R2
+ * until the render finishes, so a job deferred by a busy box reuses it instead of voicing again.
+ */
+async function narrate(
+  deps: ConsumerDeps,
+  rawScript: ReelScript,
+  key: string,
+  log: Logger,
+): Promise<Prepared> {
+  const cached = await loadNarration(deps.media, key, rawScript, log)
+  if (cached) {
+    log.info(
+      { provider: cached.provider, audioSeconds: cached.narration.audioSeconds },
+      'narration reused from an earlier delivery',
+    )
+    return cached
+  }
+  const prepared = await prepareNarration(deps, rawScript, log)
+  const { narration, provider, script } = prepared
+  if (!narration || !provider) return prepared
+  await recordVoiceSpend(deps, narration, provider, key, log)
+  await saveNarration(deps.media, key, rawScript, { narration, provider, script }, log)
+  return prepared
+}
+
+async function recordVoiceSpend(
+  deps: ConsumerDeps,
+  narration: Narration,
+  provider: RemoteProvider,
+  key: string,
+  log: Logger,
+): Promise<void> {
+  try {
+    await deps.spend({
+      category: 'tts',
+      units: narration.chars,
+      costUsd: narration.costUsd,
+      meta: { renderKey: key, provider },
+    })
+  } catch (err) {
+    log.warn(errorFields(err), 'tts spend not recorded (non-fatal)')
+  }
 }
 
 /** Remote narration over the cap is re-synthesized from progressively shorter scripts; any failure hands off to the next remote narrator, then the container's kokoro then edge chain. */
@@ -477,12 +529,15 @@ async function recordSpend(
   log: Logger,
 ): Promise<void> {
   try {
-    await deps.spend({
-      category: 'tts',
-      units: metadata.ttsChars,
-      costUsd: narration?.costUsd ?? 0,
-      meta: { renderKey: key, provider },
-    })
+    // A remote voice was recorded when it was made; the box's own voices cost nothing extra.
+    if (!narration) {
+      await deps.spend({
+        category: 'tts',
+        units: metadata.ttsChars,
+        costUsd: 0,
+        meta: { renderKey: key, provider },
+      })
+    }
     const seconds = metadata.renderMs / 1000
     await deps.spend({
       category: 'render',
