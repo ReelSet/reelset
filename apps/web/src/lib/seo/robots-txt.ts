@@ -1,5 +1,7 @@
-import type { MetadataRoute } from 'next'
 import { SITE_URL } from '@/lib/seo/site'
+
+// ai-train is yes because the training crawlers (GPTBot, CCBot, Google-Extended) are already allowed.
+export const CONTENT_SIGNAL = 'search=yes, ai-input=yes, ai-train=yes'
 
 const PRIVATE_PATHS = ['/admin', '/api/', '/auth/', '/login', '/profile']
 
@@ -29,13 +31,15 @@ const AI_CRAWLERS = [
   'cohere-ai',
 ]
 
-export default function robots(): MetadataRoute.Robots {
-  return {
-    rules: [
-      { userAgent: '*', allow: '/', disallow: DISALLOW },
-      { userAgent: AI_CRAWLERS, allow: '/', disallow: DISALLOW },
-    ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
-    host: SITE_URL,
-  }
+function group(userAgents: string[]): string {
+  return [
+    ...userAgents.map((ua) => `User-Agent: ${ua}`),
+    `Content-Signal: ${CONTENT_SIGNAL}`,
+    'Allow: /',
+    ...DISALLOW.map((p) => `Disallow: ${p}`),
+  ].join('\n')
+}
+
+export function buildRobotsTxt(): string {
+  return `${[group(['*']), group(AI_CRAWLERS), `Host: ${SITE_URL}\nSitemap: ${SITE_URL}/sitemap.xml`].join('\n\n')}\n`
 }
