@@ -111,8 +111,13 @@ describe('maintenance', () => {
 
   it('applies retention by deleting objects then clearing keys', async () => {
     const expired: ExpiredRender[] = [
-      { id: 'r1', videoKey: 'reels/a/1.mp4', posterKey: 'reels/a/1.jpg' },
-      { id: 'r2', videoKey: 'reels/b/2.mp4', posterKey: null },
+      {
+        id: 'r1',
+        videoKey: 'reels/a/1.mp4',
+        posterKey: 'reels/a/1.jpg',
+        thumbKey: 'reels/a/1.thumb.webp',
+      },
+      { id: 'r2', videoKey: 'reels/b/2.mp4', posterKey: null, thumbKey: null },
     ]
     const { deps, calls } = setup({
       expiredRenders: async (cutoff) => {
@@ -121,7 +126,9 @@ describe('maintenance', () => {
       },
     })
     expect(await applyRetention(deps, now, silentLog)).toBe(2)
-    expect(calls.delete).toEqual([['reels/a/1.mp4', 'reels/a/1.jpg', 'reels/b/2.mp4']])
+    expect(calls.delete).toEqual([
+      ['reels/a/1.mp4', 'reels/a/1.jpg', 'reels/a/1.thumb.webp', 'reels/b/2.mp4'],
+    ])
     expect(calls.clear).toEqual([['r1', 'r2']])
   })
 

@@ -16,7 +16,7 @@ export function servedReelsQuery(db: Database, itemIds: string[], minTemplate: n
       (eb) =>
         eb
           .selectFrom('render')
-          .select('render.poster_key')
+          .select(['render.poster_key', 'render.thumb_key'])
           .whereRef('render.item_id', '=', 'item.id')
           .where('render.status', '=', RenderStatus.done)
           .where('render.video_key', 'is not', null)
@@ -34,6 +34,7 @@ export function servedReelsQuery(db: Database, itemIds: string[], minTemplate: n
       'item.id',
       'item.title',
       'r.poster_key',
+      'r.thumb_key',
       eb
         .selectFrom('mention')
         .select(sql<string>`mention.source::text`.as('source'))

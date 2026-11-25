@@ -16,6 +16,7 @@ export type ShowcaseCandidate = {
   score: number
   video_key: string
   poster_key: string | null
+  thumb_key: string | null
   video_duration_ms: number | null
 }
 
@@ -27,6 +28,7 @@ export type ShowcaseReel = {
   videoUrl: string
   previewUrl: string
   posterUrl: string | null
+  thumbUrl: string | null
   durationMs: number | null
 }
 
@@ -55,6 +57,7 @@ export function pickShowcase(
     videoUrl: mediaUrl(c.video_key),
     previewUrl: `/api/showcase/${c.id}/preview`,
     posterUrl: c.poster_key ? mediaUrl(c.poster_key) : null,
+    thumbUrl: c.thumb_key ? mediaUrl(c.thumb_key) : null,
     durationMs: c.video_duration_ms,
   }))
 }

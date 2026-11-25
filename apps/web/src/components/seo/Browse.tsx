@@ -23,12 +23,15 @@ export function PosterCard({
       href={reelHref(reel, scope)}
       className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-gradient-to-b from-raised to-surface transition active:scale-[0.97]"
     >
-      {reel.posterUrl && (
+      {(reel.thumbUrl ?? reel.posterUrl) && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={reel.posterUrl}
+          src={(reel.thumbUrl ?? reel.posterUrl) as string}
           alt=""
+          width={360}
+          height={640}
           loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
           className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
         />
       )}
@@ -106,7 +109,7 @@ export function TopicShelf({ shelf, source }: { shelf: Shelf; source: string | n
             key={r.id}
             className={`sm:w-40 sm:shrink-0 sm:snap-start ${i >= MOBILE_SHELF_REELS ? 'hidden sm:block' : ''}`}
           >
-            <PosterCard reel={r} eager={i < 3} scope={{ topic: shelf.topic.slug, source }} />
+            <PosterCard reel={r} scope={{ topic: shelf.topic.slug, source }} />
           </li>
         ))}
       </ul>

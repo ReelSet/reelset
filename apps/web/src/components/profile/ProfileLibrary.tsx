@@ -77,12 +77,15 @@ export function ProfileLibrary({ liked, saved }: { liked: PosterReel[]; saved: P
                 href={reelPath(r)}
                 className="group relative block aspect-[9/16] overflow-hidden rounded-md border border-line bg-surface transition active:scale-[0.97]"
               >
-                {r.posterUrl && (
+                {(r.thumbUrl ?? r.posterUrl) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={r.posterUrl}
+                    src={(r.thumbUrl ?? r.posterUrl) as string}
                     alt=""
+                    width={360}
+                    height={640}
                     loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                   />
                 )}

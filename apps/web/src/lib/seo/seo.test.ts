@@ -52,6 +52,7 @@ const summary = (id: string, over: Partial<ReelSummary> = {}): ReelSummary => ({
   updatedAt: '2026-11-11T00:00:00.000Z',
   videoUrl: 'https://m/v.mp4',
   posterUrl: 'https://m/p.jpg',
+  thumbUrl: 'https://m/p.thumb.webp',
   durationMs: 60_000,
   ...over,
 })

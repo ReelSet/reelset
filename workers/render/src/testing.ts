@@ -72,6 +72,7 @@ export class FakeStore implements RenderStore {
         status: 'done',
         videoKey: done.videoKey,
         posterKey: done.posterKey,
+        thumbKey: done.thumbKey ?? null,
         done,
       })
   }
@@ -99,6 +100,8 @@ export type FakeContainerOptions = {
   renderStatus?: number
   renderBody?: unknown
   videoBytes?: number
+  /** `missing` answers 404 like an old box image that has no thumb asset. */
+  thumb?: 'ok' | 'missing'
 }
 
 export class FakeContainer implements ContainerFetcher {
@@ -133,13 +136,18 @@ export class FakeContainer implements ContainerFetcher {
       return new Response(new Uint8Array(videoBytes))
     if (request.method === 'GET' && path.endsWith('/poster'))
       return new Response(new Uint8Array(50))
+    if (request.method === 'GET' && path.endsWith('/thumb')) {
+      if (this.opts.thumb === 'missing')
+        return Response.json({ error: 'not_found' }, { status: 404 })
+      return new Response(new Uint8Array(20))
+    }
     if (request.method === 'DELETE') return Response.json({ deleted: true })
     return new Response('nope', { status: 404 })
   }
 }
 
 export class FakeMedia {
-  puts: { key: string; bytes: number; contentType?: string }[] = []
+  puts: { key: string; bytes: number; contentType?: string; cacheControl?: string }[] = []
   objects = new Map<string, string>()
   deletes: string[] = []
   failPuts = false
@@ -152,6 +160,7 @@ export class FakeMedia {
       key,
       bytes,
       contentType: (options?.httpMetadata as R2HTTPMetadata | undefined)?.contentType,
+      cacheControl: (options?.httpMetadata as R2HTTPMetadata | undefined)?.cacheControl,
     })
     return null as unknown as R2Object
   }

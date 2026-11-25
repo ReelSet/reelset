@@ -94,7 +94,9 @@ export async function applyRetention(
   const days = await deps.retentionDays()
   const expired = await deps.store.expiredRenders(retentionCutoff(now, days), RETENTION_BATCH_SIZE)
   if (expired.length === 0) return 0
-  const keys = expired.flatMap((r) => [r.videoKey, r.posterKey]).filter((k): k is string => !!k)
+  const keys = expired
+    .flatMap((r) => [r.videoKey, r.posterKey, r.thumbKey])
+    .filter((k): k is string => !!k)
   await deps.media.delete(keys)
   await deps.store.clearRenderKeys(expired.map((r) => r.id))
   log.info(

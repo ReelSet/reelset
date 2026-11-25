@@ -39,6 +39,8 @@ export type ReelSummary = {
   updatedAt: string
   videoUrl: string | null
   posterUrl: string | null
+  /** Small WebP for grids; null for renders without one, then use posterUrl. */
+  thumbUrl: string | null
   durationMs: number | null
   source?: string | null
   views?: number

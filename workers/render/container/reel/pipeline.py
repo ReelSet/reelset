@@ -208,6 +208,7 @@ def run_render(
     poster_path = os.path.join(job_dir, "poster.jpg")
     second = poster.choose_second(out_path, props.poster_second(spans), hook_end=spans[0][1])
     video.run_ffmpeg(video.build_poster_cmd(out_path, poster_path, second), job_dir)
+    write_thumb(poster_path, job_dir)
     size = video.check_output_size(out_path)
 
     credits = _credits(job_dir, assets)
@@ -230,6 +231,16 @@ def run_render(
         meta["director"] = director.read_result(job_dir, req.director)
     log.info("%s render ok %s", log_ctx, meta)
     return meta
+
+
+def write_thumb(poster_path: str, job_dir: str) -> bool:
+    """Small WebP of the poster for grids. The grids fall back to the poster, so this never fails a render."""
+    try:
+        video.run_ffmpeg(video.build_thumb_cmd(poster_path, os.path.join(job_dir, "thumb.webp")), job_dir)
+        return True
+    except RenderError as err:
+        log.warning("thumb skipped: %s", err.message)
+        return False
 
 
 def _credits(job_dir: str, assets: dict) -> list:

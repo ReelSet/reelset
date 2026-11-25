@@ -4,9 +4,9 @@
  */
 export const POSTER_CACHE_VERSION = 2
 
-const REEL_POSTER_KEY = /^reels\/[^/]+\/[^/]+\.jpg$/
+const REEL_POSTER_KEY = /^reels\/[^/]+\/[^/]+(\.thumb\.webp|\.jpg)$/
 
-/** Public URL for an R2 media key; reel posters carry the cache version. */
+/** Public URL for an R2 media key; reel posters and thumbnails carry the cache version. */
 export function mediaKeyUrl(base: string, key: string): string {
   const clean = key.replace(/^\/+/, '')
   const url = `${base.replace(/\/+$/, '')}/${clean}`

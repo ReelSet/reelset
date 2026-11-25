@@ -19,7 +19,7 @@ import {
   recorders,
   silentLog,
 } from './testing'
-import { posterKeyFor, videoKeyFor } from './keys'
+import { posterKeyFor, thumbKeyFor, videoKeyFor } from './keys'
 import type { AiLike } from './tts'
 
 async function keyFor(voice = 'en-US-AriaNeural') {
@@ -65,6 +65,7 @@ describe('processRenderJob', () => {
       'POST /render',
       'GET /render/JOB/video',
       'GET /render/JOB/poster',
+      'GET /render/JOB/thumb',
       'DELETE /render/JOB',
     ])
     const renderCall = container.requests[0]!.body as Record<string, unknown>
@@ -80,6 +81,7 @@ describe('processRenderJob', () => {
     expect(media.puts.map((p) => [p.key, p.contentType])).toEqual([
       [videoKeyFor(ITEM_ID, key), 'video/mp4'],
       [posterKeyFor(ITEM_ID, key), 'image/jpeg'],
+      [thumbKeyFor(ITEM_ID, key), 'image/webp'],
     ])
     expect(store.calls).toEqual(['rendering', 'done'])
     expect(store.renders.get(key)?.done).toMatchObject({
@@ -96,6 +98,31 @@ describe('processRenderJob', () => {
     expect(rec.spends[0]).toMatchObject({ units: 400, costUsd: 0 })
     expect(rec.spends[1]).toMatchObject({ costUsd: 0 })
     expect(rec.spends[1]?.units).toBeGreaterThan(0)
+  })
+
+  it('caches uploads for a week and saves the thumb key', async () => {
+    const { deps, store, media } = setup()
+    const key = await keyFor()
+
+    await processRenderJob(deps, body, 1)
+
+    const cache = 'public, max-age=604800'
+    expect(media.puts.map((p) => p.cacheControl)).toEqual([cache, cache, cache])
+    expect(store.renders.get(key)?.done).toMatchObject({ thumbKey: thumbKeyFor(ITEM_ID, key) })
+  })
+
+  it('finishes the render without a thumb when the box image is too old to make one', async () => {
+    const { deps, store, media } = setup({ container: new FakeContainer({ thumb: 'missing' }) })
+    const key = await keyFor()
+
+    expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
+
+    expect(media.puts.map((p) => p.key)).toEqual([
+      videoKeyFor(ITEM_ID, key),
+      posterKeyFor(ITEM_ID, key),
+    ])
+    expect(store.calls).toEqual(['rendering', 'done'])
+    expect(store.renders.get(key)).toMatchObject({ status: 'done', thumbKey: null })
   })
 
   it('forwards facts, headline and shots to the container', async () => {
@@ -155,7 +182,7 @@ describe('processRenderJob', () => {
       store: new FakeStore(makeItem({ status: 'rendered' })),
     })
     expect(await processRenderJob(deps, body, 1)).toEqual({ action: 'ack' })
-    expect(media.puts).toHaveLength(2)
+    expect(media.puts).toHaveLength(3)
     expect(store.calls).toEqual(['rendering', 'done'])
     expect(rec.transitions).toEqual([])
   })

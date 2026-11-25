@@ -317,6 +317,7 @@ model Render {
   status          RenderStatus @default(queued)
   videoKey        String?      @map("video_key")
   posterKey       String?      @map("poster_key")
+  thumbKey        String?      @map("thumb_key")
   bytes           Int?
   videoDurationMs Int?         @map("video_duration_ms")
   renderMs        Int?         @map("render_ms")

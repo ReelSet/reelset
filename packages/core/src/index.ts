@@ -31,6 +31,7 @@ export {
 } from './domain/indexnow'
 export { announceReel } from './repos/indexnow.repo'
 export { CAP_EXEMPT_STATUSES, PACE_LEAD_MINUTES, dayShare, pacedCap } from './domain/admission'
+export { sameStory, storyWords } from './domain/story-match'
 export {
   PIPELINE_STAGES,
   SETTLED_ITEM_STATUSES,
@@ -180,7 +181,9 @@ export {
   INSTAGRAM_CAPTION_MAX_CHARS,
   INSTAGRAM_HASHTAG_MAX,
   INSTAGRAM_LOST_ERROR,
+  INSTAGRAM_AUTO_EXPIRED_ERROR,
   INSTAGRAM_AUTO_GAP_MINUTES,
+  INSTAGRAM_AUTO_MAX_QUEUED_HOURS,
   INSTAGRAM_AUTO_POST_HOURS,
   INSTAGRAM_MIN_GAP_MINUTES,
   INSTAGRAM_POST_TIMEZONE,
@@ -214,9 +217,14 @@ export {
   IG_ACCOUNT_KEY,
   INSTAGRAM_AUTO_LOOKBACK_HOURS,
   INSTAGRAM_AUTO_REQUESTER,
+  POST_CLAIM_AUTO_SQL,
+  POST_CLAIM_SCORE_SQL,
   SERVED_RENDER_ORDER_SQL,
   autoPostsQueuedToday,
+  expireStaleAutoPosts,
   insertAutoPost,
+  listRecentPostTitles,
+  type RecentPostTitle,
   listAutoPostCandidates,
   type ClaimedPost,
   claimNextDelete,

@@ -16,4 +16,19 @@ describe('mediaKeyUrl', () => {
       `https://cdn.test/reels/i1/k.jpg?v=${POSTER_CACHE_VERSION}`,
     )
   })
+
+  it('versions reel thumbnails the same way', () => {
+    expect(mediaKeyUrl('https://cdn.test', 'reels/i1/k.thumb.webp')).toBe(
+      `https://cdn.test/reels/i1/k.thumb.webp?v=${POSTER_CACHE_VERSION}`,
+    )
+  })
+
+  it('leaves videos and other webp keys alone', () => {
+    expect(mediaKeyUrl('https://cdn.test', 'reels/i1/k.mp4')).toBe(
+      'https://cdn.test/reels/i1/k.mp4',
+    )
+    expect(mediaKeyUrl('https://cdn.test', 'papers/x/fig.webp')).toBe(
+      'https://cdn.test/papers/x/fig.webp',
+    )
+  })
 })

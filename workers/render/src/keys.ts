@@ -8,6 +8,10 @@ export function posterKeyFor(itemId: string, renderKey: string): string {
   return `${REELS_PREFIX}${itemId}/${renderKey}.jpg`
 }
 
+export function thumbKeyFor(itemId: string, renderKey: string): string {
+  return `${REELS_PREFIX}${itemId}/${renderKey}.thumb.webp`
+}
+
 const VIDEO_KEY_PATTERN = new RegExp(`^${REELS_PREFIX}([^/]+)/([^/]+)\\.mp4$`)
 
 // Poster of the same render as a videoKeyFor key; null for any key not built by videoKeyFor.

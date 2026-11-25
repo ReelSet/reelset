@@ -65,7 +65,7 @@ export type RenderMetadata = z.infer<typeof metadataSchema>
 
 export type ContainerClient = {
   render(input: RenderInput): Promise<RenderMetadata>
-  download(jobId: string, asset: 'video' | 'poster'): Promise<ArrayBuffer>
+  download(jobId: string, asset: 'video' | 'poster' | 'thumb'): Promise<ArrayBuffer>
   remove(jobId: string): Promise<void>
 }
 

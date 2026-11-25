@@ -80,12 +80,15 @@ export function AskSourcesSheet({
             const content = (
               <>
                 <span className="relative block h-[72px] w-[44px] shrink-0 overflow-hidden rounded-md border border-line bg-raised">
-                  {reel?.posterUrl ? (
+                  {reel && (reel.thumbUrl ?? reel.posterUrl) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={reel.posterUrl}
+                      src={(reel.thumbUrl ?? reel.posterUrl) as string}
                       alt=""
+                      width={360}
+                      height={640}
                       loading="lazy"
+                      decoding="async"
                       draggable={false}
                       className="h-full w-full object-cover"
                     />

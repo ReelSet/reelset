@@ -302,6 +302,7 @@ export type Render = {
   status: Generated<RenderStatus>
   video_key: string | null
   poster_key: string | null
+  thumb_key: string | null
   bytes: number | null
   video_duration_ms: number | null
   render_ms: number | null

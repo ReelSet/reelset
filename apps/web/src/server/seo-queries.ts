@@ -19,7 +19,7 @@ const PARAM_CANDIDATES = 5
 
 // The render the feed serves, or none once retention cleared its keys (left join keeps the item).
 const servedRender = sql`left join lateral (
-  select r.video_key, r.poster_key, r.video_duration_ms from render r
+  select r.video_key, r.poster_key, r.thumb_key, r.video_duration_ms from render r
   where r.item_id = i.id and r.status = 'done' and r.video_key is not null
   order by ${sql.raw(SERVED_RENDER_ORDER_SQL)} limit 1
 ) served on true`
@@ -41,6 +41,7 @@ type ReelRow = {
 }
 
 type SummaryRow = Omit<ReelRow, 'kind' | 'canonical_url' | 'rendered_at' | 'script'> & {
+  thumb_key: string | null
   updated_at: Date
   source?: string | null
   view_count?: number
@@ -194,6 +195,7 @@ function toSummary(row: SummaryRow, mediaBase: string): ReelSummary {
     updatedAt: iso(row.updated_at) ?? '',
     videoUrl: mediaUrl(mediaBase, row.video_key),
     posterUrl: mediaUrl(mediaBase, row.poster_key),
+    thumbUrl: mediaUrl(mediaBase, row.thumb_key),
     durationMs: row.video_duration_ms,
     source: row.source ?? null,
     ...(row.view_count === undefined ? {} : { views: row.view_count }),
@@ -221,7 +223,7 @@ export async function listReelSummaries(
   const { rows } = await sql<SummaryRow>`
     select i.id, i.title, i.tldr, i.topics, i.published_at, i.view_count, ${source},
       coalesce(i.rendered_at, i.published_at) as updated_at,
-      served.video_key, served.poster_key, served.video_duration_ms
+      served.video_key, served.poster_key, served.thumb_key, served.video_duration_ms
     from item i ${servedRender}
     where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public' ${topicFilter} ${sourceClause(opts.source)}
     order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
@@ -242,7 +244,7 @@ export async function listSitemapReels(
   const { rows } = await sql<Omit<SummaryRow, 'topics'>>`
     select i.id, i.title, i.tldr, i.published_at,
       coalesce(i.rendered_at, i.published_at) as updated_at,
-      served.video_key, served.poster_key, served.video_duration_ms
+      served.video_key, served.poster_key, served.thumb_key, served.video_duration_ms
     from item i ${servedRender}
     where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
     order by coalesce(i.rendered_at, i.published_at) desc, i.id desc
@@ -279,7 +281,7 @@ export async function listReelTranscripts(db: Database, mediaBase: string, limit
   const { rows } = await sql<SummaryRow & { script: unknown; canonical_url: string }>`
     select i.id, i.title, i.tldr, i.topics, i.published_at, i.canonical_url, i.script,
       coalesce(i.rendered_at, i.published_at) as updated_at,
-      served.video_key, served.poster_key, served.video_duration_ms
+      served.video_key, served.poster_key, served.thumb_key, served.video_duration_ms
     from item i ${servedRender}
     where i.status = ${ItemStatus.rendered}::item_status and i.visibility = 'public'
     order by coalesce(i.rendered_at, i.published_at) desc, i.id desc

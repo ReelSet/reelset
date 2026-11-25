@@ -41,6 +41,7 @@ export type RelatedReelDto = {
   itemId: string
   title: string
   posterUrl: string | null
+  thumbUrl: string | null
   source: string
   chunkIds?: string[]
 }

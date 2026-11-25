@@ -2,7 +2,13 @@ import { ItemStatus, RenderStatus, type Database } from '@reelset/core'
 import { enabledSources, type ProfileSource } from '@/lib/preferences'
 import { mediaUrl } from '@/lib/media'
 
-export type PosterReel = { id: string; title: string; posterUrl: string | null; at: string }
+export type PosterReel = {
+  id: string
+  title: string
+  posterUrl: string | null
+  thumbUrl: string | null
+  at: string
+}
 
 export const LIBRARY_LIMIT = 60
 
@@ -14,7 +20,7 @@ function reelsFrom(db: Database, table: 'like' | 'save', profileId: string) {
       (eb) =>
         eb
           .selectFrom('render')
-          .select('render.poster_key')
+          .select(['render.poster_key', 'render.thumb_key'])
           .whereRef('render.item_id', '=', 'item.id')
           .where('render.status', '=', RenderStatus.done)
           .where('render.video_key', 'is not', null)
@@ -23,7 +29,7 @@ function reelsFrom(db: Database, table: 'like' | 'save', profileId: string) {
           .as('r'),
       (join) => join.onTrue(),
     )
-    .select(['item.id', 'item.title', 'r.poster_key', `${table}.created_at as at`])
+    .select(['item.id', 'item.title', 'r.poster_key', 'r.thumb_key', `${table}.created_at as at`])
     .where(`${table}.profile_id`, '=', profileId)
     .where('item.status', '=', ItemStatus.rendered)
     .where('item.visibility', '<>', 'hidden')
@@ -39,11 +45,18 @@ export function libraryQuery(db: Database, table: 'like' | 'save', profileId: st
 }
 
 export async function profileSummary(db: Database, profileId: string, mediaBase: string) {
-  const toReel = (r: { id: string; title: string; poster_key: string | null; at: Date | string }) =>
+  const toReel = (r: {
+    id: string
+    title: string
+    poster_key: string | null
+    thumb_key: string | null
+    at: Date | string
+  }) =>
     ({
       id: r.id,
       title: r.title,
       posterUrl: mediaUrl(mediaBase, r.poster_key),
+      thumbUrl: mediaUrl(mediaBase, r.thumb_key),
       at: new Date(r.at).toISOString(),
     }) satisfies PosterReel
   const [profile, liked, saved] = await Promise.all([

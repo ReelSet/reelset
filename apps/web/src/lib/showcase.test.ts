@@ -18,6 +18,7 @@ function cand(n: number, source: string, score: number, over: Partial<ShowcaseCa
     score,
     video_key: `v${n}.mp4`,
     poster_key: `v${n}.jpg`,
+    thumb_key: `v${n}.thumb.webp`,
     video_duration_ms: 42000,
     ...over,
   }
@@ -54,6 +55,7 @@ describe('pickShowcase', () => {
     expect(first).toMatchObject({
       videoUrl: 'https://m.test/v1.mp4',
       posterUrl: null,
+      thumbUrl: 'https://m.test/v1.thumb.webp',
       href: '/r/reel-1-00000001',
     })
   })

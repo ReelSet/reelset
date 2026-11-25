@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import unittest.mock
 
+import app
 from reel import pipeline, video
 from reel.errors import RenderError
 from reel.jobs import JobStore
@@ -189,6 +190,26 @@ class FfmpegHelpersTests(unittest.TestCase):
         cmd = video.build_poster_cmd("v.mp4", "p.jpg", 2.5)
         self.assertLess(cmd.index("-ss"), cmd.index("-i"))
         self.assertEqual(cmd[cmd.index("-ss") + 1], "2.500")
+
+    def test_thumb_cmd_makes_a_360_wide_webp(self):
+        cmd = video.build_thumb_cmd("p.jpg", "t.webp")
+        self.assertIn("scale=360:-2", cmd)
+        self.assertIn("libwebp", cmd)
+        self.assertEqual(cmd[cmd.index("-i") + 1], "p.jpg")
+        self.assertEqual(cmd[-1], "t.webp")
+
+    def test_thumb_is_a_served_asset(self):
+        match = app.ASSET_RE.match("/render/abcdefgh/thumb")
+        self.assertIsNotNone(match)
+        self.assertEqual(app.ASSETS[match.group(2)], ("thumb.webp", "image/webp"))
+
+    def test_thumb_failure_is_a_warning_not_a_failed_render(self):
+        with unittest.mock.patch.object(
+            pipeline.video, "run_ffmpeg", side_effect=RenderError("ffmpeg_failed", "boom")
+        ) as run:
+            with self.assertLogs("reel.pipeline", level="WARNING"):
+                self.assertFalse(pipeline.write_thumb("/jobs/a/poster.jpg", "/jobs/a"))
+        self.assertEqual(run.call_args.args[0], video.build_thumb_cmd("/jobs/a/poster.jpg", "/jobs/a/thumb.webp"))
 
     def test_oversize_output_rejected(self):
         with tempfile.NamedTemporaryFile() as f:

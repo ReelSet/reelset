@@ -19,15 +19,15 @@ const PER_SOURCE_LIMIT = 3
 /** Recent public rendered reels with a finished video, best mention score per source; the source is the earliest mention's. */
 export async function showcaseReels(db: Database, limit = SHOWCASE_COUNT): Promise<ShowcaseReel[]> {
   const { rows } = await sql<ShowcaseCandidate>`
-    select id, title, score, source, video_key, poster_key, video_duration_ms from (
-      select i.id, i.title, src.source, served.video_key, served.poster_key, served.video_duration_ms,
+    select id, title, score, source, video_key, poster_key, thumb_key, video_duration_ms from (
+      select i.id, i.title, src.source, served.video_key, served.poster_key, served.thumb_key, served.video_duration_ms,
         coalesce(src.top_score, 0)::float8 as score,
         row_number() over (
           partition by src.source order by coalesce(src.top_score, 0) desc, i.published_at desc
         ) as rank_in_source
       from item i
       join lateral (
-        select r.video_key, r.poster_key, r.video_duration_ms from render r
+        select r.video_key, r.poster_key, r.thumb_key, r.video_duration_ms from render r
         where r.item_id = i.id and r.status = 'done' and r.video_key is not null
         order by ${sql.raw(SERVED_RENDER_ORDER_SQL)} limit 1
       ) served on true

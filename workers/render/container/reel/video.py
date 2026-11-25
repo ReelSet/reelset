@@ -43,6 +43,13 @@ def build_poster_cmd(video: str, out: str, second: float) -> list:
     ]  # fmt: skip
 
 
+def build_thumb_cmd(poster: str, out: str) -> list:
+    return [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-i", poster, "-vf", "scale=360:-2", "-c:v", "libwebp", "-quality", "75", out,
+    ]  # fmt: skip
+
+
 def run_ffmpeg(cmd: list, cwd: str) -> None:
     try:
         proc = subprocess.run(

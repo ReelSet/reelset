@@ -6,10 +6,27 @@ const reel = (id: string, source: string | null = 'hn'): ReelRow => ({
   id,
   title: `Reel ${id}`,
   poster_key: `p/${id}.jpg`,
+  thumb_key: `p/${id}.thumb.webp`,
   source,
 })
 
 describe('pickRelatedReels', () => {
+  it('carries the small thumb next to the poster, null when the render has none', () => {
+    const chunks = new Map([
+      ['c1', 'i1'],
+      ['c2', 'i2'],
+    ])
+    const reels = new Map([
+      ['i1', reel('i1')],
+      ['i2', { ...reel('i2'), thumb_key: null }],
+    ])
+    const out = pickRelatedReels([{ chunkId: 'c1' }, { chunkId: 'c2' }], chunks, reels, poster)
+    expect(out.map((r) => [r.posterUrl, r.thumbUrl])).toEqual([
+      ['https://media.test/p/i1.jpg', 'https://media.test/p/i1.thumb.webp'],
+      ['https://media.test/p/i2.jpg', null],
+    ])
+  })
+
   const chunkItems = new Map([
     ['c1', 'i1'],
     ['c2', 'i1'],

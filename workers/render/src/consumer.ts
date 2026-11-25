@@ -16,6 +16,7 @@ import {
 } from '@reelset/core'
 import {
   createContainerClient,
+  type ContainerClient,
   type ContainerFetcher,
   type RenderMetadata,
 } from './container-client'
@@ -23,6 +24,7 @@ import {
   BUSY_MAX_DEFERRALS,
   BUSY_RETRY_DELAY_SECONDS,
   MAX_VIDEO_BYTES,
+  MEDIA_CACHE_CONTROL,
   PRIORITY_BUSY_RETRY_DELAY_SECONDS,
   PRIORITY_YIELD_DELAY_SECONDS,
   PRIORITY_YIELD_MAX_AGE_MS,
@@ -44,7 +46,7 @@ import {
   type Narration,
 } from './tts'
 import type { BrollPick } from './pexels'
-import { containerJobId, posterKeyFor, videoKeyFor } from './keys'
+import { containerJobId, posterKeyFor, thumbKeyFor, videoKeyFor } from './keys'
 import {
   classifyFailure,
   collectImageUrls,
@@ -420,31 +422,40 @@ async function renderAndUpload(
 
     const video = await client.download(jobId, 'video')
     const poster = await client.download(jobId, 'poster')
+    const thumb = await downloadThumb(client, jobId, log)
     if (video.byteLength !== metadata.bytes) {
       throw new RenderJobError('bad_container_response', 'video size does not match metadata')
     }
 
     const videoKey = videoKeyFor(item.id, key)
     const posterKey = posterKeyFor(item.id, key)
+    const thumbKey = thumb ? thumbKeyFor(item.id, key) : null
     const customMetadata = { itemId: item.id, renderKey: key }
     try {
       await deps.media.put(videoKey, video, {
-        httpMetadata: { contentType: 'video/mp4' },
+        httpMetadata: { contentType: 'video/mp4', cacheControl: MEDIA_CACHE_CONTROL },
         customMetadata,
       })
       await deps.media.put(posterKey, poster, {
-        httpMetadata: { contentType: 'image/jpeg' },
+        httpMetadata: { contentType: 'image/jpeg', cacheControl: MEDIA_CACHE_CONTROL },
         customMetadata,
       })
+      if (thumb && thumbKey) {
+        await deps.media.put(thumbKey, thumb, {
+          httpMetadata: { contentType: 'image/webp', cacheControl: MEDIA_CACHE_CONTROL },
+          customMetadata,
+        })
+      }
     } catch (err) {
       log.error({ videoKey, ...errorFields(err) }, 'r2 upload failed')
       throw new RenderJobError('upload_failed', 'r2 put failed')
     }
-    log.info({ videoKey, posterKey, bytes: video.byteLength }, 'uploaded to r2')
+    log.info({ videoKey, posterKey, thumbKey, bytes: video.byteLength }, 'uploaded to r2')
 
     await deps.store.markDone(key, {
       videoKey,
       posterKey,
+      thumbKey,
       bytes: video.byteLength,
       videoDurationMs: metadata.durationMs,
       renderMs: metadata.renderMs,
@@ -455,6 +466,20 @@ async function renderAndUpload(
     return metadata
   } finally {
     await client.remove(jobId)
+  }
+}
+
+// A box image from before thumbnails has no thumb asset; grids fall back to the poster.
+async function downloadThumb(
+  client: ContainerClient,
+  jobId: string,
+  log: Logger,
+): Promise<ArrayBuffer | null> {
+  try {
+    return await client.download(jobId, 'thumb')
+  } catch (err) {
+    log.warn(errorFields(err), 'thumb not available, grids will use the poster')
+    return null
   }
 }
 

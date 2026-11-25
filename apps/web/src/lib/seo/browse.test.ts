@@ -20,6 +20,7 @@ const reel = (id: string, topics: string[]): ReelSummary => ({
   updatedAt: '2026-11-11T00:00:00.000Z',
   videoUrl: null,
   posterUrl: null,
+  thumbUrl: null,
   durationMs: null,
 })
 

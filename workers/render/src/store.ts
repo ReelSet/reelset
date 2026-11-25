@@ -51,6 +51,7 @@ export type RenderRow = {
 export type RenderDone = {
   videoKey: string
   posterKey: string
+  thumbKey?: string | null
   bytes: number
   videoDurationMs: number
   renderMs: number
@@ -72,7 +73,12 @@ export interface RenderStore {
 }
 
 export type StuckRender = { renderId: string; itemId: string }
-export type ExpiredRender = { id: string; videoKey: string | null; posterKey: string | null }
+export type ExpiredRender = {
+  id: string
+  videoKey: string | null
+  posterKey: string | null
+  thumbKey: string | null
+}
 
 export type UpgradeSent = { id: string; at: number }
 export type UpgradeCandidate = {
@@ -211,6 +217,7 @@ export function createRenderStore(db: Database, log: Logger): RenderStore {
           status: 'done',
           video_key: done.videoKey,
           poster_key: done.posterKey,
+          thumb_key: done.thumbKey ?? null,
           bytes: done.bytes,
           video_duration_ms: done.videoDurationMs,
           render_ms: done.renderMs,
@@ -296,12 +303,20 @@ export function createMaintenanceStore(db: Database, log: Logger): MaintenanceSt
       if (keys.length === 0) return new Set()
       const rows = await db
         .selectFrom('render')
-        .select(['video_key', 'poster_key'])
+        .select(['video_key', 'poster_key', 'thumb_key'])
         .where('status', '=', 'done')
-        .where((eb) => eb.or([eb('video_key', 'in', keys), eb('poster_key', 'in', keys)]))
+        .where((eb) =>
+          eb.or([
+            eb('video_key', 'in', keys),
+            eb('poster_key', 'in', keys),
+            eb('thumb_key', 'in', keys),
+          ]),
+        )
         .execute()
       return new Set(
-        rows.flatMap((r) => [r.video_key, r.poster_key]).filter((k): k is string => !!k),
+        rows
+          .flatMap((r) => [r.video_key, r.poster_key, r.thumb_key])
+          .filter((k): k is string => !!k),
       )
     },
 
@@ -309,7 +324,7 @@ export function createMaintenanceStore(db: Database, log: Logger): MaintenanceSt
       const rows = await db
         .selectFrom('render')
         .innerJoin('item', 'item.id', 'render.item_id')
-        .select(['render.id', 'render.video_key', 'render.poster_key'])
+        .select(['render.id', 'render.video_key', 'render.poster_key', 'render.thumb_key'])
         .where('render.status', '=', 'done')
         .where((eb) =>
           eb.or([eb('render.video_key', 'is not', null), eb('render.poster_key', 'is not', null)]),
@@ -319,14 +334,19 @@ export function createMaintenanceStore(db: Database, log: Logger): MaintenanceSt
         .where('item.owner_id', 'is', null)
         .limit(limit)
         .execute()
-      return rows.map((r) => ({ id: r.id, videoKey: r.video_key, posterKey: r.poster_key }))
+      return rows.map((r) => ({
+        id: r.id,
+        videoKey: r.video_key,
+        posterKey: r.poster_key,
+        thumbKey: r.thumb_key,
+      }))
     },
 
     async clearRenderKeys(ids) {
       if (ids.length === 0) return
       await db
         .updateTable('render')
-        .set({ video_key: null, poster_key: null })
+        .set({ video_key: null, poster_key: null, thumb_key: null })
         .where('id', 'in', ids)
         .execute()
     },

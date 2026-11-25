@@ -19,9 +19,13 @@ log = logging.getLogger("app")
 MAX_BODY_BYTES = 256 * 1024
 MAX_RENDER_BODY_BYTES = 8 * 1024 * 1024
 PORT = int(os.environ.get("PORT", "8080"))
-ASSET_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})/(video|poster)$")
+ASSET_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})/(video|poster|thumb)$")
 JOB_RE = re.compile(r"^/render/([A-Za-z0-9_-]{8,80})$")
-ASSETS = {"video": ("video.mp4", "video/mp4"), "poster": ("poster.jpg", "image/jpeg")}
+ASSETS = {
+    "video": ("video.mp4", "video/mp4"),
+    "poster": ("poster.jpg", "image/jpeg"),
+    "thumb": ("thumb.webp", "image/webp"),
+}
 
 BOX_TOKEN = os.environ.get("BOX_TOKEN", "")
 OPEN_PATHS = ("/health",)

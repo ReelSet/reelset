@@ -6,6 +6,7 @@ export type ReelRow = {
   id: string
   title: string
   poster_key: string | null
+  thumb_key: string | null
   source: string | null
 }
 
@@ -13,7 +14,7 @@ export function pickRelatedReels(
   citations: readonly Pick<CitationDto, 'chunkId'>[],
   chunkItems: ReadonlyMap<string, string>,
   reels: ReadonlyMap<string, ReelRow>,
-  posterUrl: (key: string | null) => string | null,
+  mediaUrl: (key: string | null) => string | null,
   limit = MAX_RELATED_REELS,
 ): RelatedReelDto[] {
   const byItem = new Map<string, RelatedReelDto>()
@@ -30,7 +31,8 @@ export function pickRelatedReels(
     byItem.set(itemId, {
       itemId,
       title: reel.title,
-      posterUrl: posterUrl(reel.poster_key),
+      posterUrl: mediaUrl(reel.poster_key),
+      thumbUrl: mediaUrl(reel.thumb_key),
       source: reel.source ?? 'news',
       chunkIds: [citation.chunkId],
     })
