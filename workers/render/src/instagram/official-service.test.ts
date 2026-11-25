@@ -113,6 +113,7 @@ async function setup(
     markDeleted: vi.fn(async () => true),
     restoreAfterDeleteFailure: vi.fn(async () => true),
     failStuck: vi.fn(async () => 0),
+    expireStale: vi.fn(async () => 0),
     nextLost: vi.fn(async () => opts.lost ?? null),
     recentMediaPks: vi.fn(async () => ['taken']),
     markLostFound: vi.fn(async () => true),
@@ -503,6 +504,14 @@ describe('runInstagramQueue with the official publisher', () => {
     const rejected = await setup({ account: { ...connected, state: 'needs_login' } })
     expect(await runInstagramQueue(rejected.deps)).toEqual({ ran: 'none', reason: 'not_connected' })
     expect(rejected.store.claimPost).not.toHaveBeenCalled()
+  })
+
+  it('expires stale auto posts before it claims the next one', async () => {
+    const t = await setup()
+    await runInstagramQueue(t.deps)
+    expect(vi.mocked(t.store.expireStale).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(t.store.claimPost).mock.invocationCallOrder[0]!,
+    )
   })
 
   it('publishes from the public R2 urls and records the post, without the render box', async () => {

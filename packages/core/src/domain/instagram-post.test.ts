@@ -27,6 +27,10 @@ describe('instagram post state machine', () => {
     expect(canTransitionPost(S.deleted, S.queued)).toBe(false)
   })
 
+  it('lets a stale queued post be failed without ever posting it', () => {
+    expect(canTransitionPost(S.queued, S.failed)).toBe(true)
+  })
+
   it('marks a lost upload posted once it is found live on Instagram', () => {
     expect(canTransitionPost(S.failed, S.posted)).toBe(true)
   })
@@ -52,17 +56,69 @@ describe('gapRemainingMs', () => {
 })
 
 describe('queuedPostEtas', () => {
-  const now = new Date('2026-11-11T04:02:00Z')
+  const manual = { auto: false }
+  const auto = { auto: true }
+  const nyHour = (d: Date) =>
+    Number(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric',
+        hourCycle: 'h23',
+      }).format(d),
+    )
 
-  it('posts right away when no real post happened in the last 10 minutes', () => {
-    expect(queuedPostEtas(1, new Date('2026-11-11T03:40:00Z'), now)).toEqual([now])
-    expect(queuedPostEtas(1, null, now)).toEqual([now])
+  it('posts a manual post right away when no real post happened in the last 10 minutes', () => {
+    const now = new Date('2026-11-11T04:02:00Z')
+    expect(queuedPostEtas([manual], new Date('2026-11-11T03:40:00Z'), now)).toEqual([now])
+    expect(queuedPostEtas([manual], null, now)).toEqual([now])
   })
 
-  it('waits out the gap and lands on the next cron tick, then spaces later posts', () => {
-    expect(queuedPostEtas(2, new Date('2026-11-11T03:58:00Z'), now)).toEqual([
+  it('waits out the gap and lands on the next cron tick, then spaces later manual posts', () => {
+    const now = new Date('2026-11-11T04:02:00Z')
+    expect(queuedPostEtas([manual, manual], new Date('2026-11-11T03:58:00Z'), now)).toEqual([
       new Date('2026-11-11T04:10:00Z'),
       new Date('2026-11-11T04:20:00Z'),
+    ])
+  })
+
+  it('never holds a manual post for posting hours', () => {
+    const now = new Date('2026-11-11T08:00:00Z')
+    expect(queuedPostEtas([manual], new Date('2026-11-11T07:55:00Z'), now)).toEqual([
+      new Date('2026-11-11T08:05:00Z'),
+    ])
+  })
+
+  it('holds an auto post at 15:20 ET until the evening window opens at 18:00 ET', () => {
+    const now = new Date('2026-11-25T20:20:00Z')
+    const [eta] = queuedPostEtas([auto], null, now)
+    expect(eta).toEqual(new Date('2026-11-25T23:00:00Z'))
+  })
+
+  it('posts an auto post right away inside the window', () => {
+    const now = new Date('2026-11-25T17:02:00Z')
+    expect(queuedPostEtas([auto], new Date('2026-11-25T16:00:00Z'), now)).toEqual([now])
+  })
+
+  it('spaces auto posts at least 25 minutes apart and keeps them inside the window', () => {
+    const now = new Date('2026-11-25T23:02:00Z')
+    const etas = queuedPostEtas([auto, auto, auto], null, now)
+    for (let i = 1; i < etas.length; i++)
+      expect(etas[i]!.getTime() - etas[i - 1]!.getTime()).toBeGreaterThanOrEqual(25 * 60_000)
+    for (const eta of etas) expect([18, 19, 20, 21, 22]).toContain(nyHour(eta))
+  })
+
+  it('rolls auto posts past the last window hour into the next morning', () => {
+    const now = new Date('2026-11-26T04:30:00Z')
+    const [eta] = queuedPostEtas([auto], null, now)
+    expect(eta).toEqual(new Date('2026-11-26T16:00:00Z'))
+  })
+
+  it('walks the queue in order: a manual post uses its short gap before the auto one', () => {
+    const now = new Date('2026-11-25T17:02:00Z')
+    const last = new Date('2026-11-25T17:00:00Z')
+    expect(queuedPostEtas([manual, auto], last, now)).toEqual([
+      new Date('2026-11-25T17:10:00Z'),
+      new Date('2026-11-25T17:35:00Z'),
     ])
   })
 })

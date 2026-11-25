@@ -23,12 +23,12 @@ function refused(row: Failed | null, liveSibling = false): Handler {
 }
 
 describe('retryInstagramPost', () => {
-  it('re-queues in one guarded update that clears error and started_at', async () => {
+  it('re-queues in one guarded update that clears error and started_at and restarts the queue age', async () => {
     const { db, log } = fakeDb((sql) => (sql.startsWith('update') ? [{ id: ID }] : []))
     expect(await retryInstagramPost(db, ID)).toEqual({ changed: true })
     expect(log).toHaveLength(1)
     expect(log[0]).toMatch(
-      /set "status" = \$1, "error" = \$2, "started_at" = \$3, "updated_at" = now\(\)/,
+      /set "status" = \$1, "error" = \$2, "started_at" = \$3, "created_at" = now\(\), "updated_at" = now\(\)/,
     )
     expect(log[0]).toMatch(/"status" = \$\d+/)
     expect(log[0]).toMatch(/not exists/)

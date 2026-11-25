@@ -731,6 +731,7 @@ export async function runOfficialDelete(
 export async function runOfficialQueue(deps: IgDeps): Promise<QueueOutcome> {
   const stuck = await deps.store.failStuck()
   if (stuck > 0) deps.log.warn({ stuck }, 'instagram posts lost mid-publish, will look them up')
+  await deps.store.expireStale()
   const token = await loadOfficialToken(deps)
   const account = await deps.store.getOfficialAccount()
   if (!token || (account && BLOCKED_STATES.includes(account.state))) {

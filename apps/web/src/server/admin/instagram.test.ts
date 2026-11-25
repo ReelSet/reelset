@@ -80,6 +80,20 @@ describe('instagram render selection', () => {
     expect(t.queries[0]?.sql).toMatch(/r\.video_key = instagram_post\.video_key/)
   })
 
+  it('lists queued posts first in the order the worker will claim them', async () => {
+    const t = scriptedDb(() => [])
+    await postQueue(t.db)
+    const sql = t.queries[0]?.sql ?? ''
+    const order = sql.slice(sql.indexOf('order by'))
+    expect(order).toMatch(/^order by \(instagram_post\.status = \$\d+\) desc,/)
+    expect(order).toMatch(/instagram_post\.requested_by = \$\d+/)
+    expect(order).toMatch(/from gate_decision d/)
+    expect(order).toMatch(/select i\.score \* 100 from item i/)
+    expect(order).toMatch(/desc nulls last/)
+    expect(order).toMatch(/"instagram_post"\."created_at" desc/)
+    expect(sql).toMatch(/"instagram_post"\."requested_by"/)
+  })
+
   it('keeps failed posts in their own list so they cannot push live posts off the page', async () => {
     const t = scriptedDb(() => [])
     await postQueue(t.db)

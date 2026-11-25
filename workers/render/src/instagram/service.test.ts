@@ -79,6 +79,7 @@ async function setup(
     markDeleted: vi.fn(async () => true),
     restoreAfterDeleteFailure: vi.fn(async () => true),
     failStuck: vi.fn(async () => 0),
+    expireStale: vi.fn(async () => 0),
     nextLost: vi.fn(async () => opts.lost ?? null),
     recentMediaPks: vi.fn(async () => ['77']),
     markLostFound: vi.fn(async () => true),
@@ -139,6 +140,17 @@ describe('runInstagramQueue', () => {
     const t = await setup({ account: { ...connected, state: 'needs_login' } })
     expect(await runInstagramQueue(t.deps)).toEqual({ ran: 'none', reason: 'not_connected' })
     expect(t.store.claimPost).not.toHaveBeenCalled()
+  })
+
+  it('expires stale auto posts before it claims the next one, even when not connected', async () => {
+    const t = await setup({ account: { ...connected, state: 'needs_login' } })
+    await runInstagramQueue(t.deps)
+    expect(t.store.expireStale).toHaveBeenCalledTimes(1)
+    const ok = await setup()
+    await runInstagramQueue(ok.deps)
+    expect(vi.mocked(ok.store.expireStale).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(ok.store.claimPost).mock.invocationCallOrder[0]!,
+    )
   })
 
   it('posts the claimed job with the full media urls and stores the result', async () => {

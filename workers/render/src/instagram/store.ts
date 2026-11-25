@@ -14,6 +14,7 @@ import {
   setOfficialIgAccount,
   setPostContainerId,
   claimNextPost,
+  expireStaleAutoPosts,
   failStuckPosts,
   getEncryptedCredentials,
   getEncryptedSession,
@@ -58,6 +59,8 @@ export type IgStore = {
   markDeleted(id: string): Promise<boolean>
   restoreAfterDeleteFailure(id: string, error: string): Promise<boolean>
   failStuck(): Promise<number>
+  /** Fails auto posts that waited too long for a slot, so a stale story never goes out. */
+  expireStale(): Promise<number>
   nextLost(): Promise<LostPost | null>
   recentMediaPks(): Promise<string[]>
   markLostFound(id: string, result: { mediaPk: string; permalink: string }): Promise<boolean>
@@ -95,6 +98,7 @@ export function createIgStore(db: Database, log: Logger): IgStore {
     markDeleted: (id) => markDeleted(db, id),
     restoreAfterDeleteFailure: (id, error) => restoreAfterDeleteFailure(db, id, error),
     failStuck: () => failStuckPosts(db, log),
+    expireStale: () => expireStaleAutoPosts(db, log),
     nextLost: async () => (await listLostPosts(db, 1))[0] ?? null,
     recentMediaPks: () => listRecentMediaPks(db),
     markLostFound: (id, result) => markLostFound(db, id, result),

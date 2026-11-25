@@ -24,13 +24,21 @@ export type QueueRow = {
   shares?: number | null
   saves?: number | null
   stats_at: Date | string | null
+  auto?: boolean
   etaAt?: Date | null
 }
 
 function etaLabel(at: Date, now: Date): string {
   const minutes = Math.ceil((at.getTime() - now.getTime()) / 60_000)
-  return minutes <= 1 ? 'Goes out any moment now' : `Goes out in about ${minutes} min`
+  if (minutes <= 1) return 'Goes out any moment now'
+  if (minutes < 60) return `Goes out in about ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return `Goes out in about ${hours} h${rest ? ` ${rest} min` : ''}`
 }
+
+const AUTO_NOTE = 'auto posts go out 11am to 3pm and 6 to 11pm ET, 25 min apart'
+const MANUAL_NOTE = 'posts are spaced 10 min apart'
 
 export function QueueList({
   rows,
@@ -82,7 +90,7 @@ export function QueueList({
               ) : null}
               {row.status === 'queued' && row.etaAt ? (
                 <p className="mt-0.5 text-xs text-muted">
-                  {etaLabel(row.etaAt, now)} (posts are spaced 10 min apart)
+                  {etaLabel(row.etaAt, now)} ({row.auto ? AUTO_NOTE : MANUAL_NOTE})
                 </p>
               ) : null}
               {row.status === 'posting' ? (

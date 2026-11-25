@@ -29,7 +29,7 @@ const S = InstagramPostStatus
 // `deleted` doubles as "cancelled" for a post that never went out.
 const TRANSITIONS: Record<InstagramPostStatus, readonly InstagramPostStatus[]> = {
   draft: [S.queued, S.deleted],
-  queued: [S.posting, S.deleted],
+  queued: [S.posting, S.failed, S.deleted],
   posting: [S.posted, S.failed, S.queued],
   posted: [S.deleting],
   deleting: [S.deleted, S.posted],
@@ -123,28 +123,55 @@ export function gapRemainingMs(
 }
 
 export const INSTAGRAM_CRON_MINUTES = 5
+// Auto posts still queued after this long are stale news and are failed instead of posted.
+export const INSTAGRAM_AUTO_MAX_QUEUED_HOURS = 36
+export const INSTAGRAM_AUTO_EXPIRED_ERROR =
+  'Skipped: waited over 36 hours to post, the story is stale.'
 
 function nextCronTick(at: Date, cronMinutes: number): Date {
   const step = cronMinutes * 60_000
   return new Date(Math.ceil(at.getTime() / step) * step)
 }
 
-/** Estimated publish times for queued posts in order: gap after the last real post, picked up by the cron. */
+const nyHourFormat = new Intl.DateTimeFormat('en-US', {
+  timeZone: INSTAGRAM_POST_TIMEZONE,
+  hour: 'numeric',
+  hourCycle: 'h23',
+})
+
+function inAutoWindow(at: Date): boolean {
+  return INSTAGRAM_AUTO_POST_HOURS.includes(Number(nyHourFormat.format(at)))
+}
+
+const MAX_WINDOW_SEARCH_DAYS = 7
+
+/**
+ * Estimated publish times for queued posts, given in claim order (admin posts first, then auto by
+ * the judge's score). Each one is the first cron tick that is past the gap after the post before it
+ * and, for an auto post, inside the US posting hours, which is what `claimNextPost` enforces.
+ */
 export function queuedPostEtas(
-  queuedCount: number,
+  queued: readonly { auto: boolean }[],
   lastPostedAt: Date | null,
   now: Date,
-  minGapMinutes = INSTAGRAM_MIN_GAP_MINUTES,
   cronMinutes = INSTAGRAM_CRON_MINUTES,
 ): Date[] {
+  const step = cronMinutes * 60_000
+  const searchLimit = (MAX_WINDOW_SEARCH_DAYS * 86_400_000) / step
   const etas: Date[] = []
   let previous = lastPostedAt
-  for (let i = 0; i < queuedCount; i++) {
-    const wait = gapRemainingMs(previous, now, minGapMinutes)
-    const eta =
+  queued.forEach((post, i) => {
+    const gap = post.auto ? INSTAGRAM_AUTO_GAP_MINUTES : INSTAGRAM_MIN_GAP_MINUTES
+    const wait = gapRemainingMs(previous, now, gap)
+    let eta =
       wait === 0 && i === 0 ? now : nextCronTick(new Date(now.getTime() + wait), cronMinutes)
+    if (post.auto && !inAutoWindow(eta)) {
+      eta = nextCronTick(eta, cronMinutes)
+      for (let n = 0; n < searchLimit && !inAutoWindow(eta); n++)
+        eta = new Date(eta.getTime() + step)
+    }
     etas.push(eta)
     previous = eta
-  }
+  })
   return etas
 }

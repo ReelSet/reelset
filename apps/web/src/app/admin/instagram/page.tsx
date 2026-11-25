@@ -73,10 +73,18 @@ export default async function InstagramPage({ searchParams }: Props) {
     lastPostedAt(db),
     itemParam.success ? composerReel(db, itemParam.data) : Promise.resolve(null),
   ])
-  const queuedOldestFirst = rawQueue.filter((r) => r.status === 'queued').reverse()
-  const etas = queuedPostEtas(queuedOldestFirst.length, lastPosted, now)
-  const etaById = new Map(queuedOldestFirst.map((r, i) => [r.id, etas[i] ?? null]))
-  const queue = rawQueue.map((r) => ({ ...r, etaAt: etaById.get(r.id) ?? null }))
+  const queuedInClaimOrder = rawQueue.filter((r) => r.status === 'queued')
+  const etas = queuedPostEtas(
+    queuedInClaimOrder.map((r) => ({ auto: r.requested_by === 'auto' })),
+    lastPosted,
+    now,
+  )
+  const etaById = new Map(queuedInClaimOrder.map((r, i) => [r.id, etas[i] ?? null]))
+  const queue = rawQueue.map((r) => ({
+    ...r,
+    auto: r.requested_by === 'auto',
+    etaAt: etaById.get(r.id) ?? null,
+  }))
   const configured = workerConfigFromEnv() !== null
   const gridHref = (id: string) =>
     `${pageHref(PATH, {}, page.page)}${page.page > 1 ? '&' : '?'}item=${id}#compose`

@@ -2,6 +2,8 @@ import {
   InstagramPostStatus,
   RenderStatus,
   Source,
+  POST_CLAIM_AUTO_SQL,
+  POST_CLAIM_SCORE_SQL,
   SERVED_RENDER_ORDER_SQL,
   assertPostTransition,
   buildCaption,
@@ -132,16 +134,28 @@ export async function composerReel(db: Database, itemId: string) {
   return { ...row, video_key: row.video_key, draftCaption: draft }
 }
 
-/** Queued, posting and posted rows; failed rows live in `failedPosts` so they cannot push live posts off the page. */
+const IS_QUEUED_SQL = sql`instagram_post.status = ${InstagramPostStatus.queued}`
+
+/**
+ * Queued rows first, in the order the worker claims them (admin posts, then the judge's best), so
+ * the wait times shown are the real ones; then posting and posted rows newest first. Failed rows
+ * live in `failedPosts` so they cannot push live posts off the page.
+ */
 export const postQueue = (db: Database) =>
   queueQuery(db)
     .where('instagram_post.status', '!=', InstagramPostStatus.failed)
+    .orderBy(sql`(${IS_QUEUED_SQL}) desc`)
+    .orderBy(sql`case when ${IS_QUEUED_SQL} then ${POST_CLAIM_AUTO_SQL} end`)
+    .orderBy(sql`case when ${IS_QUEUED_SQL} then ${POST_CLAIM_SCORE_SQL} end desc nulls last`)
+    .orderBy(sql`case when ${IS_QUEUED_SQL} then instagram_post.created_at end`)
+    .orderBy('instagram_post.created_at', 'desc')
     .limit(QUEUE_LIMIT)
     .execute()
 
 export const failedPosts = (db: Database) =>
   queueQuery(db)
     .where('instagram_post.status', '=', InstagramPostStatus.failed)
+    .orderBy('instagram_post.created_at', 'desc')
     .limit(FAILED_LIMIT)
     .execute()
 
@@ -163,6 +177,7 @@ function queueQuery(db: Database) {
       'instagram_post.item_id',
       'item.title',
       'instagram_post.status',
+      'instagram_post.requested_by',
       'instagram_post.permalink',
       'instagram_post.error',
       'instagram_post.attempts',
@@ -180,7 +195,6 @@ function queueQuery(db: Database) {
         and r.video_key = instagram_post.video_key limit 1)`.as('poster_key'),
     ])
     .where('instagram_post.status', '!=', InstagramPostStatus.deleted)
-    .orderBy('instagram_post.created_at', 'desc')
 }
 
 export async function lastPostedAt(db: Database): Promise<Date | null> {

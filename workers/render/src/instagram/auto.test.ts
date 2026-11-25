@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import { silentLog } from '../testing'
+import type { Logger } from '@reelset/core'
 import { queueAutoInstagramPosts, type AutoCandidate, type AutoPostDeps } from './auto'
+
+const TITLES: Record<string, string> = {
+  a: 'Rust compiler gets faster incremental builds',
+  b: 'Postgres adds native vector search',
+}
 
 const candidate = (id: string, over: Partial<AutoCandidate> = {}): AutoCandidate => ({
   id,
-  title: `Title ${id}`,
+  title: TITLES[id] ?? `Headline about ${id}`,
   tldr: null,
   topics: ['rust'],
   canonical_url: `https://example.com/${id}`,
@@ -24,6 +30,7 @@ function deps(over: Partial<AutoPostDeps> = {}) {
     candidates: vi.fn(async (limit: number, _opts: { requireGatePass: boolean }) =>
       [candidate('a'), candidate('b')].slice(0, limit),
     ),
+    recentPosts: async () => [],
     insert: async (post) => {
       inserted.push(post)
       return true
@@ -78,5 +85,51 @@ describe('queueAutoInstagramPosts', () => {
     expect(await queueAutoInstagramPosts(d, silentLog)).toBe(2)
     expect(d.candidates).toHaveBeenCalledWith(2, { requireGatePass: true })
     expect(inserted).toHaveLength(2)
+  })
+
+  describe('duplicate stories', () => {
+    const posted = [{ item_id: 'old', title: 'Nvidia reports record data center revenue in Q3' }]
+
+    it('skips a candidate that tells the same story as a recent post and says why', async () => {
+      const { d, inserted } = deps({
+        recentPosts: async () => posted,
+        candidates: vi.fn(async () => [
+          candidate('dup', { title: 'Nvidia reports record data center revenue for Q3' }),
+          candidate('b'),
+        ]),
+      })
+      const debug = vi.fn()
+      const log = { child: () => ({ debug, info: vi.fn() }) } as unknown as Logger
+      expect(await queueAutoInstagramPosts(d, log)).toBe(1)
+      expect(inserted.map((p) => p.itemId)).toEqual(['b'])
+      expect(debug).toHaveBeenCalledWith(
+        { itemId: 'dup', duplicateOf: 'old' },
+        'duplicate story, not queued',
+      )
+    })
+
+    it('looks back 72 hours', async () => {
+      const recentPosts = vi.fn(async () => posted)
+      const { d } = deps({ recentPosts })
+      await queueAutoInstagramPosts(d, silentLog)
+      expect(recentPosts).toHaveBeenCalledWith(72)
+    })
+
+    it('admits only the first of two duplicates arriving in the same run', async () => {
+      const { d, inserted } = deps({
+        candidates: vi.fn(async () => [
+          candidate('x1', { title: 'OpenAI ships GPT-6 with native video' }),
+          candidate('x2', { title: 'OpenAI ships GPT-6 with native video support' }),
+        ]),
+      })
+      expect(await queueAutoInstagramPosts(d, silentLog)).toBe(1)
+      expect(inserted.map((p) => p.itemId)).toEqual(['x1'])
+    })
+
+    it('does not skip a different story', async () => {
+      const { d, inserted } = deps({ recentPosts: async () => posted })
+      expect(await queueAutoInstagramPosts(d, silentLog)).toBe(2)
+      expect(inserted).toHaveLength(2)
+    })
   })
 })

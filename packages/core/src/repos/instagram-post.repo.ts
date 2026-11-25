@@ -4,6 +4,8 @@ import type { InstagramPost } from '../db/types'
 import { InstagramPostStatus, Source } from '../db/enums'
 import {
   INSTAGRAM_AUTO_GAP_MINUTES,
+  INSTAGRAM_AUTO_EXPIRED_ERROR,
+  INSTAGRAM_AUTO_MAX_QUEUED_HOURS,
   INSTAGRAM_AUTO_POST_HOURS,
   INSTAGRAM_MIN_GAP_MINUTES,
   INSTAGRAM_POST_TIMEZONE,
@@ -35,14 +37,28 @@ export type ClaimedPost = Selectable<
 >
 const CLAIM_COLUMNS = sql`id, item_id, video_key, caption, media_pk, attempts`
 
+export const INSTAGRAM_AUTO_REQUESTER = 'auto'
+
 // Constants, never user input, so they are inlined as SQL literals.
 const AUTO_WINDOW_SQL = sql.raw(
   `extract(hour from now() at time zone '${INSTAGRAM_POST_TIMEZONE}')::int in (${INSTAGRAM_AUTO_POST_HOURS.join(', ')})`,
 )
 
+// Claim order, shared with the admin queue list so the page shows what will really go out next:
+// admin posts first, then the judge's best. The score is the item's newest automatic gate score
+// (0..100), falling back to the item's own score. Both reference `instagram_post` by name.
+export const POST_CLAIM_AUTO_SQL = sql`coalesce(instagram_post.requested_by = ${INSTAGRAM_AUTO_REQUESTER}, false)`
+export const POST_CLAIM_SCORE_SQL = sql`coalesce(
+  (select d.score from gate_decision d
+    where d.item_id = instagram_post.item_id and d.trigger = 'auto' and d.score is not null
+    order by d.created_at desc, d.id desc limit 1),
+  (select i.score * 100 from item i where i.id = instagram_post.item_id)
+)`
+
 // One statement: the SKIP LOCKED pick, the in-flight check and the gap check cannot interleave.
 // Admin posts go first and need only the short gap; auto posts wait for a US posting hour and the
-// longer gap, so the day's reels spread over the US peaks instead of going out in a burst.
+// longer gap, so the day's reels spread over the US peaks instead of going out in a burst. Among
+// auto posts the highest gate score goes first, so a strong story is not stuck behind weak ones.
 export async function claimNextPost(
   db: Database,
   log: Logger,
@@ -51,11 +67,11 @@ export async function claimNextPost(
 ): Promise<ClaimedPost | null> {
   const { rows } = await sql<ClaimedPost>`
     with pick as (
-      select id, coalesce(requested_by = ${INSTAGRAM_AUTO_REQUESTER}, false) as auto
+      select id, ${POST_CLAIM_AUTO_SQL} as auto
       from instagram_post
       where status = 'queued'
         and (requested_by is distinct from ${INSTAGRAM_AUTO_REQUESTER} or ${AUTO_WINDOW_SQL})
-      order by coalesce(requested_by = ${INSTAGRAM_AUTO_REQUESTER}, false), created_at
+      order by ${POST_CLAIM_AUTO_SQL}, ${POST_CLAIM_SCORE_SQL} desc nulls last, created_at
       limit 1 for update skip locked
     )
     update instagram_post p set status = 'posting', started_at = now(), updated_at = now(),
@@ -145,6 +161,26 @@ export async function failStuckPosts(db: Database, log: Logger): Promise<number>
     .executeTakeFirst()
   const n = Number(res.numUpdatedRows)
   if (n > 0) log.warn({ count: n }, 'stuck instagram posts failed')
+  return n
+}
+
+// An auto post that never got a posting slot (low score, posting hours) is old news after this
+// long, so it is failed with the reason instead of posting a stale story.
+export async function expireStaleAutoPosts(
+  db: Database,
+  log: Logger,
+  maxHours = INSTAGRAM_AUTO_MAX_QUEUED_HOURS,
+): Promise<number> {
+  assertPostTransition(S.queued, S.failed)
+  const res = await db
+    .updateTable('instagram_post')
+    .set({ status: S.failed, error: INSTAGRAM_AUTO_EXPIRED_ERROR, updated_at: sql`now()` })
+    .where('status', '=', S.queued)
+    .where('requested_by', '=', INSTAGRAM_AUTO_REQUESTER)
+    .where(sql<boolean>`created_at < now() - make_interval(hours => ${maxHours})`)
+    .executeTakeFirst()
+  const n = Number(res.numUpdatedRows)
+  if (n > 0) log.warn({ count: n, maxHours }, 'stale auto instagram posts expired')
   return n
 }
 
@@ -246,7 +282,13 @@ export async function retryInstagramPost(db: Database, id: string): Promise<Retr
   try {
     const res = await db
       .updateTable('instagram_post')
-      .set({ status: S.queued, error: null, started_at: null, updated_at: sql`now()` })
+      .set({
+        status: S.queued,
+        error: null,
+        started_at: null,
+        created_at: sql`now()`,
+        updated_at: sql`now()`,
+      })
       .where('id', '=', id)
       .where('status', '=', S.failed)
       .where(
@@ -406,7 +448,6 @@ export const setIgCheckError = (db: Database, error: IgCheckError | null) =>
 export const SERVED_RENDER_ORDER_SQL =
   'coalesce(r.template_version, 0) desc, r.finished_at desc nulls last, r.created_at desc, r.id desc'
 
-export const INSTAGRAM_AUTO_REQUESTER = 'auto'
 /** Failed auto posts an item may have before it stops being retried. */
 export const INSTAGRAM_AUTO_MAX_ATTEMPTS = 3
 // Only reels first finished this recently are auto-posted, so turning it on never posts the archive.
@@ -432,6 +473,22 @@ export async function autoPostsQueuedToday(db: Database): Promise<number> {
       and status <> ${S.failed}
   `.execute(db)
   return Number(rows[0]?.n ?? 0)
+}
+
+export type RecentPostTitle = { item_id: string; title: string }
+
+/** Titles of items with a queued, posting or posted Instagram post created in the last `hours`. */
+export async function listRecentPostTitles(
+  db: Database,
+  hours: number,
+): Promise<RecentPostTitle[]> {
+  const { rows } = await sql<RecentPostTitle>`
+    select p.item_id, i.title from instagram_post p
+    join item i on i.id = p.item_id
+    where p.status in ('queued', 'posting', 'posted')
+      and p.created_at > now() - make_interval(hours => ${hours})
+  `.execute(db)
+  return rows
 }
 
 /**

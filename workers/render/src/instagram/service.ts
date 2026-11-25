@@ -484,6 +484,7 @@ export async function runInstagramQueue(deps: IgDeps): Promise<QueueOutcome> {
   if ((await deps.publisher()) === 'official') return runOfficialQueue(deps)
   const stuck = await deps.store.failStuck()
   if (stuck > 0) deps.log.warn({ stuck }, 'instagram posts lost mid-upload, will look them up')
+  await deps.store.expireStale()
   const account = await deps.store.getAccount()
   if (account?.state !== 'connected') return { ran: 'none', reason: 'not_connected' }
   const state = await loadState(deps)
