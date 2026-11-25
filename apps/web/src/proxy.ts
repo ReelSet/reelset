@@ -14,6 +14,7 @@ import {
 } from '@/lib/auth/cookie-options'
 import { RETURN_PATH_HEADER } from '@/lib/auth/return-url'
 import { routeForHost } from '@/lib/host-routing'
+import { markdownRewritePath } from '@/lib/markdown-negotiation'
 import { shouldRefresh } from '@/lib/auth/token-exp'
 import { legacyReelRedirect, reelRewritePath } from '@/lib/reel-url'
 import { isUnknownSourcePath, sourceRewritePath } from '@/lib/source-path'
@@ -45,6 +46,16 @@ export async function proxy(request: NextRequest) {
       target.pathname = legacy
       target.search = ''
       return NextResponse.redirect(target, 308)
+    }
+    const markdownPath = markdownRewritePath(
+      request.nextUrl.pathname,
+      request.headers.get('accept'),
+    )
+    if (markdownPath) {
+      const target = request.nextUrl.clone()
+      target.pathname = markdownPath
+      target.search = ''
+      return NextResponse.rewrite(target)
     }
     if (isUnknownSourcePath(request.nextUrl.pathname)) {
       return new NextResponse('Not found', { status: 404 })

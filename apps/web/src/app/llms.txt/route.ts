@@ -1,23 +1,13 @@
 import { errorFields } from '@reelset/core'
-import { buildLlmsTxt, groupTopics } from '@/lib/seo/feeds'
-import { getDb } from '@/server/db'
-import { mediaBaseUrl } from '@/server/env'
 import { routeLog } from '@/server/logger'
-import { listReelSummaries, listTopicLabels } from '@/server/seo-queries'
+import { loadSiteMarkdown } from '@/server/site-markdown'
 
 export const revalidate = 3600
-
-const LLMS_REELS = 100
 
 export async function GET() {
   const log = routeLog('llms.txt')
   try {
-    const db = getDb()
-    const [reels, labels] = await Promise.all([
-      listReelSummaries(db, mediaBaseUrl(), { limit: LLMS_REELS, withLeadSource: false }),
-      listTopicLabels(db),
-    ])
-    return new Response(buildLlmsTxt({ reels, topics: groupTopics(labels) }), {
+    return new Response(await loadSiteMarkdown(), {
       headers: {
         'content-type': 'text/plain; charset=utf-8',
         'cache-control': 'public, s-maxage=3600, stale-while-revalidate=86400',

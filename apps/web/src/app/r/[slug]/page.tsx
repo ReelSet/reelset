@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title,
     description,
     keywords: reel.topics,
-    alternates: { canonical: path },
+    alternates: { canonical: path, types: { 'text/markdown': `${path}.md` } },
     openGraph: {
       type: reel.videoUrl ? 'video.other' : 'article',
       url: path,
