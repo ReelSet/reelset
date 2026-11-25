@@ -1,26 +1,42 @@
 import type { ItemStatus } from '@reelset/core'
-import { MAX_STUCK_ATTEMPTS, STUCK_AFTER_MS } from '../config'
-
-/** Admitted items that will never become a reel, so they give their daily-cap slot back. */
-export const CAP_EXEMPT_STATUSES: ItemStatus[] = ['failed', 'insufficient_source', 'source_only']
+import {
+  DEFAULT_REEL_COST_USD,
+  MAX_STUCK_ATTEMPTS,
+  REEL_COST_MIN_SAMPLES,
+  STUCK_AFTER_MS,
+} from '../config'
 
 export type AdmissionInput = {
   score: number
   minScore: number
   admittedToday: number
   dailyCap: number
-  spendTodayUsd: number
+  /** Reel slots open so far today; the daily cap when pacing does not apply. */
+  pacedCap: number
+  /** Spent today plus the budget reserved for admitted items not yet paid for. */
+  committedUsd: number
   spendCapUsd: number
+  /** Spend open so far today; the spend cap when pacing does not apply. */
+  pacedSpendCapUsd: number
 }
 
-export type AdmissionDecision =
-  { admit: true } | { admit: false; reason: 'below_score' | 'daily_cap' | 'spend_cap' }
+export type AdmissionSkip = 'below_score' | 'daily_cap' | 'spend_cap' | 'pace'
+
+export type AdmissionDecision = { admit: true } | { admit: false; reason: AdmissionSkip }
 
 export function admissionDecision(input: AdmissionInput): AdmissionDecision {
   if (input.score < input.minScore) return { admit: false, reason: 'below_score' }
   if (input.admittedToday >= input.dailyCap) return { admit: false, reason: 'daily_cap' }
-  if (input.spendTodayUsd >= input.spendCapUsd) return { admit: false, reason: 'spend_cap' }
+  if (input.committedUsd >= input.spendCapUsd) return { admit: false, reason: 'spend_cap' }
+  if (input.admittedToday >= input.pacedCap || input.committedUsd >= input.pacedSpendCapUsd)
+    return { admit: false, reason: 'pace' }
   return { admit: true }
+}
+
+/** Average cost of one finished reel, failures and gate calls included. */
+export function reelCostEstimate(spentUsd: number, reels: number): number {
+  if (reels < REEL_COST_MIN_SAMPLES || !(spentUsd > 0)) return DEFAULT_REEL_COST_USD
+  return spentUsd / reels
 }
 
 export type Candidate = { id: string; score: number; source: string }

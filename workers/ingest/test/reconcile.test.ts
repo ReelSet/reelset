@@ -4,6 +4,7 @@ import {
   chunked,
   classifyStuck,
   interleaveBySource,
+  reelCostEstimate,
   utcDayStart,
 } from '../src/reconcile/policy'
 import { reconcile } from '../src/reconcile/reconcile'
@@ -11,7 +12,9 @@ import { evaluateAlerts, type AlertSnapshot } from '../src/reconcile/alerts'
 import { createFakeDb, type RecordedQuery } from './helpers/fake-db'
 import { testLog } from './helpers/mock-fetch'
 
-const now = new Date('2026-11-09T12:00:00Z')
+// Late in the UTC day, so pacing has opened the whole daily cap.
+const now = new Date('2026-11-09T23:30:00Z')
+const morning = new Date('2026-11-09T05:00:00Z')
 const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000)
 
 describe('admissionDecision', () => {
@@ -20,8 +23,10 @@ describe('admissionDecision', () => {
     minScore: 0.35,
     admittedToday: 10,
     dailyCap: 200,
-    spendTodayUsd: 1,
+    pacedCap: 200,
+    committedUsd: 1,
     spendCapUsd: 10,
+    pacedSpendCapUsd: 10,
   }
   it('admits items that pass every gate', () => {
     expect(admissionDecision(base)).toEqual({ admit: true })
@@ -37,10 +42,29 @@ describe('admissionDecision', () => {
       reason: 'daily_cap',
     })
     expect(admissionDecision({ ...base, admittedToday: 199 })).toEqual({ admit: true })
-    expect(admissionDecision({ ...base, spendTodayUsd: 10 })).toEqual({
+    expect(admissionDecision({ ...base, committedUsd: 10 })).toEqual({
       admit: false,
       reason: 'spend_cap',
     })
+  })
+  it('waits for the pace when the slots or the spend opened so far are used up', () => {
+    expect(admissionDecision({ ...base, pacedCap: 10 })).toEqual({ admit: false, reason: 'pace' })
+    expect(admissionDecision({ ...base, pacedCap: 11 })).toEqual({ admit: true })
+    expect(admissionDecision({ ...base, pacedSpendCapUsd: 1 })).toEqual({
+      admit: false,
+      reason: 'pace',
+    })
+  })
+})
+
+describe('reelCostEstimate', () => {
+  it('averages spend over finished reels once there are enough of them', () => {
+    expect(reelCostEstimate(5.78, 39)).toBeCloseTo(0.148, 3)
+  })
+  it('falls back to the default with too few reels or no spend', () => {
+    expect(reelCostEstimate(1, 4)).toBe(0.15)
+    expect(reelCostEstimate(0, 40)).toBe(0.15)
+    expect(reelCostEstimate(Number.NaN, 40)).toBe(0.15)
   })
 })
 
@@ -97,6 +121,9 @@ function scriptedDb(rows: {
   admitted?: number
   inFlight?: number
   spent?: number
+  windowSpent?: number
+  rendered?: number
+  unscripted?: number
   settings?: Record<string, unknown>
   priorityIds?: string[]
   overrides?: Row[]
@@ -114,7 +141,13 @@ function scriptedDb(rows: {
       const key = String(q.params[0])
       return key in (rows.settings ?? {}) ? [{ value: rows.settings![key] }] : []
     }
+    if (s.includes('as "window_usd" from "spend_ledger"'))
+      return [{ window_usd: String(rows.windowSpent ?? 0) }]
     if (s.includes('from "spend_ledger"')) return [{ total: String(rows.spent ?? 0) }]
+    if (s.startsWith('select count(*) as "reels" from "item_event"'))
+      return [{ reels: String(rows.rendered ?? 0) }]
+    if (s.startsWith('select count(*) as "unscripted" from "item"'))
+      return [{ unscripted: String(rows.unscripted ?? 0) }]
     if (s.includes('count(distinct item_event.item_id)')) return [{ n: String(rows.admitted ?? 0) }]
     if (s.startsWith('select count(*) as "n" from "item"'))
       return [{ n: String(rows.inFlight ?? 0) }]
@@ -165,7 +198,7 @@ describe('reconcile', () => {
     const result = await reconcile(fake.db, q, testLog, now)
 
     expect(result.admitted).toBe(2)
-    expect(result.skipped).toEqual({ below_score: 1, daily_cap: 1, spend_cap: 0 })
+    expect(result.skipped).toEqual({ below_score: 1, daily_cap: 1, spend_cap: 0, pace: 0 })
     const claim = fake.find('update "item" set "queued_at" = now()')[0]!
     expect(claim.sql).toContain('"queued_at" is null')
     expect(claim.params).toEqual(expect.arrayContaining(['item-1', 'item-2']))
@@ -244,7 +277,7 @@ describe('reconcile', () => {
       const result = await reconcile(fake.db, queues(), testLog, now)
       expect(result.admitted).toBe(1)
       expect(claimedIds(fake)).toEqual(['item-old'])
-      expect(result.skipped).toEqual({ below_score: 0, daily_cap: 2, spend_cap: 0 })
+      expect(result.skipped).toEqual({ below_score: 0, daily_cap: 2, spend_cap: 0, pace: 0 })
     })
 
     it('makes an overridden item wait when the daily cap or the spend cap is reached', async () => {
@@ -357,6 +390,78 @@ describe('reconcile', () => {
     expect(stuck.params).not.toContain('source_only')
     const candidates = fake.find('select "id", "score" from "item"')[0]!
     expect(candidates.sql).toContain('exists (select "mention"."id" from "mention"')
+  })
+
+  describe('pacing and spend reservation', () => {
+    const found = Array.from({ length: 30 }, (_, i) => ({ id: `item-${i}`, score: 0.9 - i / 100 }))
+
+    it('opens the daily cap through the UTC day instead of all at midnight', async () => {
+      const fake = scriptedDb({ found, settings: { daily_reel_cap: 24 } })
+      const result = await reconcile(fake.db, queues(), testLog, morning)
+      // 05:00 UTC plus one hour early: 6 of 24 slots.
+      expect(result.admitted).toBe(6)
+      expect(result.skipped.pace).toBe(24)
+      expect(result.skipped.daily_cap).toBe(0)
+    })
+
+    it('admits nothing more once the slots opened so far are used', async () => {
+      const fake = scriptedDb({ found, admitted: 6, settings: { daily_reel_cap: 24 } })
+      const result = await reconcile(fake.db, queues(), testLog, morning)
+      expect(result.admitted).toBe(0)
+      expect(result.skipped.pace).toBe(30)
+    })
+
+    it('reserves the measured reel cost for each admit, so the spend cap is not overshot', async () => {
+      const fake = scriptedDb({
+        found,
+        windowSpent: 6,
+        rendered: 40,
+        settings: { daily_reel_cap: 100, pipeline_daily_spend_cap_usd: 1 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      // $0.15 a reel: 0, 0.15 ... 0.90 are under $1, so 7 admits, then the cap.
+      expect(result.admitted).toBe(7)
+      expect(result.skipped.spend_cap).toBe(23)
+      expect(result.spendCapReached).toBe(false)
+    })
+
+    it('counts items admitted but not yet scripted against the spend cap', async () => {
+      const fake = scriptedDb({
+        found,
+        spent: 0.4,
+        unscripted: 4,
+        settings: { daily_reel_cap: 100, pipeline_daily_spend_cap_usd: 1 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, now)
+      // 0.40 spent + 4 x 0.15 reserved = 1.00: the cap is already committed.
+      expect(result.admitted).toBe(0)
+      expect(result.skipped.spend_cap).toBe(30)
+      const unscripted = fake.find('select count(*) as "unscripted" from "item"')[0]!
+      expect(unscripted.sql).toContain('"queued_at" is not null')
+    })
+
+    it('paces spend too: only the share of the spend cap opened so far can be committed', async () => {
+      const fake = scriptedDb({
+        found,
+        settings: { daily_reel_cap: 100, pipeline_daily_spend_cap_usd: 2.4 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, morning)
+      // A quarter of $2.40 is open at 05:00 UTC: $0.60 fits 4 reels at the $0.15 default.
+      expect(result.admitted).toBe(4)
+      expect(result.skipped.pace).toBe(26)
+    })
+
+    it('lets an admin override past the pace, but not past the daily cap', async () => {
+      const fake = scriptedDb({
+        found,
+        overrides: [{ id: 'item-old', score: 0.01 }],
+        admitted: 6,
+        settings: { daily_reel_cap: 24 },
+      })
+      const result = await reconcile(fake.db, queues(), testLog, morning)
+      expect(result.admitted).toBe(1)
+      expect(fake.find('update "item" set "queued_at" = now()')[0]!.params).toContain('item-old')
+    })
   })
 
   it('admits nothing and flags the cap when pipeline spend is exhausted', async () => {

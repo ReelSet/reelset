@@ -16,7 +16,10 @@ NOT edit them; it reports the need.
 
 - `queued_at IS NULL` means "needs to be enqueued".
 - Ingest cron/reconciler (every 5 min) enqueues: `found`/`summarized` with `queued_at IS NULL` -> `ingest-items`; `embedded` with `queued_at IS NULL` -> `render-jobs`; sets `queued_at = now()` when it sends.
-- Same admission policy for every enqueue to `ingest-items` from `found` (score >= `SETTINGS.minItemScore`, today's admitted count < `SETTINGS.dailyReelCap`, pipeline spend today < `SETTINGS.pipelineDailySpendCapUsd`). Skipped items keep `queued_at = NULL` and are re-evaluated next run.
+- Same admission policy for every enqueue to `ingest-items` from `found` (score >= `SETTINGS.minItemScore`, today's admitted count < `SETTINGS.dailyReelCap`, committed spend < `SETTINGS.pipelineDailySpendCapUsd`). Skipped items keep `queued_at = NULL` and are re-evaluated next run.
+- Admitted count: distinct items with a `found`/`started` event `meta.admitted = true` since UTC midnight, minus `CAP_EXEMPT_STATUSES` (`failed`, `insufficient_source`, `source_only`) and released items (`found`, not queued). The admin Pipeline card uses the same list from `@reelset/core`.
+- Pacing (`dayShare` / `pacedCap` in core): both caps open evenly across the UTC day, one hour's share early (`PACE_LEAD_MINUTES`), so at hour h only `ceil(cap * (h + 1) / 24)` slots and `spendCap * (h + 1) / 24` of spend are open; skips are counted as `pace`. Admin gate overrides skip pacing but not the caps; requested reels skip everything.
+- Committed spend = pipeline spend today + `found`-and-queued items (admitted, not yet scripted) x the reel cost estimate, + the estimate for each item admitted in the same run. Estimate: cap-category spend over the last 48 h / `rendered` events in that window, `DEFAULT_REEL_COST_USD` (0.15) under 5 reels.
 - Items in `found|summarized|embedded` with `queued_at < now() - 30 min` and no progress are treated as stuck: set `queued_at = NULL`, increment `attempts`; after 3 attempts `transitionItem(... to: 'failed')`.
 - Admin Retry (web): `transitionItem(failed -> <stage>)` then `queued_at = NULL`.
 - Render reconciler: renders stuck in `rendering` > 20 min -> render `failed`, item `queued_at = NULL`.

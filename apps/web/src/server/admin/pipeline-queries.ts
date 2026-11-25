@@ -1,4 +1,6 @@
 import {
+  CAP_EXEMPT_STATUSES,
+  pacedCap,
   ItemStatus,
   RenderStatus,
   SETTINGS,
@@ -45,7 +47,7 @@ export async function healthSnapshot(db: Database, log: Logger) {
     inFlight,
     hour,
     lastDone,
-    llm,
+    scriptModel,
     ttsProvider,
     speaker,
   ] = await Promise.all([
@@ -94,16 +96,7 @@ export async function healthSnapshot(db: Database, log: Logger) {
       ])
       .where('status', '=', RenderStatus.done)
       .executeTakeFirst(),
-    db
-      .selectFrom('spend_ledger')
-      .select([
-        sql<string | null>`meta ->> 'provider'`.as('provider'),
-        sql<string | null>`meta ->> 'model'`.as('model'),
-      ])
-      .where('category', '=', 'llm')
-      .orderBy('id', 'desc')
-      .limit(1)
-      .executeTakeFirst(),
+    getSetting(db, SETTINGS.scriptModel, log),
     getSetting(db, SETTINGS.ttsProvider, log),
     getSetting(db, SETTINGS.ttsAuraSpeaker, log),
   ])
@@ -121,13 +114,14 @@ export async function healthSnapshot(db: Database, log: Logger) {
     spendCapUsd: spendCap,
     dailyCap,
     admittedToday: admitted,
+    openSlots: pacedCap(dailyCap, new Date()),
     queue: queue.map((r) => ({ status: r.status, count: Number(r.n) })),
     rendering: flight.get(RenderStatus.rendering) ?? 0,
     renderQueued: flight.get(RenderStatus.queued) ?? 0,
     failureLastHour: { failed, total, rate: total > 0 ? failed / total : null },
     lastRenderAt: lastDone?.at ? new Date(lastDone.at).toISOString() : null,
     templateVersion: lastDone?.template ?? null,
-    llm: llm ? { provider: llm.provider, model: llm.model } : null,
+    llm: { provider: 'anthropic', model: scriptModel },
     tts: { provider: ttsProvider, speaker: ttsProvider === 'aura2' ? speaker : null },
   }
 }
@@ -148,7 +142,7 @@ async function admittedToday(db: Database): Promise<number> {
       '>=',
       sql<Date>`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`,
     )
-    .where('item.status', 'not in', ['failed', 'insufficient_source'])
+    .where('item.status', 'not in', CAP_EXEMPT_STATUSES)
     .where((eb) =>
       eb.not(eb.and([eb('item.status', '=', 'found'), eb('item.queued_at', 'is', null)])),
     )

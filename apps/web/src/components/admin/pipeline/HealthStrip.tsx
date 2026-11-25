@@ -127,6 +127,11 @@ export function HealthStrip({ health, now }: { health: HealthSnapshot; now: Date
             total={health.dailyCap}
             parts={[{ key: 'a', value: health.admittedToday, color: 'bg-accent' }]}
           />
+          {health.openSlots < health.dailyCap && (
+            <p className="mt-1.5 text-[10px] text-faint">
+              {health.openSlots} open so far, slots open through the UTC day
+            </p>
+          )}
         </Tile>
         <Tile label="Queue depth">
           <p className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
@@ -164,12 +169,7 @@ export function HealthStrip({ health, now }: { health: HealthSnapshot; now: Date
 
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-faint">
         <span>Template v{health.templateVersion ?? '?'}</span>
-        <span>
-          Scripts:{' '}
-          {health.llm
-            ? `${health.llm.provider ?? '?'} / ${health.llm.model ?? '?'}`
-            : 'no data yet'}
-        </span>
+        <span>Scripts: {`${health.llm.provider} / ${health.llm.model}`}</span>
         <span>
           Voice: {health.tts.provider}
           {health.tts.speaker ? ` (${health.tts.speaker})` : ''}

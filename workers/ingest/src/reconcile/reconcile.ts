@@ -1,6 +1,9 @@
 import { sql } from 'kysely'
 import {
+  CAP_EXEMPT_STATUSES,
   SETTINGS,
+  dayShare,
+  pacedCap,
   StaleTransitionError,
   errorFields,
   getPipelinePause,
@@ -16,6 +19,7 @@ import {
   ADMISSION_OVERRIDES,
   ENQUEUE_CHUNK,
   RECONCILE_BATCH,
+  REEL_COST_WINDOW_MS,
   SPEND_CATEGORIES_FOR_CAP,
   RENDER_QUEUED_LIVE_MS,
   RENDER_RENDERING_LIVE_MS,
@@ -24,12 +28,13 @@ import {
 import { transitionClearingPriority } from '../generate/priority'
 import type { IngestItemMessage, RenderJobMessage } from '../env'
 import {
-  CAP_EXEMPT_STATUSES,
   admissionDecision,
   chunked,
   classifyStuck,
   interleaveBySource,
+  reelCostEstimate,
   utcDayStart,
+  type AdmissionSkip,
 } from './policy'
 import { probePause } from '../pipeline/quota'
 import { primarySource, type ScoreSignal } from '../score'
@@ -51,7 +56,7 @@ export type ReconcileResult = {
   stuckRequeued: number
   stuckFailed: number
   admitted: number
-  skipped: Record<'below_score' | 'daily_cap' | 'spend_cap', number>
+  skipped: Record<AdmissionSkip, number>
   enqueuedSummarized: number
   enqueuedEmbedded: number
   enqueuedVoiced: number
@@ -254,6 +259,36 @@ async function countAdmittedToday(db: Database, now: Date): Promise<number> {
   return Number(row?.n ?? 0)
 }
 
+async function countUnscripted(db: Database): Promise<number> {
+  const row = await db
+    .selectFrom('item')
+    .select((eb) => eb.fn.countAll<string>().as('unscripted'))
+    .where('status', '=', 'found')
+    .where('queued_at', 'is not', null)
+    .executeTakeFirst()
+  return Number(row?.unscripted ?? 0)
+}
+
+async function recentReelCostUsd(db: Database, now: Date): Promise<number> {
+  const since = new Date(now.getTime() - REEL_COST_WINDOW_MS)
+  const [spend, reels] = await Promise.all([
+    db
+      .selectFrom('spend_ledger')
+      .select(sql<string>`coalesce(sum(cost_usd), 0)`.as('window_usd'))
+      .where('created_at', '>=', since)
+      .where('category', 'in', SPEND_CATEGORIES_FOR_CAP)
+      .executeTakeFirst(),
+    db
+      .selectFrom('item_event')
+      .select((eb) => eb.fn.countAll<string>().as('reels'))
+      .where('stage', '=', 'rendered')
+      .where('outcome', '=', 'ok')
+      .where('created_at', '>=', since)
+      .executeTakeFirst(),
+  ])
+  return reelCostEstimate(Number(spend?.window_usd ?? 0), Number(reels?.reels ?? 0))
+}
+
 async function admittedTodayBySource(db: Database, now: Date): Promise<Map<string, number>> {
   const rows = await db
     .selectFrom('item_event')
@@ -361,8 +396,22 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
   const spendCapUsd = await getSetting(db, SETTINGS.pipelineDailySpendCapUsd, log)
   const spent = await spendTodayUsd(db, SPEND_CATEGORIES_FOR_CAP)
   let admittedToday = await countAdmittedToday(db, now)
+  const reelCostUsd = await recentReelCostUsd(db, now).catch((err) => {
+    log.warn(errorFields(err), 'reel cost lookup failed, reserving the default')
+    return reelCostEstimate(0, 0)
+  })
+  const unscripted = await countUnscripted(db)
+  // Spend lands minutes to hours after admission, so admitted items not yet scripted are reserved.
+  let committedUsd = spent + unscripted * reelCostUsd
+  const share = dayShare(now)
+  const openSlots = pacedCap(dailyCap, now)
 
-  const skipped = { below_score: 0, daily_cap: 0, spend_cap: 0 }
+  const skipped: Record<AdmissionSkip, number> = {
+    below_score: 0,
+    daily_cap: 0,
+    spend_cap: 0,
+    pace: 0,
+  }
   const candidates = await db
     .selectFrom('item')
     .select(['id', 'score'])
@@ -405,18 +454,22 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
 
   const admit: { id: string; score: number; source: string }[] = []
   for (const item of ordered) {
+    const override = overridden.has(item.id)
+    // An admin override outranks the score floor (scores decay) and pacing, not the daily caps.
     const decision = admissionDecision({
       score: item.score,
-      // An admin override outranks the score floor (scores decay), but not the daily and spend caps.
-      minScore: overridden.has(item.id) ? Number.NEGATIVE_INFINITY : minScore,
+      minScore: override ? Number.NEGATIVE_INFINITY : minScore,
       admittedToday,
       dailyCap,
-      spendTodayUsd: spent,
+      pacedCap: override ? dailyCap : openSlots,
+      committedUsd,
       spendCapUsd,
+      pacedSpendCapUsd: override ? spendCapUsd : spendCapUsd * share,
     })
     if (decision.admit) {
       admit.push(item)
       admittedToday++
+      committedUsd += reelCostUsd
     } else {
       skipped[decision.reason]++
     }
@@ -435,7 +488,12 @@ async function admitFound(db: Database, queue: ReconcileQueues['ingest'], now: D
       ),
       admittedToday,
       dailyCap,
+      openSlots,
       spent,
+      unscripted,
+      reelCostUsd,
+      committedUsd,
+      pacedSpendCapUsd: spendCapUsd * share,
       ...skipped,
     },
     'admission decided',
@@ -481,7 +539,7 @@ export async function reconcile(
     stuckRequeued: 0,
     stuckFailed: 0,
     admitted: 0,
-    skipped: { below_score: 0, daily_cap: 0, spend_cap: 0 },
+    skipped: { below_score: 0, daily_cap: 0, spend_cap: 0, pace: 0 },
     enqueuedSummarized: 0,
     enqueuedEmbedded: 0,
     enqueuedVoiced: 0,

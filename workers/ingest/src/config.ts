@@ -105,5 +105,10 @@ export const TRANSCRIPT_WINDOW = 20
 export const TRANSCRIPT_MIN_ATTEMPTS = 10
 export const TRANSCRIPT_MIN_SUCCESS = 0.5
 export const SPEND_CATEGORIES_FOR_CAP = ['llm', 'embedding', 'tts', 'render'] as const
+// Cost of one finished reel, measured over this window, reserves budget for admitted items whose
+// script has not run yet; with too few reels in the window the default is used.
+export const REEL_COST_WINDOW_MS = 48 * HOUR_MS
+export const REEL_COST_MIN_SAMPLES = 5
+export const DEFAULT_REEL_COST_USD = 0.15
 
 export const USER_AGENT = 'reelset-ingest/0.1 (+https://reelset.dev)'

@@ -30,6 +30,7 @@ export {
   type IndexNowResult,
 } from './domain/indexnow'
 export { announceReel } from './repos/indexnow.repo'
+export { CAP_EXEMPT_STATUSES, PACE_LEAD_MINUTES, dayShare, pacedCap } from './domain/admission'
 export {
   PIPELINE_STAGES,
   SETTLED_ITEM_STATUSES,
