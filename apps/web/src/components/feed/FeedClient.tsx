@@ -17,6 +17,7 @@ import {
   muteTopics,
   parseFeedback,
 } from '@/lib/feed-feedback'
+import { pinCurrentFirst } from '@/lib/feed-merge'
 import { createIntentQueue } from '@/lib/intent-queue'
 import { MAX_FOLLOWED_TOPICS } from '@/lib/topics'
 import { reelHref, scopeQuery, type FeedScope } from '@/lib/reel-url'
@@ -80,8 +81,6 @@ function scopeFromLocation(): FeedScope {
   const query = new URLSearchParams(window.location.search)
   return { topic: query.get('topic') || null, source: query.get('source') || null }
 }
-
-const FADE = 'linear-gradient(to bottom, black calc(100% - 28px), transparent)'
 
 export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}) {
   const [items, setItems] = useState<FeedItemDto[]>(initial?.items ?? [])
@@ -299,8 +298,8 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
   const loadInitial = useCallback(() => loadScope(scopeRef.current), [loadScope])
 
   // Swaps the cached anonymous page for the viewer's own without a skeleton. A scoped feed is
-  // always replaced; a personal one only while the viewer is still on the first reel, otherwise
-  // just their liked/saved flags are merged in so the reel on screen does not jump.
+  // always replaced; a personal one keeps the first reel on screen while the viewer is still on
+  // it, otherwise just their liked/saved flags are merged in so the reel on screen does not jump.
   const refreshInPlace = useCallback(
     async (at: FeedScope, scoped: boolean) => {
       const id = ++requestId.current
@@ -309,11 +308,22 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
         if (!res.ok) throw new Error(String(res.status))
         const feed = (await res.json()) as FeedResponse
         if (id !== requestId.current) return
-        if (scoped || activeRef.current === 0) {
+        if (scoped) {
           applyFeed(feed, { track: false })
           setActive(0)
           setMoreState('idle')
           scrollerRef.current?.scrollTo({ top: 0 })
+          return
+        }
+        if (activeRef.current === 0) {
+          // The viewer is already watching reel A: keep it first, with their own flags, and let
+          // the personal list follow, so the reel never swaps under them.
+          const own = feed.items.find((it) => it.id === itemsRef.current[0]?.id)
+          const current = itemsRef.current[0]
+          const pinned =
+            current && own ? { ...current, liked: own.liked, saved: own.saved } : current
+          applyFeed({ ...feed, items: pinCurrentFirst(pinned, feed.items) }, { track: false })
+          setMoreState('idle')
           return
         }
         const flags = new Map(feed.items.map((it) => [it.id, it]))
@@ -601,8 +611,7 @@ export function FeedClient({ initial, about, aboutItemId }: FeedClientProps = {}
             id={DETAILS_PANEL_ID}
             role="region"
             aria-label="Reel details"
-            style={{ maskImage: FADE, WebkitMaskImage: FADE }}
-            className="no-scrollbar min-h-0 w-80 shrink overflow-y-auto pb-6"
+            className="flex min-h-0 w-80 flex-col pb-6"
           >
             {about && items[active].id === aboutItemId ? about : <ReelAbout item={items[active]} />}
           </div>

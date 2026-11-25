@@ -222,12 +222,13 @@ export function ReelCard(props: Props) {
       return
     }
     lastTap.current = now
-    // Browsers only allow unmuting inside the tap itself; muting can wait to rule out a double tap.
+    // Browsers only allow unmuting inside the tap itself; once sound is on a tap pauses or plays,
+    // after the double-tap window so a double tap likes without pausing. Mute lives on the rail.
     if (!soundRef.current) {
       setSound(true)
       return
     }
-    tapTimer.current = setTimeout(() => setSound(false), DOUBLE_TAP_MS)
+    tapTimer.current = setTimeout(() => togglePause(), DOUBLE_TAP_MS)
   }
 
   function onPressStart() {
@@ -310,7 +311,7 @@ export function ReelCard(props: Props) {
 
       <button
         type="button"
-        aria-label="Tap for sound on or off, double tap to like, hold to pause"
+        aria-label="Tap for sound, then tap to pause or play, double tap to like"
         onClick={onTap}
         onPointerDown={onPressStart}
         onPointerUp={onPressEnd}

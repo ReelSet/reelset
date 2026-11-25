@@ -46,9 +46,13 @@ export function ReelPanel({
   const setActive = setSelected
 
   return (
-    <article className="flex flex-col gap-4 text-sm leading-relaxed text-muted">
+    <article className="flex min-h-0 flex-col gap-4 text-sm leading-relaxed text-muted">
       <ReelHeader reel={reel} />
-      <div role="tablist" aria-label="Reel details" className="flex gap-1 border-b border-line">
+      <div
+        role="tablist"
+        aria-label="Reel details"
+        className="flex shrink-0 gap-1 border-b border-line"
+      >
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -70,7 +74,7 @@ export function ReelPanel({
       </div>
       {/* Inactive tabs hide with a class, not the `hidden` attribute: reader-mode extractors drop
           hidden-attribute nodes, and these hold the facts and transcript AI engines cite. */}
-      <div className="h-[clamp(12rem,36dvh,22rem)] overflow-y-auto overscroll-contain">
+      <div className="min-h-0 overflow-y-auto [scrollbar-width:thin]">
         <div
           role="tabpanel"
           id="panel-tldr"
@@ -97,7 +101,9 @@ export function ReelPanel({
           <TranscriptSection reel={reel} idPrefix="panel-" />
         </div>
       </div>
-      <TopicsNav reel={reel} />
+      <div className="shrink-0">
+        <TopicsNav reel={reel} />
+      </div>
     </article>
   )
 }
