@@ -144,6 +144,8 @@ export async function getCreditsTool(ctx: McpContext): Promise<CallToolResult> {
   })
 }
 
+export const MCP_SERVER_VERSION = '1.0.0'
+
 export const TOOL_DESCRIPTIONS = {
   generate_reel: `Turn up to ${MAX_URLS_PER_REQUEST} links into one short vertical video reel (about 60 seconds, narrated, with captions) hosted on reelset. Accepts GitHub repos, Hacker News and Reddit threads, YouTube videos, arXiv papers and any news or blog article. Several links become ONE reel that combines them. Rendering takes a few minutes: this returns a request_id immediately, then call get_reel_status until status is "done" to get the MP4 and a shareable page. Costs 100 credits per reel (1,000 free every month). If the links were already turned into a reel it returns that reel instantly for free.`,
   get_reel_status:
@@ -155,3 +157,11 @@ export const TOOL_DESCRIPTIONS = {
   get_credits:
     'Show how many reelset credits you have left this month, how many reels that covers, and when the balance resets.',
 } as const
+
+export const TOOL_TITLES: Record<keyof typeof TOOL_DESCRIPTIONS, string> = {
+  generate_reel: 'Generate a reel',
+  get_reel_status: 'Get reel status',
+  list_my_reels: 'List my reels',
+  publish_reel: 'Submit a reel to the feed',
+  get_credits: 'Get credits',
+}

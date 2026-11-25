@@ -244,6 +244,18 @@ describe('llms.txt', () => {
     expect(text).toContain('- [A weird title](https://reelset.app/r/a-weird-title-e86d24f7)')
   })
 
+  it('lists the agent discovery files', () => {
+    const text = buildLlmsTxt({ reels: [], topics: [] })
+    expect(text).toContain('## For AI agents')
+    for (const url of [
+      'https://reelset.app/index.md',
+      'https://reelset.app/auth.md',
+      'https://reelset.app/.well-known/mcp/server-card.json',
+      'https://reelset.app/.well-known/api-catalog',
+    ])
+      expect(text).toContain(url)
+  })
+
   it('inlines summaries and transcripts in the full version', () => {
     const text = buildLlmsFullTxt([
       { ...summary(ID), transcript: 'Spoken words.', sourceUrl: 'https://example.com' },
