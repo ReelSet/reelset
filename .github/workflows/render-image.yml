@@ -21,6 +21,8 @@ env:
 
 jobs:
   build:
+    # The deploy mirror cannot push to this repo's package; the image is built here only.
+    if: github.repository == 'ReelSet/reelset'
     strategy:
       fail-fast: true
       matrix:
